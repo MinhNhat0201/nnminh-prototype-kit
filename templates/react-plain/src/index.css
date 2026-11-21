@@ -1,0 +1,9 @@
+/* App stylesheet (no Tailwind).
+   1. The DS bundle, once. src/ds/{{DS_BUNDLE_FILE}} is a copy of ds.json > css.bundle made by the kit (scaffold, sync).
+      Never edit it.
+   2. App CSS below: DS tokens ({{TOKEN_PREFIX}}*) and alias variables only. No hex, rgb() or px for colour, spacing,
+      radius or font size when a token exists. Never restyle a DS class here.
+   Local components live in src/components/local/ (see the README there), not here. */
+@import "./ds/{{DS_BUNDLE_FILE}}";
+
+{{SHELL_CSS}}

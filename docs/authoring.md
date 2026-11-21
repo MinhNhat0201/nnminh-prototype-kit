@@ -31,7 +31,8 @@ Refer to another skill by its bare name in backticks (`handoff`). Users call ski
 
 - English only. Write for an agent: imperative, short sentences, one idea per line. Prefer tables for decisions.
 - Frontmatter: `name` equals the folder name; `description` says what the skill does, when to use it (English trigger phrases), and when to use another skill instead. End the description with: "Also use for the same request in any language."
-- First lines of the body: "Reply in the project language (`kit.config.json > language`). Generated documents use the same language."
+- First lines of the body: "Reply in the project language (`kit.config.json > language`). Generated documents use the same language." Then: "Model and effort: `kit.config.json > skills.<name>` (`model`, `effort`) when set. …" (the line every skill has). Never write a model name into a skill; projects choose it in `kit.config.json > skills`.
+- Project-provided commands (extension points: `sync.command`, `local.command`, `review.extraChecks`, `handoff.pre`/`post`): run them in the project root, print their output and exit code, never parse more than the summary lines. Each one is off by default so the kit's own behaviour stays.
 - Read configuration, never hard-code it: DS name, token prefix, CSS bundle, theming attributes, version label, app list, site URL, Figma libraries. Write "the DS" and "`ds.json > tokens.prefix`", not a real DS name.
 - No proprietary content: no company, product, DS or person names, no internal URLs, Figma file keys, emails or secrets. Use the placeholder DS `acme` (prefix `--acme-`) and app `acme-web` in examples.
 - Stack-aware: where the behaviour depends on `stack`, give a short table or bullets for `html`, `react`, `vue` (see [stacks.md](stacks.md)).
@@ -45,6 +46,8 @@ Refer to another skill by its bare name in backticks (`handoff`). Users call ski
 - Every message (print, error, help) in English. Text that ends up in a generated document goes through `t(cfg, "<skill>.<key>", **kw)`, with the English string in `locales/en/<skill>.json` and the Vietnamese string in `locales/vi/<skill>.json`.
 - File names, config keys, JSON keys: English, lowercase, no diacritics.
 - `--help` works and lists every command. Exit code 1 on error, with a line that starts with `ERROR:`.
+- New logic (branches, parsing, path or URL handling) gets a runnable check: a `--selftest` command of the script (pure functions, temp folders, no network), and a case in `tests/e2e.py` when it needs a browser or several scripts together. Run `python3 tests/e2e.py` before a release.
+- New config keys get a default in `scripts/kitconf.py` and `scripts/kitconf.js` that keeps the earlier behaviour, a row in `docs/config.md`, and a check in `kitconf.py check` when a wrong value would fail late.
 - Scripts never commit, push, publish or send anything.
 
 ## Placeholders

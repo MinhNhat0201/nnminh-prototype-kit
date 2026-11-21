@@ -2,13 +2,18 @@
 """Demo-site links per wireflow flow (shared by the flows text of a spec and by the Figma wireflow board).
 
   python3 -I demo_links.py fill --screens <screens.json> --flows <flows.json> --app <app id>
-                                [--site <https base URL>] [--manifest <manifest.json>] [--dry-run]
+                                [--site <https base URL>] [--manifest <manifest.json>] [--page-root <folder>] [--dry-run]
+  python3 -I demo_links.py --selftest
 
 - Flow link = site + page path + hash route of the first screen of the flow (first `n` item), from screens.json
   (the capture output). A flow that already has `url` keeps it (hand-edited).
 - Writes `url` into each flow and `home` (the app root) into flows.json, and prints flow id · screen · link · start.
 - With --manifest: when the first screen needs clicks to reach (`steps`) and the flow has no `start`, prints a
   REMINDER so the agent fills `start` with the exact on-screen label (for example: Click "New").
+- Page path of a screen: when it contains the app path (`apps[].path`), the part after it is kept; when it is a
+  relative path inside the app (captured from a copy of the app, for example a package prototype served from its own
+  folder), it is kept as it is, with its page folder. --page-root <folder> removes that leading folder first (for
+  example `prototype` when the package folder was served). Absolute paths outside the app keep only the file name.
 - --site defaults to kit.config.json > deploy.site. --app is an app id from kit.config.json > apps (its `path` is used).
 The script makes no network call.
 """
@@ -25,15 +30,20 @@ def app_url(site, app_path):
     return site.rstrip('/') + '/' + app_path.strip('/') + '/'
 
 
-def screen_url(site, app_path, page, hash_):
+def screen_url(site, app_path, page, hash_, page_root=''):
     """Turn the page path at capture time (local server, file:// or a copy in a package) into a path on the site."""
     base = app_url(site, app_path)
     p = (page or '').replace('\\', '/')
+    absolute = '://' in p or p.startswith('/')
     p = urlparse(p).path if '://' in p else p
     p = p.lstrip('/')
-    app_path = app_path.strip('/')
+    app_path, root = app_path.strip('/'), page_root.strip('/')
     if app_path and (app_path + '/') in (p + '/'):
         rel = (p + '/').split(app_path + '/', 1)[1].rstrip('/')   # part after the app folder
+    elif root and ('/' + root + '/') in ('/' + p):
+        rel = ('/' + p).split('/' + root + '/', 1)[1]              # part after the served copy's root folder
+    elif not absolute:
+        rel = p                                                    # relative path inside the app: keep the page folder
     else:
         rel = p.rsplit('/', 1)[-1] if p.endswith('.html') else ''  # copy outside the repo: keep the file name only
     if rel.endswith('index.html'):
@@ -105,7 +115,7 @@ def fill(a):
             if not sid or sid not in by:
                 err.append(f'{f.get("id")}: first screen of the flow is not in screens.json')
                 continue
-            f['url'] = screen_url(site, app_path, by[sid].get('page'), by[sid].get('hash'))
+            f['url'] = screen_url(site, app_path, by[sid].get('page'), by[sid].get('hash'), a.page_root)
         if not check_url(f['url'], site):
             err.append(f'{f.get("id")}: link {f["url"]} is not on site {site}')
         if sid and steps.get(sid) and not f.get('start'):
@@ -124,7 +134,26 @@ def fill(a):
         print(f'Wrote url for {len(rows)} flow(s) and home to {a.flows}')
 
 
+def selftest():
+    S, A = 'https://demo.example.com', 'apps/acme-web'
+    cases = [
+        (('apps/acme-web/tasks/index.html', '#/list'), '', S + '/apps/acme-web/tasks/#/list'),
+        (('tasks/index.html', '#/list'), '', S + '/apps/acme-web/tasks/#/list'),
+        (('index.html', '#/'), '', S + '/apps/acme-web/#/'),
+        (('prototype/tasks/index.html', '/x'), 'prototype', S + '/apps/acme-web/tasks/#/x'),
+        (('file:///home/u/pkg/prototype/tasks/index.html', ''), 'prototype', S + '/apps/acme-web/tasks/'),
+        (('file:///tmp/copy/page.html', ''), '', S + '/apps/acme-web/page.html'),
+    ]
+    for (page, h), root, want in cases:
+        got = screen_url(S, A, page, h, root)
+        assert got == want, (page, root, got, want)
+    print('demo_links.py selftest OK')
+
+
 def main():
+    if '--selftest' in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description='Demo-site links per wireflow flow. Commands: fill.')
     sub = ap.add_subparsers(dest='cmd', required=True)
     f = sub.add_parser('fill', help='write url per flow and home into flows.json')
@@ -133,6 +162,7 @@ def main():
     f.add_argument('--app', required=True, help='app id from kit.config.json > apps')
     f.add_argument('--site', default='', help='https base URL of the demo site (default: kit.config.json > deploy.site)')
     f.add_argument('--manifest', help='capture manifest with per-screen steps')
+    f.add_argument('--page-root', default='', help='leading folder of the captured page paths to drop (e.g. prototype)')
     f.add_argument('--dry-run', action='store_true', help='print, do not write')
     a = ap.parse_args()
     fill(a)

@@ -6,6 +6,7 @@ description: "Package a prototype into ONE zip for BA, QC and developers: featur
 # Handoff package
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.handoff` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 One skill, two modes, one zip format:
 - **Feature:** only what belongs to ONE feature. Scope filter, spec, optional lock or hide of the rest.
@@ -34,6 +35,7 @@ No answers available (unattended run): need items 1, and 4 + 5 for a feature. Ch
 
 ## Step 1. Read the source
 - Work on a copy. Note title, version, DS version label (`version_label`) of the prototype; compare with `ds.json > version`. Mismatch: warn and suggest `sync`; do not fix here.
+- The package states ONE DS label, the one of the packaged prototype. When the profile has moved on (a later DS version than the prototype), write the prototype's label into `pkg.json > ds_label` (or set `handoff.dsLabel` to `prototype`). `finalize` compares the label with the pages' `<meta>` and with `spec/index.md` (`handoff.dsLabelCheck`).
 - **Multi-page app** (`apps[].type` is `multi`, or one file per feature with its own router): take the whole app folder, not one file. Find pages, shared folders, the route table and how data passes between pages (`sessionStorage`, `localStorage`). Serve over HTTP (`python3 -m http.server`), never `file://`. Large sample data: tell the user the expected package size.
 - Existing spec: read it all; keep what BA/designers wrote. Feature mode only filters it.
 
@@ -65,7 +67,7 @@ Layers in step 4 are injected into the built HTML (`pkg.py layer --into dist/*.h
 - **(b) lock** and **(c) hide:** a layer added on top. Never change DS components, tokens, app code or behaviour of kept parts. One package uses one treatment, never both.
   1. `pkg.py init --pbi <code> --title "<feature>" --version x.y.z --app <id> --treatment lock|hide` (once per work item), then fill `pkg.json > lock` or `> hide` (keys in [scope-layers.md](references/scope-layers.md)).
   2. `pkg.py layer --config pkg.json --kind lock|hide --into <every page in the package>`. Re-run after each change: it replaces the previous layer.
-- **Lock rules:** never disable (`disabled`, `aria-disabled`, dimming, cursor, colour). Block with a capture-phase listener before app code runs (click, Enter/Space, focus and typing in fields, drop, paste), then show the DS toast (`lock.toast`: the app's toast function or the DS toast classes from `catalog.md`). No stacked toasts. Wrap the app's navigation functions and `window.open` as a fallback. Scan pages for static `<a>`, `window.open`, shortcuts so the list is complete.
+- **Lock rules:** never disable (`disabled`, `aria-disabled`, dimming, cursor, colour). Block with a capture-phase listener before app code runs (click, Enter/Space, focus and typing in fields, drop, dragover, paste), then show the DS toast (`lock.toast`: the app's toast function with its `args`, or the DS toast classes and icon from `catalog.md` / `ds.json > toast`). No stacked toasts. Wrap the app's navigation functions (`nav_functions`, keys mapped to files in `page_keys`) and `window.open` as a fallback; pages are compared on resolved paths. A control in scope on one route only: `allow_when`. State the package needs on load (a dismissed notice of another work item): `seed`. Scan pages for static `<a>`, `window.open`, shortcuts so the list is complete.
 - **Hide rules:** `display:none !important` block on stable selectors (also hides late-rendered and mobile tab-bar items). Hide containers left empty (group titles, dividers, button groups, stat cards). Hidden default tab: switch to the first visible one through the layer. Shortcuts of hidden features: stopped silently. A route of a dropped page: redirect to the package entry.
 - `pkg.py layer` writes `<meta name="x-handover">` with treatment and version; record the same in "Out of scope" of the spec.
 - Test with Playwright at 400, 768, 1280 px: the feature flow works; (b) every out-of-scope entry shows the toast, URL and page state unchanged; (c) every hidden element has `offsetParent === null` and is not in Tab order, no visible way out of scope, layout not broken; no console errors.
@@ -92,17 +94,17 @@ Run `annotate` on the package prototype. The spec is Markdown in `spec/`; `desig
 CSV files are UTF-8 with BOM (Excel).
 
 ## Step 8. Wireflow on Figma (required with a spec, before zipping)
-1. `pkg.py capture --manifest manifest.js --shots shots --base <served package prototype>`: 2x captures, `shots/changed.json` lists new and changed screens. Look at only those.
+1. `pkg.py capture --manifest manifest.js --shots shots --base <served package prototype>`: 2x captures, `shots/changed.json` lists new and changed screens. Look at only those. `--only S05,S07` re-captures just those screens. Every iframe a step or pin uses must be in `manifest.frames` (capture stops otherwise); older frame-prefixed steps (`fclick`) are read as `click` + `in`.
 2. Run `wireflow` with the PNGs of `shots/` and `requirements/flows.json`. Page name contains `[<code>] <feature>`; board name `Wireflow · <feature> v<version>`. Later versions: **update in place, keep the board node**, replace only changed screens (sent links must not break). Never delete or move content the kit did not create.
-3. Map screen → node into `pkg.json` (`figma_file`, `figma_board`, `figma`): run the `mapjs` code from `wireflow`'s `figma_wireflow.py` in `use_figma`, save the result, then `figma_wireflow.py setmap --config pkg.json --json <result> --file <fileKey>`. Fill the demo links of `flows.json`/`flows.md` with `wireflow`'s `demo_links.py fill`.
+3. Map screen → node into `pkg.json` (`figma_file`, `figma_board`, `figma`): run the `mapjs` code from `wireflow`'s `figma_wireflow.py` in `use_figma`, save the result, then `figma_wireflow.py setmap --config pkg.json --json <result> --file <fileKey>`. Fill the demo links of `flows.json`/`flows.md` with `wireflow`'s `demo_links.py fill` (captures of the package copy: add `--page-root prototype` when the package folder was served, so links keep the page folder).
 4. With `handoff.figmaRequired`, `pkg.py finalize` stops with an ERROR while `figma_file` is missing or a screen has no node. `--allow-missing-figma` only when the user accepts a draft without a wireflow.
 
 ## Step 9. Zip
 1. Name: `pkg.py name --config pkg.json` (from `handoff.zipName`); the folder inside has the same name. The version is in `README.md` and the changelog, not in the name. Layout and README tables: [package-layout.md](references/package-layout.md).
 2. Sample attachments (PDF, PPTX, DOCX, XLSX): `python3 -I optimize_attachments.py <files> --out "<package>/attachments"`. Keep files meant to test size limits as they are and say so in README. Still over ~10 MB, or video: leave out, put a download link in README.
-3. `pkg.py finalize --pkg "<package>" --shots shots --config pkg.json --zip`: slim `screens/screens.json`, remove screen images, archive replaced units to `spec/archive.md`, trim changelog, write `AGENTS.md`, run the spec check of `annotate`, then `optimize_package.py` (inline JS, base64 → WebP in `assets/`, remove blocked files, zip at level 9).
+3. `pkg.py finalize --pkg "<package>" --shots shots --config pkg.json --zip`: slim `screens/screens.json`, remove screen images (also sentences that point at `screens/*.webp`), archive replaced units to the archive file (`handoff.specFiles`), trim changelog, write `AGENTS.md` (`handoff.itemLabel`, `handoff.grepLabels`), check the DS label, file references (README, AGENTS, spec: ERROR; changelog: WARN), CSV headers (`handoff.csv`), run the spec check of `annotate` and print every WARN and ERROR line, then `optimize_package.py` (inline JS, base64 → WebP in `assets/`, remove blocked files, zip at level 9). Read every WARN; fix or report each. Project steps around it: `handoff.pre` / `handoff.post`.
 4. Over `handoff.maxZipMB`: follow the size steps in [package-layout.md](references/package-layout.md). Never rename `.js`, password-protect, split, nest zips or obfuscate code to pass mail filters.
-5. Unzip into a new folder and run the prototype again (multi-page: over HTTP): flow works, no console error, no broken image, no 404. Check no blocked file is left:
+5. Unzip into a new folder and run the prototype again over HTTP **from the package folder** (images are in `assets/` next to `prototype/`): flow works, no console error, no broken image, no 404. Check no blocked file is left:
    `python3 -c "import zipfile,sys;print([n for n in zipfile.ZipFile(sys.argv[1]).namelist() if n.lower().endswith(('.js','.mjs','.cjs','.py','.sh','.bat','.cmd','.ps1','.vbs','.exe','.jar','.zip','.map'))])" <zip>` prints `[]`.
 6. Keep the work-item source (`pkg.json`, manifest, generators, baseline `screens.json`) in `<handoff.dir>/<code>/` for the next version. Captures stay out of the zip.
 

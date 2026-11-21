@@ -5,7 +5,9 @@
 
    base URL   where the prototype is served (default http://localhost:8791/). Serve over HTTP, not file://:
               multi-page apps share files and hand data over through sessionStorage/localStorage.
-   --only     capture only these screens; earlier screens of the same flow still run (they set up the state).
+   --only     capture only these screens; the earlier screens they continue from (same flow, cont) still run to set up
+              the state, but nothing else runs and no other image is written.
+   --selftest run the checks of the manifest helpers (no browser).
 
    Manifest (format in references/manifest.md):
      { viewport, scale (device scale factor, default 2; use 3 for phone frames),
@@ -24,8 +26,80 @@ const kit = require(path.resolve(__dirname, '../../../scripts/kitconf.js'));
 const die = m => { console.error('ERROR: ' + m); process.exit(1); };
 const argv = process.argv.slice(2);
 if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
-  console.log('Usage: node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02]');
+  console.log('Usage: node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02]\n' +
+    '       node capture.js --selftest');
   process.exit(argv.length ? 0 : 1);
+}
+
+// Legacy step aliases: "<frame letter in lower case><step>" acts inside that frame, e.g. {fclick: sel} = {click: sel, in: 'F'}.
+// "<x>wait" with a selector = {waitFor: sel, in: 'X'}. Kept so older manifests run unchanged.
+const ALIAS_STEPS = ['click', 'hover', 'fill', 'type', 'waitFor', 'wait', 'files'];
+function normStep(st) {
+  if (!st || typeof st !== 'object') return st;
+  for (const k of Object.keys(st)) {
+    const m = /^([a-z])([a-z][A-Za-z]*)$/.exec(k);
+    if (!m || !ALIAS_STEPS.includes(m[2]) || ['click', 'hover', 'fill', 'type', 'files', 'wait'].includes(k)) continue;
+    const rest = Object.fromEntries(Object.entries(st).filter(([x]) => x !== k));
+    const step = m[2] === 'wait' && typeof st[k] === 'string' ? 'waitFor' : m[2];
+    return { ...rest, [step]: st[k], in: m[1].toUpperCase() };
+  }
+  return st;
+}
+// Every frame a selector ("F|sel") or a step ("in": "F") names must be declared in manifest.frames.
+function undeclaredFrames(M) {
+  const FR = M.frames || {}, bad = [];
+  const sel = (where, v) => {
+    for (const x of [].concat(v || [])) {
+      const m = typeof x === 'string' && /^([A-Za-z]\w*)\|/.exec(x);
+      if (m && !FR[m[1]]) bad.push(`${where}: "${x}" uses frame ${m[1]}`);
+    }
+  };
+  for (const s of M.screens || []) {
+    (s.steps || []).forEach((st0, i) => {
+      const st = normStep(st0);
+      if (st && st.in && !FR[st.in]) bad.push(`${s.id} step ${i + 1}: in "${st.in}"`);
+      for (const k of ['click', 'hover', 'waitFor']) if (st && typeof st[k] === 'string') sel(`${s.id} step ${i + 1}`, st[k]);
+      for (const k of ['fill', 'type', 'files']) if (st && Array.isArray(st[k])) sel(`${s.id} step ${i + 1}`, st[k][0]);
+    });
+    (s.pins || []).forEach(p => sel(`${s.id} pin ${p.ref || ''}`, p.sel || p.selector));
+    (s.next || []).forEach(n => sel(`${s.id} exit to ${n.to}`, n.trigger));
+  }
+  return bad;
+}
+// Screens to run for --only: each asked screen plus the screens it continues from (same flow, cont: 1).
+function runSet(M, only) {
+  if (!only) return null;
+  const S = M.screens, need = new Set();
+  for (const id of only) {
+    let i = S.findIndex(x => x.id === id);
+    if (i < 0) continue;
+    need.add(S[i].id);
+    while (S[i].cont && S[i].flow) {
+      let j = i - 1;
+      while (j >= 0 && S[j].flow !== S[i].flow) j--;
+      if (j < 0) break;
+      need.add(S[j].id); i = j;
+    }
+  }
+  return need;
+}
+if (argv.includes('--selftest')) {
+  const assert = require('assert');
+  assert.deepStrictEqual(normStep({ fclick: '#a', timeout: 9 }), { timeout: 9, click: '#a', in: 'F' });
+  assert.deepStrictEqual(normStep({ ewait: '.card' }), { waitFor: '.card', in: 'E' });
+  assert.deepStrictEqual(normStep({ wait: 300 }), { wait: 300 });
+  assert.deepStrictEqual(normStep({ click: '#b' }), { click: '#b' });
+  const M = { frames: { F: 'iframe' }, screens: [
+    { id: 'S01', flow: 'f1', steps: [{ fclick: '#x' }], pins: [{ ref: 'R1', sel: 'F|.ok' }] },
+    { id: 'S02', flow: 'f2', steps: [{ eclick: '#y' }] },
+    { id: 'S03', flow: 'f1', cont: 1, steps: [], pins: [{ ref: 'R2', sel: 'G|.no' }] },
+    { id: 'S04', flow: 'f1', cont: 1, steps: [] }] };
+  const bad = undeclaredFrames(M);
+  assert.strictEqual(bad.length, 2, bad.join('; '));
+  assert.deepStrictEqual([...runSet(M, ['S03'])].sort(), ['S01', 'S03']);
+  assert.deepStrictEqual([...runSet(M, ['S02'])], ['S02']);
+  console.log('capture.js selftest OK');
+  process.exit(0);
 }
 const oi = argv.indexOf('--only');
 const only = oi >= 0 ? (argv[oi + 1] || '').split(',').filter(Boolean) : null;
@@ -37,6 +111,10 @@ const mPath = path.resolve(manifestFile);
 if (!fs.existsSync(mPath)) die('manifest not found: ' + manifestFile);
 const M = mPath.endsWith('.json') ? JSON.parse(fs.readFileSync(mPath, 'utf8')) : require(mPath);
 if (!Array.isArray(M.screens)) die('manifest has no screens[]');
+const badFrames = undeclaredFrames(M);
+if (badFrames.length) die('frame not declared in manifest.frames (add frames: { X: "<iframe selector>" }):\n  ' + badFrames.join('\n  '));
+const RUN = runSet(M, only);
+if (only && only.some(id => !M.screens.find(s => s.id === id))) die('--only names screens not in the manifest: ' + only.filter(id => !M.screens.find(s => s.id === id)).join(', '));
 
 const cfg = kit.load(process.cwd(), false) || kit.load(path.dirname(mPath));
 if (!cfg._ds) die(`DS profile not found (kit.config.json > ds = ${cfg.ds}).`);
@@ -99,9 +177,8 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
   const prevFile = path.join(OUT, 'screens.json');
   const prev = fs.existsSync(prevFile) ? JSON.parse(fs.readFileSync(prevFile, 'utf8')) : [];
   const res = []; let cur = null; let failed = 0;
-  const flowOf = id => (M.screens.find(x => x.id === id) || {}).flow;
   for (const s of M.screens) {
-    if (only && !only.includes(s.id) && !(s.flow && only.some(o => flowOf(o) === s.flow))) continue;
+    if (RUN && !RUN.has(s.id)) continue;
     const vp = s.viewport || M.viewport || { width: 1280, height: 800 };
     const same = s.cont && cur && cur.flow && cur.flow === s.flow;
     if (!same) {
@@ -125,7 +202,7 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
       return m && FR[m[1]] ? scope(m[1]).locator(m[2]).first() : page.locator(sel).first();
     };
     try {
-      for (const st of s.steps || []) {
+      for (const st of (s.steps || []).map(normStep)) {
         const T = st.timeout || 8000;
         const L = sel => (st.in ? scope(st.in).locator(sel).first() : locate(sel));
         if (st.goto) await page.goto(BASE + String(st.goto).replace(/^\//, ''));
@@ -182,7 +259,7 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
       const basePath = new URL(BASE).pathname.replace(/^\//, '');
       res.push({ id: s.id, name: s.name, flow: s.flow || null, cont: !!s.cont,
         page: u.pathname.replace(/^\//, '').replace(basePath, ''), hash: u.hash, viewport: vp, scale: s.scale || M.scale || 2,
-        steps: s.steps || [], pins, exits, errors: cur.errors.slice() });
+        steps: (s.steps || []).map(normStep), pins, exits, errors: cur.errors.slice() });
       const missing = pins.filter(p => !p.found).map(p => p.sel);
       console.log(s.id, missing.length ? 'pins not found: ' + missing.join(' ; ') : 'ok', cur.errors.length ? 'CONSOLE ' + cur.errors.join(' | ') : '');
     }

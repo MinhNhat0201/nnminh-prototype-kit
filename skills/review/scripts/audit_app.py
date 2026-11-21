@@ -16,18 +16,32 @@ Usage:
   python3 audit_app.py acme-web             one app
   python3 audit_app.py --json out.json      also write raw numbers
   python3 audit_app.py --roots roots.json   write the DS root classes for audit_components_browser.js
+  python3 audit_app.py --no-extra           skip kit.config.json > review.extraChecks
+  python3 audit_app.py --selftest           checks of the extra-check runner and the DS Vue layer check
+
+Project checks (extension point): kit.config.json > review.extraChecks = [{"name", "command", "parse"?, "level"?}] run
+after the scan in the project root. A command with {app} runs once per audited app and adds a row to that app's table;
+otherwise it adds a row to the "Project checks" table. Result = exit code plus the summary lines: lines matching the
+regex "parse", else the last non-empty line. Exit 0 = Pass, else "level" (default Deviation; "note" for Note).
+
+DS Vue layer: when ds.json > components.vue is set, vue apps also get the row "DS Vue components": local .vue files
+named like a DS Vue component (rebuilt instead of used) and imports of shadcn-vue components (@/components/ui/).
 """
 import argparse
 import collections
+import csv
 import hashlib
+import io
 import json
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, t  # noqa: E402
+from kitconf import load, ds_path, t, ds_vue  # noqa: E402
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".vite", ".next", ".nuxt", "coverage", ".git"}
 EXT_HTML = {".html", ".htm"}
@@ -555,7 +569,57 @@ def audit_app(ctx, app, lib):
                     "pending": [c.get("title") or c.get("name") or c.get("id") for c in comps if c.get("status") == "pending"],
                     "blocks": blocks, "unregistered": [b for b in blocks if b not in known]}
     res["css_lines"] = app_css.count("\n") + 1
+
+    # 9. DS Vue component layer (ds.json > components.vue): components rebuilt locally, shadcn-vue used instead
+    cv = ds_vue(ctx.cfg)
+    if cv and (app.get("stack") or ctx.stack) == "vue":
+        names = ds_vue_names(ctx, cv)
+        pkg = (ctx.root / cv["package"]).resolve() if (ctx.root / cv.get("package", "")).exists() else None
+        rebuilt = sorted(str(f.relative_to(ctx.root)) for f in files if f.suffix == ".vue" and squash(f.stem) in names
+                         and not (pkg and pkg in f.resolve().parents))
+        shadcn = sorted(str(f.relative_to(ctx.root)) for f, x in texts.items() if re.search(r"""from\s+['"]@/components/ui/""", x))
+        res["dsvue"] = {"package": cv["package"], "components": len(names), "rebuilt": rebuilt, "shadcn": shadcn}
     return res
+
+
+def squash(name):
+    return re.sub(r"[^a-z0-9]", "", name.lower())
+
+
+def ds_vue_names(ctx, cv):
+    """Names of the DS Vue components: .vue files in the package folder and the first column of the props map."""
+    names = set()
+    pkg = ctx.root / cv.get("package", "")
+    if pkg.is_dir():
+        names |= {squash(f.stem) for f in pkg.rglob("*.vue") if "node_modules" not in f.parts}
+    pm = cv.get("propsMap")  # absolute path resolved by kitconf.ds_vue
+    if pm:
+        rows = list(csv.reader(io.StringIO(read(Path(pm)))))
+        names |= {squash(r[0]) for r in rows[1:] if r and r[0].strip()}
+    return {n for n in names if n}
+
+
+def run_extra(ctx, apps):
+    """kit.config.json > review.extraChecks: [{name, command, parse?, level?}] -> rows per app id (None = project)."""
+    out = collections.defaultdict(list)
+    for x in (ctx.cfg.get("review") or {}).get("extraChecks") or []:
+        cmd = x.get("command")
+        if not x.get("name") or not cmd:
+            continue
+        for aid in (apps if "{app}" in cmd else [None]):
+            line = cmd.replace("{app}", shlex.quote(aid)) if aid else cmd
+            try:
+                r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
+                code, lines = r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()]
+            except subprocess.TimeoutExpired:
+                code, lines = 124, ["timed out"]
+            if x.get("parse"):
+                summary = [ln for ln in lines if re.search(x["parse"], ln)][:6]
+            else:
+                summary = lines[-1:]
+            lvl = "pass" if code == 0 else ("note" if x.get("level") == "note" else "deviation")
+            out[aid].append({"name": x["name"], "command": line, "exit": code, "summary": summary, "level": lvl})
+    return out
 
 
 # ---------- report ----------
@@ -581,7 +645,7 @@ def rows(ctx, r):
               level(ctx, h["hex"] + h["rgb_hsl"] + h["named"], 0)))
     R.append((tr("row.metrics"), "%d, %d, %d, %d" % (h["font_px"], h["radius_px"], h["space_px"], h["shadow_literal"]),
               level(ctx, h["font_px"] + h["radius_px"] + h["shadow_literal"], 0)))
-    if ctx.stack in ("react", "vue"):
+    if ctx.stack in ("react", "vue") and ctx.ds.get("tailwind") is not False:  # ds.json > tailwind: false = no Tailwind
         tw = r["tailwind"]
         R.append((tr("row.tailwind"), tr("res.tailwind", n=tw["arbitrary"], colors=tw["arbitrary_colour"], palette=tw["palette"]),
                   tr("level.deviation") if tw["arbitrary"] else tr("level.note") if tw["palette"] else tr("level.pass")))
@@ -603,7 +667,17 @@ def rows(ctx, r):
     st = ", ".join("%s %d" % (k, n) for k, n in sorted((str(k), n) for k, n in lo["by_status"].items())) or tr("empty")
     R.append((tr("row.local"), tr("res.local", total=lo["total"], status=st, pending=len(lo["pending"]), blocks=len(lo["blocks"]), unregistered=len(lo["unregistered"])),
               tr("level.note") if lo["pending"] or lo["unregistered"] else tr("level.pass")))
+    dv = r.get("dsvue")
+    if dv:
+        R.append((tr("row.dsvue"), tr("res.dsvue", n=dv["components"], package=dv["package"], rebuilt=len(dv["rebuilt"]), shadcn=len(dv["shadcn"])),
+                  level(ctx, len(dv["rebuilt"]) + len(dv["shadcn"]), 0)))
+    for x in r.get("extra") or []:
+        R.append((x["name"], extra_result(ctx, x), tr("level." + x["level"])))
     return R
+
+
+def extra_result(ctx, x):
+    return ctx.tr("res.extra", code=x["exit"], summary=" / ".join(x["summary"]).replace("|", "/")[:300] or "—")
 
 
 def codes(xs, fmt="`%s`", n=6):
@@ -624,7 +698,7 @@ def report(ctx, r):
     b("b.changed", tk["changed"])
     b("b.redefined", r["redefined"])
     b("b.top_hex", h["top_hex"], "`%s` ×%d")
-    if ctx.stack in ("react", "vue"):
+    if ctx.stack in ("react", "vue") and ctx.ds.get("tailwind") is not False:
         b("b.tailwind", r["tailwind"]["top"], "`%s` ×%d")
     b("b.same_selector", o["same_selector"])
     b("b.overridden", o["classes"], "`.%s` ×%d")
@@ -637,12 +711,45 @@ def report(ctx, r):
     for key, x in r["theme"].items():
         if x["unknown"]:
             L.append("- " + tr("b.theming_unknown", attr=x["attr"], list=", ".join(x["unknown"])))
+    if r.get("dsvue"):
+        b("b.dsvue_rebuilt", r["dsvue"]["rebuilt"])
+        b("b.dsvue_shadcn", r["dsvue"]["shadcn"])
     b("b.local_pending", lo["pending"], "%s")
     b("b.local_unregistered", lo["unregistered"], "%s")
     if not lo["registry_found"]:
         L.append("- " + tr("b.no_registry", path=lo["registry"]))
     L.append("")
     return "\n".join(L)
+
+
+def selftest():
+    import shutil
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="audit-selftest-"))
+    (d / "ds" / "acme" / "dist").mkdir(parents=True)
+    (d / "ds" / "acme" / "dist" / "acme.css").write_text(":root{--acme-bg:#fff}.acme-btn{color:red}")
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps({"name": "acme", "version": "1.0.0", "tokens": {"prefix": "--acme-"},
+        "css": {"bundle": "dist/acme.css"}, "components": {"vue": {"package": "packages/acme-vue", "propsMap": "packages/props.csv"}}}))
+    (d / "packages" / "acme-vue").mkdir(parents=True)
+    (d / "packages" / "acme-vue" / "AcmeButton.vue").write_text("<template><button/></template>")
+    (d / "packages" / "props.csv").write_text("component,prop\nAcmeDialog,open\n")
+    src = d / "apps" / "acme-vue" / "src"
+    (src / "components" / "local").mkdir(parents=True)
+    (src / "components" / "local" / "AcmeDialog.vue").write_text("<template><div/></template>")
+    (src / "App.vue").write_text('<script setup>import { Button } from "@/components/ui/button"</script><template><Button/></template>')
+    py = shlex.quote(sys.executable)
+    (d / "kit.config.json").write_text(json.dumps({"ds": "ds/acme", "stack": "vue", "apps": [{"id": "acme-vue", "path": "apps/acme-vue"}],
+        "review": {"extraChecks": [{"name": "Flags", "command": py + " -c \"print('flags: 3 off'); print('done')\"", "parse": "^flags"},
+                                   {"name": "Per app", "command": py + " -c \"import sys; print('bad', sys.argv[1]); sys.exit(2)\" {app}"}]}}))
+    ctx = Ctx(d)
+    ex = run_extra(ctx, ["acme-vue"])
+    assert ex[None][0]["summary"] == ["flags: 3 off"] and ex[None][0]["level"] == "pass", ex[None]
+    assert ex["acme-vue"][0]["exit"] == 2 and ex["acme-vue"][0]["summary"] == ["bad acme-vue"], ex["acme-vue"]
+    r = audit_app(ctx, ctx.apps()["acme-vue"], ds_facts(ctx))
+    assert r["dsvue"]["rebuilt"] == ["apps/acme-vue/src/components/local/AcmeDialog.vue"], r["dsvue"]
+    assert r["dsvue"]["shadcn"] == ["apps/acme-vue/src/App.vue"] and r["dsvue"]["components"] == 2, r["dsvue"]
+    shutil.rmtree(d, ignore_errors=True)
+    print("audit_app.py selftest OK")
 
 
 def main():
@@ -653,6 +760,10 @@ def main():
     ap.add_argument("--roots", help="write the DS root classes (JSON list) for audit_components_browser.js")
     ap.add_argument("--min-rules", type=int, default=3, help="rules a class needs in the DS components CSS to count as a root class (default 3)")
     ap.add_argument("--project", help="project folder (default: the current folder)")
+    ap.add_argument("--no-extra", action="store_true", help="do not run kit.config.json > review.extraChecks")
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     a = ap.parse_args()
     ctx = Ctx(a.project)
     apps = ctx.apps()
@@ -663,12 +774,20 @@ def main():
     lib = ds_facts(ctx, a.min_rules)
     out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ctx.label(), bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack + ("".join(sorted({", %s: %s" % (k, apps[k]["stack"]) for k in keys if apps[k].get("stack") and apps[k]["stack"] != ctx.stack})))), ""], []
     project_stack = ctx.stack
+    extra = {} if a.no_extra else run_extra(ctx, keys)
     for k in keys:
         ctx.stack = apps[k].get("stack") or project_stack  # apps[].stack overrides the project stack
         r = audit_app(ctx, apps[k], lib)
         r["stack"] = ctx.stack
+        r["extra"] = extra.get(k, [])
         js.append(r)
         out.append(report(ctx, r))
+    if extra.get(None):
+        out += ["## " + ctx.tr("extra.title"), "", "| %s | %s | %s |" % (ctx.tr("col.item"), ctx.tr("col.result"), ctx.tr("col.level")),
+                "|---|---|---|"]
+        out += ["| %s | %s | %s |" % (x["name"], extra_result(ctx, x), ctx.tr("level." + x["level"])) for x in extra[None]]
+        out.append("")
+        js.append({"project_checks": extra[None]})
     print("\n".join(out))
     if a.roots:
         Path(a.roots).write_text(json.dumps(sorted(lib["roots"])), encoding="utf-8")

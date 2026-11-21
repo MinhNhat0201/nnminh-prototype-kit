@@ -6,6 +6,7 @@ description: "Figma handoff for one work item, built from a handoff package or f
 # Figma handoff: Wireflow + Specs
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.mockup` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 The result is **one Figma page per work item** with two boards:
 

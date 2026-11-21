@@ -6,6 +6,7 @@ description: "Keep the local-component registry in step with the apps, score loc
 # Contribute local components to the DS
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.contribute` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -36,6 +37,8 @@ One entry per block. The script writes `file`, `line`, `size`, `classes`, `uses`
 | `decision`, `decided_on` | Decision with its reason; ISO date |
 | `demo` | Optional: how to capture it (see `capture_demos.js`) |
 | `proposal` | Required when `status` is `propose` (gate 1) |
+
+Projects may name fields differently: `kit.config.json > local.fields` maps kit fields to the project's (`{"vs_ds": "compare"}`); the script reads and writes those names, and keeps every field it does not know (`demo`, notes) as it is. A project that owns its registry (it also builds pages from it) sets `local.command.update` / `local.command.check`: `update` and `check` run those commands and report their output; `--builtin` runs the kit's own.
 
 Write only what you can show from the code, the registry history or the DS. Not verified: leave it empty, or in a proposal write "Unconfirmed: …". `replaced` and `removed` entries stay for traceability; reviews skip them.
 

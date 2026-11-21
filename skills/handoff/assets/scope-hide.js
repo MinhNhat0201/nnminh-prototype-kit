@@ -3,6 +3,11 @@
    Do not edit the rendered copy: edit pkg.json > hide and render again. App code and data stay unchanged. */
 (function () {
   var C = /*@CONFIG@*/{};
+  /* 0. State the package needs on load (pkg.json > hide.seed): keys are set only when absent. */
+  ['localStorage', 'sessionStorage'].forEach(function (k) {
+    var S = (C.seed || {})[k]; if (!S) return;
+    try { Object.keys(S).forEach(function (n) { if (window[k].getItem(n) === null) window[k].setItem(n, String(S[n])); }); } catch (e) {}
+  });
   /* 1. Shortcuts of hidden features: stopped silently in the capture phase (no toast: there is no visible way in). */
   function combo(e) {
     return (e.ctrlKey ? 'Ctrl+' : '') + (e.metaKey ? 'Meta+' : '') + (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + e.key;

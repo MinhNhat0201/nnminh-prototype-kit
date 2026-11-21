@@ -6,6 +6,7 @@ description: "Draft the design handoff email for BA, QC and developers from a ha
 # Handoff email
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.share` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 Result: **one email draft** in the user's mail connector (or plain text to paste when there is none).
 
@@ -13,7 +14,7 @@ Result: **one email draft** in the user's mail connector (or plain text to paste
 |---|---|---|
 | Subject | `kit.config.json > email.subject` (`{app}`, `{feature}`, `{version}`, `{pbi}`) | user, package `README.md` |
 | 1. Figma link | the work-item page (wireflow, Figma specs) | report of `wireflow` / `mockup`, `pkg.json > figma_file`, or the user |
-| 2. Demo link | the app on `deploy.site`, plus one link per flow | `requirements/flows.json` (`home`, `url`), `deploy.site` + `apps[].path`, or the user |
+| 2. Demo link | the app on `deploy.site`, plus one link per flow; left out when `email.demoLinks` is `false` | `requirements/flows.json` (`home`, `url`), `deploy.site` + `apps[].path`, or the user |
 | 3. Key features / changelog | **written for business readers**, grouped by feature or flow. First release: key features. Later: the version changelog (features too when the user wants) | `requirements/checklist-feature.csv`, `requirements/changelog.md` |
 | 4. Package | the zip attached, how to open | `<handoff.zipName>.zip` from `handoff` |
 
@@ -34,7 +35,8 @@ python3 -I skills/share/scripts/draft_email.py "<package>.zip" --app <app id> --
 - ERROR (exit 1): no version found; Figma link not on figma.com; demo link not https; the zip still has files that mail filters block.
 - **Attachment size:** mail providers cap attachments (often 20–25 MB) and mail connectors often accept much less per call (about 3 MB is common). The limit comes from `kit.config.json > email.attachLimitMB` (default 3); `--attach-limit-mb` overrides it. Over the cap, the script drops the attachment and the body points to `--package-link`. Tell the user, and offer a draft without the attachment plus a download link (drive, site). Never split, rename or password-protect the zip.
 - NOTE: missing links, zip over `handoff.maxZipMB`, no feature list or changelog, demo link derived from config.
-- Long lists keep the first 12 items (`--max-items`) and point to the file in the package for the rest. "Out of scope" rows are not key features.
+- Long lists keep the first `email.maxItems` items (default 12; `--max-items` overrides) and point to the file in the package for the rest. "Out of scope" rows are not key features.
+- `email.demoLinks: false` (or `--no-demo`): the project sends no prototype or demo links by mail. The email has no demo item and no flow links (numbering shifts up); a `--demo` value is ignored with a NOTE. Do not ask for a demo link then.
 
 ## Step 2. Rewrite section 3 for business readers (required)
 The first run copies section 3 from the package (technical lines folded into one "UI refinements" line) and prints a NOTE. Read `source.json` (features with group, screen, status; changelog lines; flow names), and `spec/index.md` if needed, then write a JSON file:
