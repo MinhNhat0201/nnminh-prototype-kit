@@ -47,6 +47,7 @@ No answers available (unattended run): need items 1, and 4 + 5 for a feature. Ch
 Layers in step 4 are injected into the built HTML (`pkg.py layer --into dist/*.html`), not into source.
 
 ## Step 2. Checks before packaging
+- Latest `validate` report for the app is newer than the last change and shows **Fail (0)**, with every "Needs a human" item answered. Missing or failing → run `validate` first; never package around it.
 - No hex, `rgb()` or hard-coded values where a DS token exists (`ds.json > tokens.prefix`).
 - Footer version label matches the DS version.
 - No console errors (blocked web fonts in a sandbox are fine).

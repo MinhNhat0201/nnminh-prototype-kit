@@ -28,6 +28,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 | `context` | Product memory: overview, personas, principles, rules, decision log | "remember this decision", "why did we decide X", "set up product context" |
 | `explore` | 2–4 design directions with the DS, compare, human chooses | "show me options", "explore directions", "what are the ways to design this" |
 | `prototype` | Build screens and flows with the DS | "build this screen", "make it like this image", "add a page" |
+| `validate` | Browser checks of a prototype: errors, overflow, accessibility, focus, states, flows, visual changes; one report | "test the prototype", "QA this", "is it ready for handoff" |
 | `annotate` | Markdown spec per unit with screenshots, pins, tokens, flows | "write the spec", "annotate the screens" |
 | `wireflow` | Flow board of screen images on Figma | "put the flow on Figma", "wireflow" |
 | `mockup` | Rebuild screens on Figma with auto layout and DS components | "rebuild in Figma", "Figma specs" |
@@ -43,7 +44,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 
 | Situation | Chain |
 |---|---|
-| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
+| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `validate` → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
 | Quick mock from a screenshot | `prototype` |
 | Open design question ("how should this work?") | `explore` → `prototype` |
 | DS released a new version | `review` → `sync` |

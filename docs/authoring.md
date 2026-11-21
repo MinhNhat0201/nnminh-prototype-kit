@@ -13,6 +13,7 @@ Read this before you add or change a skill.
 | `context` | Product context files and the decision log (status lifecycle, who decided) |
 | `explore` | Two to four design directions with the DS, comparison page, human decision before building |
 | `prototype` | Build screens and flows with the DS; gates before new components and new pages |
+| `validate` | Browser checks of a prototype and one report: fail, needs a human, skipped |
 | `annotate` | Markdown spec per unit: screen captures, pins, computed styles mapped to tokens, flows |
 | `wireflow` | Put the flow board (screen images joined by arrows) on Figma |
 | `mockup` | Rebuild screens on Figma with auto layout, DS components and variables |

@@ -15,7 +15,7 @@ In Claude Code:
 
 Skills are then available as `/kit:<skill>`, and Claude also picks them up from plain requests such as "build the settings screen" or "package feature 1234 for QC".
 
-Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture and browser checks, Pillow for image optimisation. The Figma skills need the Figma connector; `share` needs a mail connector.
+Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture and browser checks, Pillow for image optimisation and screenshot comparison. Optional: `axe-core` in the project (`npm i -D axe-core`) for the accessibility checks of `validate`. The Figma skills need the Figma connector; `share` needs a mail connector.
 
 ## Quick start
 
@@ -55,6 +55,10 @@ flowchart LR
         prototype["prototype<br/>screens with DS"]
     end
 
+    subgraph check["Check"]
+        validate["validate<br/>browser checks + report"]
+    end
+
     subgraph spec["4 · Spec & Figma"]
         annotate["annotate<br/>Markdown spec"]
         wireflow["wireflow<br/>Figma flow board"]
@@ -83,7 +87,8 @@ flowchart LR
     context -.read by.-> define & explore & prototype
     explore -.approved decision.-> context
     explore -->|chosen direction| prototype
-    prototype --> annotate
+    prototype --> validate
+    validate -->|Fail 0| annotate
     annotate -->|captures + flows| wireflow
     wireflow --> mockup
     annotate --> handoff
@@ -111,6 +116,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, and a decision log with statuses (observed → proposed → approved → implemented → verified) |
 | `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
 | `prototype` | Builds screens and flows with the DS; component and new-page gates |
+| `validate` | Browser checks of a prototype in one report: errors, overflow, accessibility (axe-core), keyboard focus, touch targets, states, flows, visual changes against a baseline; failures separated from items a human must judge |
 | `annotate` | Markdown spec per unit with screen captures, pins, token-level style notes and flows |
 | `wireflow` | Flow board on Figma from captures; updates in place so shared links keep working |
 | `mockup` | Rebuilds screens on Figma with auto layout, DS components and variables, with an automatic audit |

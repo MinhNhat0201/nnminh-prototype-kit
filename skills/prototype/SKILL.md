@@ -130,7 +130,7 @@ Per stack (see `<kit>/docs/stacks.md`):
 
 ## Step 6. Test
 
-Playwright with the installed Chromium; never run `playwright install`.
+Run `validate` for the screens, states and flows of this wave (`validation.py run --app <id>`; add them to its `plan.json` first). It covers errors, overflow, accessibility, focus, touch targets and visual changes at 390, 768 and 1280 px in each mode; the build is not done until its report shows **Fail (0)**. Also check by hand (Playwright with the installed Chromium; never run `playwright install`):
 - No `pageerror`; no console errors (blocked web fonts in a sandbox are acceptable).
 - No horizontal scroll at 400, 768 and 1280 px.
 - Light and dark mode; at least two brands if `theming.brand.values` has several.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.0 · 2026-11-21
+- New skill `validate`: browser checks of a prototype written to one report that separates **Fail** (page or console errors, horizontal overflow, axe-core critical/serious, failing flow steps), **Needs a human** (touch targets under 44 px on phones, clipped text, no visible focus ring, axe moderate/minor, visual changes) and **Skipped** (with the reason). Runs every screen and listed state (`prepare` scripts) at 390, 768 and 1280 px in light and dark mode, then every flow (click, fill, select, press, goto, expect…).
+- `validation.py`: `init` (plan.json with screens, states, flows), `run` (Playwright via `validate.js`, screenshot comparison with the accepted baseline using Pillow: changed when at least `--min-pixels` 100 or `--threshold` 0.5 % differ, highlighted diffs), `baseline` (accept a run after a human looked), `report`. Accessibility uses `axe-core` when the project has it; otherwise it is reported as skipped, never as passed.
+- `prototype` runs `validate` as its test step; `handoff` needs a current report with Fail (0); `brief` routes QA requests.
+- New config key `paths.validation` (default `docs/validation`). Locales `validate` (en, vi).
+
 ## 0.3.0 · 2026-11-21
 - New skill `context`: product memory every skill reads, in `paths.context` (default `product-context`): product overview, personas, UX principles, business rules, constraints, in the project language (`context.py init`, `check`, `summary`).
 - Decision log (`decisions.py add`, `set`, `list`, `show`, `index`, `check`): one Markdown file per decision with a status lifecycle observed → proposed → approved → implemented → verified, plus rejected and superseded. Moves outside the lifecycle are refused; approved and rejected need the name of who decided; observed needs a source; superseding is recorded on both decisions; `check` also validates the history lines against the status.

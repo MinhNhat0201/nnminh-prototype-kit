@@ -51,7 +51,8 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "plans": "docs/plans",
     "audits": "docs/audits",
     "explorations": "docs/explorations",
-    "context": "product-context"
+    "context": "product-context",
+    "validation": "docs/validation"
   }
 }
 ```
@@ -75,6 +76,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 | `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
+| `paths.validation` | validation plans, runs (report, screenshots, diffs) and the accepted baseline, one sub-folder per app | `docs/validation` | `validate`, `handoff` |
 | `paths.explorations` | folder of design explorations, one sub-folder per question | `docs/explorations` | `explore`, `prototype` |
 
 ## `ds/<name>/ds.json`
