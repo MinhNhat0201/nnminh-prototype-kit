@@ -1,8 +1,12 @@
-# nnminh-prototype-kit
+# Prototype Kit
 
-Claude Code skills that take a design from idea to developer handoff with **any design system**: plan the work, build HTML, React or Vue prototypes with the DS, write the spec, put the flows on Figma, and package everything for BA, QC and developers.
+A design workflow for Claude Code that works with **any design system**: 18 skills that take a design from requirement to developer handoff and back. Plan the work, explore directions, build HTML, React or Vue prototypes with the DS, check them in the browser, write the spec, put the flows on Figma, package everything for BA, QC and developers, then check the developers' build against what was approved.
+
+**People decide, the kit does the work and checks it.** Every design choice goes through a gate where a named person decides, and the decision log remembers who decided what and why across sessions.
 
 No design system yet? `adopt` builds a base one from a public preset (shadcn by default) with your brand colour, for web, mobile and tablet.
+
+Website: [nnminh-prototype-kit.vercel.app](https://nnminh-prototype-kit.vercel.app) · Repository: `MinhNhat0201/nnminh-prototype-kit`
 
 ## Install
 
@@ -51,12 +55,9 @@ flowchart LR
         define["define<br/>requirements → waves"]
     end
 
-    subgraph build["3 · Explore & build"]
+    subgraph build["3 · Explore, build & check"]
         explore["explore<br/>directions → choice"]
         prototype["prototype<br/>screens with DS"]
-    end
-
-    subgraph check["Check"]
         validate["validate<br/>browser checks + report"]
     end
 
@@ -82,7 +83,7 @@ flowchart LR
         sync["sync<br/>new DS into apps"]
     end
 
-    brief -.routes.-> kickoff & define & explore & prototype & annotate & handoff & review
+    brief -.routes.-> kickoff & context & define & explore & prototype & validate & annotate & handoff & verify & review
 
     adopt -->|DS profile| kickoff
     kickoff -.no DS.-> adopt
@@ -134,6 +135,44 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `sync` | Brings a new DS version into apps |
 | `contribute` | Reviews local components and proposes them to the DS (two approval gates) |
 | `document` | Writes and maintains DS documentation and tokens |
+
+## People decide, the kit checks
+
+| Gate (a person decides) | Where |
+|---|---|
+| Plan and waves approved before anything is built | `define` |
+| One design direction chosen out of two to four, with the reason | `explore` |
+| Every new component (compose, local block, or proposal to the DS) | `prototype` |
+| Every new page (own file or route, or a screen inside the current one) | `prototype` |
+| A local component proposed to the DS, then accepted into it | `contribute` (two gates) |
+| A difference between the build and the design accepted as intended | `verify` (needs an approved decision) |
+| Anything sent to people | `share` only drafts; nothing is sent, published or merged without you |
+
+| Check (the kit proves it) | Where |
+|---|---|
+| Contrast of every colour pair, light and dark | `adopt`, `document` |
+| Catalogue matches the DS CSS; deprecated components not used | `document` (`catalog.py check`), `review` |
+| Prototype in the browser: errors, overflow, accessibility, focus, touch targets, states, flows, visual changes | `validate` |
+| App code against the DS: hard-coded values, overrides, home-made controls | `review` |
+| Developer build against the approved prototype | `verify` |
+
+Decisions move through `observed → proposed → approved → implemented → verified` (or `rejected`, `superseded`). Skills read them before they plan or build, and update them when they build or verify.
+
+## What the kit writes, and where
+
+| Folder (default) | Holds | Written by |
+|---|---|---|
+| `kit.config.json` | Language, stack, apps, paths | `kickoff` |
+| `ds/<name>/` | DS profile: tokens, CSS bundle, `catalog.md`, `catalog.json`, `rules.md` | `adopt`, `document` |
+| `product-context/` | Overview, personas, UX principles, business rules, constraints, `decisions/` | `context`, `explore`, `define`, `prototype`, `verify` |
+| `docs/plans/` | Requirement analysis, waves, traceability | `define` |
+| `docs/explorations/<slug>/` | Directions, comparison page, decision | `explore` |
+| `apps/<app>/` | Prototypes | `kickoff`, `prototype` |
+| `docs/validation/<app>/` | Validation plan, runs, baseline screenshots | `validate` |
+| `docs/handover/` | Handoff packages | `handoff` |
+| `docs/verify/<name>/` | Build-vs-design runs and accepted deviations | `verify` |
+
+Every folder is configurable in `kit.config.json > paths`.
 
 ## How it adapts to your project
 
