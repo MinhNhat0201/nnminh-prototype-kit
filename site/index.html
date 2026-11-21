@@ -3,19 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nnminh-prototype-kit</title>
+<title>Prototype Kit: Claude Code skills from idea to design handoff</title>
 <meta name="description" content="14 Claude Code skills that take a design from idea to developer handoff with any design system: plan, prototype in HTML, React or Vue, spec, Figma flows and one handoff package.">
-<meta property="og:title" content="nnminh-prototype-kit">
+<meta property="og:title" content="Prototype Kit">
+<meta name="application-name" content="Prototype Kit">
 <meta property="og:description" content="From idea to developer handoff, with your design system. 14 Claude Code skills.">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#020203" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23020203'/%3E%3Crect x='7' y='9' width='8' height='14' rx='1.5' fill='none' stroke='%23d4a72c' stroke-width='2'/%3E%3Crect x='19' y='9' width='6' height='14' rx='1.5' fill='%23d4a72c'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <script>
 (function () {
   var t = null;
   try { t = localStorage.getItem("theme"); } catch (e) {}
   if (t !== "light" && t !== "dark") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", t);
+  var l = null;
+  try { l = localStorage.getItem("lang"); } catch (e) {}
+  if (l !== "en" && l !== "vi") l = /^vi\b/i.test(navigator.language || "") ? "vi" : "en";
+  document.documentElement.setAttribute("lang", l);
 })();
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -126,15 +133,15 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 
 /* glows */
 .glow { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
-.glow--a { width: 22rem; height: 22rem; left: 8%; top: 2rem; background: color-mix(in srgb, var(--accent) var(--glow), transparent); }
-.glow--b { width: 18rem; height: 18rem; right: 7%; top: 18rem; background: color-mix(in srgb, var(--accent-2) var(--glow), transparent); }
+.glow--a { width: min(22rem, 70vw); height: min(22rem, 70vw); left: 8%; top: 2rem; background: color-mix(in srgb, var(--accent) var(--glow), transparent); }
+.glow--b { width: min(18rem, 60vw); height: min(18rem, 60vw); right: 7%; top: 18rem; background: color-mix(in srgb, var(--accent-2) var(--glow), transparent); }
 .glow--c { width: min(30rem, 100%); height: 14rem; left: 50%; top: -8rem; transform: translateX(-50%); background: color-mix(in srgb, var(--accent) calc(var(--glow) * 0.65), transparent); }
 
 /* nav */
 .nav { position: sticky; top: 1rem; z-index: 20; display: flex; justify-content: center; padding: 1rem var(--gutter) 0; margin-top: -1rem; }
 .nav__bar { width: 100%; max-width: 56rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.45rem 0.45rem 1.5rem; border: 1px solid var(--glass-edge); border-radius: 999px; background: var(--glass-bg); box-shadow: inset 0 1px 0 var(--glass-line), var(--glass-shadow); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%); }
-.logo { display: inline-flex; align-items: center; gap: 0.6rem; font: 500 0.9375rem/1 var(--mono); margin-right: auto; white-space: nowrap; }
-.logo b { color: var(--accent-soft); font-weight: 500; }
+.logo { display: inline-flex; align-items: center; gap: 0.55rem; font: 700 1rem/1 var(--display); letter-spacing: -0.02em; margin-right: auto; white-space: nowrap; }
+.logo img { width: 2rem; height: 2rem; flex: none; filter: drop-shadow(0 2px 6px rgba(212, 140, 30, 0.35)); }
 .nav__links { display: flex; gap: 0.25rem; }
 .nav__links a { font-size: 0.875rem; color: var(--muted); padding: 0.5rem 0.8rem; border-radius: 999px; }
 .nav__links a:hover { color: var(--fg); }
@@ -146,10 +153,27 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .theme-btn .moon { display: none; }
 :root[data-theme="dark"] .theme-btn .sun { display: none; }
 :root[data-theme="dark"] .theme-btn .moon { display: block; }
+/* duotone icons (Phosphor) */
+.ico { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; flex: none; border-radius: 0.75rem; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent); }
+.ico svg { width: 1.45rem; height: 1.45rem; }
+.ico--lg { width: 3.25rem; height: 3.25rem; border-radius: 1rem; }
+.ico--lg svg { width: 1.9rem; height: 1.9rem; }
+.steps h3 { display: flex; align-items: center; gap: 0.75rem; }
+.docs__title { display: flex; align-items: center; gap: 1rem; }
+.docs__index button { display: flex; align-items: center; gap: 0.6rem; }
+.docs__index button svg { width: 1.15rem; height: 1.15rem; flex: none; opacity: 0.85; }
+.docs__index button[aria-selected="true"] svg { color: var(--accent-soft); opacity: 1; }
+/* language switch */
+.lang { display: inline-flex; padding: 0.2rem; gap: 0.15rem; border: 1px solid var(--glass-edge); border-radius: 999px; flex: none; }
+.lang button { min-width: 2.2rem; height: 1.95rem; padding: 0 0.55rem; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 600 0.75rem/1 var(--sans); letter-spacing: 0.04em; cursor: pointer; }
+.lang button:hover { color: var(--fg); }
+.lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 @media (max-width: 859.98px) { .nav__links { display: none; } }
+@media (max-width: 479.98px) { .nav__cta { display: none; } .nav__bar { padding-left: 1rem; } }
+@media (max-width: 389.98px) { .nav .logo span { display: none; } }
 
 /* hero */
-.hero { position: relative; text-align: center; padding: 8rem 0 7rem; }
+.hero { position: relative; overflow-x: clip; text-align: center; padding: 8rem 0 7rem; }
 .hero > .wrap { position: relative; z-index: 1; }
 .hero h1 { font: 800 clamp(2.4rem, 6.4vw, 4.25rem)/1.1 var(--display); letter-spacing: -0.045em; max-width: 60rem; margin: 0 auto; }
 .hero h1 span { display: block; padding-bottom: 0.12em; margin-bottom: -0.12em; background: linear-gradient(180deg, var(--title-a) 0%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -295,20 +319,40 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   </defs>
 </svg>
 
+<!-- Phosphor Icons 2.1.1, duotone weight. Copyright (c) 2023 Phosphor Icons. MIT licence: https://github.com/phosphor-icons/core/blob/main/LICENSE -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="p-signpost" viewBox="0 0 256 256" fill="currentColor"><path d="M240,112l-33.62,37.35a8,8,0,0,1-5.94,2.65H40a8,8,0,0,1-8-8V80a8,8,0,0,1,8-8H200.44a8,8,0,0,1,5.94,2.65Z" opacity="0.2"/><path d="M246,106.65,212.33,69.3A16,16,0,0,0,200.44,64H136V32a8,8,0,0,0-16,0V64H40A16,16,0,0,0,24,80v64a16,16,0,0,0,16,16h80v64a8,8,0,0,0,16,0V160h64.44a16,16,0,0,0,11.89-5.3L246,117.35A8,8,0,0,0,246,106.65ZM200.44,144H40V80H200.44l28.8,32Z"/></symbol>
+  <symbol id="p-rocket-launch" viewBox="0 0 256 256" fill="currentColor"><path d="M184,120v61.65a8,8,0,0,1-2.34,5.65l-34.35,34.35a8,8,0,0,1-13.57-4.53L128,176ZM136,72H74.35a8,8,0,0,0-5.65,2.34L34.35,108.69a8,8,0,0,0,4.53,13.57L80,128ZM40,216c37.65,0,50.69-19.69,54.56-28.18L68.18,161.44C59.69,165.31,40,178.35,40,216Z" opacity="0.2"/><path d="M223.85,47.12a16,16,0,0,0-15-15c-12.58-.75-44.73.4-71.41,27.07L132.69,64H74.36A15.91,15.91,0,0,0,63,68.68L28.7,103a16,16,0,0,0,9.07,27.16l38.47,5.37,44.21,44.21,5.37,38.49a15.94,15.94,0,0,0,10.78,12.92,16.11,16.11,0,0,0,5.1.83A15.91,15.91,0,0,0,153,227.3L187.32,193A15.91,15.91,0,0,0,192,181.64V123.31l4.77-4.77C223.45,91.86,224.6,59.71,223.85,47.12ZM74.36,80h42.33L77.16,119.52,40,114.34Zm74.41-9.45a76.65,76.65,0,0,1,59.11-22.47,76.46,76.46,0,0,1-22.42,59.16L128,164.68,91.32,128ZM176,181.64,141.67,216l-5.19-37.17L176,139.31Zm-74.16,9.5C97.34,201,82.29,224,40,224a8,8,0,0,1-8-8c0-42.29,23-57.34,32.86-61.85a8,8,0,0,1,6.64,14.56c-6.43,2.93-20.62,12.36-23.12,38.91,26.55-2.5,36-16.69,38.91-23.12a8,8,0,1,1,14.56,6.64Z"/></symbol>
+  <symbol id="p-palette" viewBox="0 0 256 256" fill="currentColor"><path d="M224,127.17a96.48,96.48,0,0,1-2.39,22.18A24,24,0,0,1,198.21,168H152a24,24,0,0,0-24,24,24,24,0,0,1-32,22.61C58.73,201.44,32,169.81,32,128a96,96,0,0,1,95-96C179.84,31.47,223.55,74.35,224,127.17Z" opacity="0.2"/><path d="M200.77,53.89A103.27,103.27,0,0,0,128,24h-1.07A104,104,0,0,0,24,128c0,43,26.58,79.06,69.36,94.17A32,32,0,0,0,136,192a16,16,0,0,1,16-16h46.21a31.81,31.81,0,0,0,31.2-24.88,104.43,104.43,0,0,0,2.59-24A103.28,103.28,0,0,0,200.77,53.89Zm13,93.71A15.89,15.89,0,0,1,198.21,160H152a32,32,0,0,0-32,32,16,16,0,0,1-21.31,15.07C62.49,194.3,40,164,40,128a88,88,0,0,1,87.09-88h.9a88.35,88.35,0,0,1,88,87.25A88.86,88.86,0,0,1,213.81,147.6ZM140,76a12,12,0,1,1-12-12A12,12,0,0,1,140,76ZM96,100A12,12,0,1,1,84,88,12,12,0,0,1,96,100Zm0,56a12,12,0,1,1-12-12A12,12,0,0,1,96,156Zm88-56a12,12,0,1,1-12-12A12,12,0,0,1,184,100Z"/></symbol>
+  <symbol id="p-list-checks" viewBox="0 0 256 256" fill="currentColor"><path d="M216,64V192H128V64Z" opacity="0.2"/><path d="M224,128a8,8,0,0,1-8,8H128a8,8,0,0,1,0-16h88A8,8,0,0,1,224,128ZM128,72h88a8,8,0,0,0,0-16H128a8,8,0,0,0,0,16Zm88,112H128a8,8,0,0,0,0,16h88a8,8,0,0,0,0-16ZM82.34,42.34,56,68.69,45.66,58.34A8,8,0,0,0,34.34,69.66l16,16a8,8,0,0,0,11.32,0l32-32A8,8,0,0,0,82.34,42.34Zm0,64L56,132.69,45.66,122.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Zm0,64L56,196.69,45.66,186.34a8,8,0,0,0-11.32,11.32l16,16a8,8,0,0,0,11.32,0l32-32a8,8,0,0,0-11.32-11.32Z"/></symbol>
+  <symbol id="p-layout" viewBox="0 0 256 256" fill="currentColor"><path d="M104,104V208H40a8,8,0,0,1-8-8V104Z" opacity="0.2"/><path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40Zm0,16V96H40V56ZM40,112H96v88H40Zm176,88H112V112H216v88Z"/></symbol>
+  <symbol id="p-push-pin" viewBox="0 0 256 256" fill="currentColor"><path d="M229.66,98.34,172.39,155.8c11.46,22.93-1.72,45.86-10.11,57a8,8,0,0,1-12,.83L42.34,105.76A8,8,0,0,1,43,93.85c29.65-23.92,57.4-10,57.4-10l57.27-57.46a8,8,0,0,1,11.31,0L229.66,87A8,8,0,0,1,229.66,98.34Z" opacity="0.2"/><path d="M235.32,81.37,174.63,20.69a16,16,0,0,0-22.63,0L98.37,74.49c-10.66-3.34-35-7.37-60.4,13.14a16,16,0,0,0-1.29,23.78L85,159.71,42.34,202.34a8,8,0,0,0,11.32,11.32L96.29,171l48.29,48.29A16,16,0,0,0,155.9,224c.38,0,.75,0,1.13,0a15.93,15.93,0,0,0,11.64-6.33c19.64-26.1,17.75-47.32,13.19-60L235.33,104A16,16,0,0,0,235.32,81.37ZM224,92.69h0l-57.27,57.46a8,8,0,0,0-1.49,9.22c9.46,18.93-1.8,38.59-9.34,48.62L48,100.08c12.08-9.74,23.64-12.31,32.48-12.31A40.13,40.13,0,0,1,96.81,91a8,8,0,0,0,9.25-1.51L163.32,32,224,92.68Z"/></symbol>
+  <symbol id="p-flow-arrow" viewBox="0 0 256 256" fill="currentColor"><path d="M80,176a32,32,0,1,1-32-32A32,32,0,0,1,80,176Z" opacity="0.2"/><path d="M245.66,74.34l-32-32a8,8,0,0,0-11.32,11.32L220.69,72H208c-49.33,0-61.05,28.12-71.38,52.92-9.38,22.51-16.92,40.59-49.48,42.84a40,40,0,1,0,.1,16c43.26-2.65,54.34-29.15,64.14-52.69C161.41,107,169.33,88,208,88h12.69l-18.35,18.34a8,8,0,0,0,11.32,11.32l32-32A8,8,0,0,0,245.66,74.34ZM48,200a24,24,0,1,1,24-24A24,24,0,0,1,48,200Z"/></symbol>
+  <symbol id="p-frame-corners" viewBox="0 0 256 256" fill="currentColor"><path d="M224,56V200a8,8,0,0,1-8,8H40a8,8,0,0,1-8-8V56a8,8,0,0,1,8-8H216A8,8,0,0,1,224,56Z" opacity="0.2"/><path d="M200,80v32a8,8,0,0,1-16,0V88H160a8,8,0,0,1,0-16h32A8,8,0,0,1,200,80ZM96,168H72V144a8,8,0,0,0-16,0v32a8,8,0,0,0,8,8H96a8,8,0,0,0,0-16ZM232,56V200a16,16,0,0,1-16,16H40a16,16,0,0,1-16-16V56A16,16,0,0,1,40,40H216A16,16,0,0,1,232,56ZM216,200V56H40V200H216Z"/></symbol>
+  <symbol id="p-package" viewBox="0 0 256 256" fill="currentColor"><path d="M128,129.09V232a8,8,0,0,1-3.84-1l-88-48.18a8,8,0,0,1-4.16-7V80.18a8,8,0,0,1,.7-3.25Z" opacity="0.2"/><path d="M223.68,66.15,135.68,18a15.88,15.88,0,0,0-15.36,0l-88,48.17a16,16,0,0,0-8.32,14v95.64a16,16,0,0,0,8.32,14l88,48.17a15.88,15.88,0,0,0,15.36,0l88-48.17a16,16,0,0,0,8.32-14V80.18A16,16,0,0,0,223.68,66.15ZM128,32l80.34,44-29.77,16.3-80.35-44ZM128,120,47.66,76l33.9-18.56,80.34,44ZM40,90l80,43.78v85.79L40,175.82Zm176,85.78h0l-80,43.79V133.82l32-17.51V152a8,8,0,0,0,16,0V107.55L216,90v85.77Z"/></symbol>
+  <symbol id="p-envelope-simple" viewBox="0 0 256 256" fill="currentColor"><path d="M224,56l-96,88L32,56Z" opacity="0.2"/><path d="M224,48H32a8,8,0,0,0-8,8V192a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A8,8,0,0,0,224,48ZM203.43,64,128,133.15,52.57,64ZM216,192H40V74.19l82.59,75.71a8,8,0,0,0,10.82,0L216,74.19V192Z"/></symbol>
+  <symbol id="p-magnifying-glass" viewBox="0 0 256 256" fill="currentColor"><path d="M192,112a80,80,0,1,1-80-80A80,80,0,0,1,192,112Z" opacity="0.2"/><path d="M229.66,218.34,179.6,168.28a88.21,88.21,0,1,0-11.32,11.31l50.06,50.07a8,8,0,0,0,11.32-11.32ZM40,112a72,72,0,1,1,72,72A72.08,72.08,0,0,1,40,112Z"/></symbol>
+  <symbol id="p-arrows-clockwise" viewBox="0 0 256 256" fill="currentColor"><path d="M216,128a88,88,0,1,1-88-88A88,88,0,0,1,216,128Z" opacity="0.2"/><path d="M224,48V96a8,8,0,0,1-8,8H168a8,8,0,0,1,0-16h28.69L182.06,73.37a79.56,79.56,0,0,0-56.13-23.43h-.45A79.52,79.52,0,0,0,69.59,72.71,8,8,0,0,1,58.41,61.27a96,96,0,0,1,135,.79L208,76.69V48a8,8,0,0,1,16,0ZM186.41,183.29a80,80,0,0,1-112.47-.66L59.31,168H88a8,8,0,0,0,0-16H40a8,8,0,0,0-8,8v48a8,8,0,0,0,16,0V179.31l14.63,14.63A95.43,95.43,0,0,0,130,222.06h.53a95.36,95.36,0,0,0,67.07-27.33,8,8,0,0,0-11.18-11.44Z"/></symbol>
+  <symbol id="p-git-pull-request" viewBox="0 0 256 256" fill="currentColor"><path d="M96,64A24,24,0,1,1,72,40,24,24,0,0,1,96,64ZM200,168a24,24,0,1,0,24,24A24,24,0,0,0,200,168Z" opacity="0.2"/><path d="M104,64A32,32,0,1,0,64,95v66a32,32,0,1,0,16,0V95A32.06,32.06,0,0,0,104,64ZM56,64A16,16,0,1,1,72,80,16,16,0,0,1,56,64ZM88,192a16,16,0,1,1-16-16A16,16,0,0,1,88,192Zm120-31V110.63a23.85,23.85,0,0,0-7-17L163.31,56H192a8,8,0,0,0,0-16H144a8,8,0,0,0-8,8V96a8,8,0,0,0,16,0V67.31L189.66,105a8,8,0,0,1,2.34,5.66V161a32,32,0,1,0,16,0Zm-8,47a16,16,0,1,1,16-16A16,16,0,0,1,200,208Z"/></symbol>
+  <symbol id="p-book-open" viewBox="0 0 256 256" fill="currentColor"><path d="M232,56V200H160a32,32,0,0,0-32,32,32,32,0,0,0-32-32H24V56H96a32,32,0,0,1,32,32,32,32,0,0,1,32-32Z" opacity="0.2"/><path d="M232,48H160a40,40,0,0,0-32,16A40,40,0,0,0,96,48H24a8,8,0,0,0-8,8V200a8,8,0,0,0,8,8H96a24,24,0,0,1,24,24,8,8,0,0,0,16,0,24,24,0,0,1,24-24h72a8,8,0,0,0,8-8V56A8,8,0,0,0,232,48ZM96,192H32V64H96a24,24,0,0,1,24,24V200A39.81,39.81,0,0,0,96,192Zm128,0H160a39.81,39.81,0,0,0-24,8V88a24,24,0,0,1,24-24h64Z"/></symbol>
+  <symbol id="p-note-pencil" viewBox="0 0 256 256" fill="currentColor"><path d="M200,88l-72,72H96V128l72-72Z" opacity="0.2"/><path d="M229.66,58.34l-32-32a8,8,0,0,0-11.32,0l-96,96A8,8,0,0,0,88,128v32a8,8,0,0,0,8,8h32a8,8,0,0,0,5.66-2.34l96-96A8,8,0,0,0,229.66,58.34ZM124.69,152H104V131.31l64-64L188.69,88ZM200,76.69,179.31,56,192,43.31,212.69,64ZM224,128v80a16,16,0,0,1-16,16H48a16,16,0,0,1-16-16V48A16,16,0,0,1,48,32h80a8,8,0,0,1,0,16H48V208H208V128a8,8,0,0,1,16,0Z"/></symbol>
+</svg>
+
 <div class="glow glow--c" aria-hidden="true"></div>
 
 <header class="nav">
   <div class="nav__bar">
-    <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
-    <nav class="nav__links" aria-label="Main">
-      <a href="#features">Features</a>
-      <a href="#process">Process</a>
-      <a href="#console">Console</a>
-      <a href="#skills">Skills</a>
-      <a href="#faq">FAQ</a>
+    <a class="logo" href="#" aria-label="Prototype Kit, back to top" data-i18n-aria="aria.home"><img src="assets/logo.webp" width="32" height="32" alt=""><span>Prototype Kit</span></a>
+    <nav class="nav__links" aria-label="Main" data-i18n-aria="aria.main">
+      <a href="#features" data-i18n="nav.features">Features</a>
+      <a href="#process" data-i18n="nav.process">Process</a>
+      <a href="#console" data-i18n="nav.console">Console</a>
+      <a href="#skills" data-i18n="nav.skills">Skills</a>
+      <a href="#faq" data-i18n="nav.faq">FAQ</a>
     </nav>
+    <div class="lang" role="group" aria-label="Language" data-i18n-aria="aria.lang"><button type="button" data-lang="en" aria-pressed="true" lang="en">EN</button><button type="button" data-lang="vi" aria-pressed="false" lang="vi">VI</button></div>
     <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch to dark mode"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-moon"/></svg></button>
-    <a class="nav__cta" href="#install">Install</a>
+    <a class="nav__cta" href="#install" data-i18n="nav.install">Install</a>
   </div>
 </header>
 
@@ -317,11 +361,11 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     <div class="glow glow--a" aria-hidden="true"></div>
     <div class="glow glow--b" aria-hidden="true"></div>
     <div class="wrap">
-      <h1>From idea to developer handoff, <span>with your design system.</span></h1>
-      <p class="lede">nnminh-prototype-kit is a free set of 14 Claude Code skills. It plans the work, builds HTML, React or Vue prototypes with your design system, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers.</p>
+      <h1 data-i18n="hero.title">From idea to developer handoff, <span>with your design system.</span></h1>
+      <p class="lede" data-i18n="hero.lede">Prototype Kit is a free set of 14 Claude Code skills. It plans the work, builds HTML, React or Vue prototypes with your design system, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers.</p>
       <div class="actions">
-        <a class="btn btn--grad" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-download"/></svg>Install the kit</a>
-        <a class="btn" href="#skills"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"/></svg>Browse the skills</a>
+        <a class="btn btn--grad" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-download"/></svg><span data-i18n="hero.install">Install the kit</span></a>
+        <a class="btn" href="#skills"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"/></svg><span data-i18n="hero.browse">Browse the skills</span></a>
       </div>
     </div>
   </section>
@@ -329,49 +373,49 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="features" aria-labelledby="features-h">
     <div class="wrap">
       <div class="head">
-        <h2 id="features-h">What the kit does</h2>
-        <p>Design-system-aware skills for every step between a requirement and a handoff.</p>
+        <h2 id="features-h" data-i18n="feat.h">What the kit does</h2>
+        <p data-i18n="feat.p">Design-system-aware skills for every step between a requirement and a handoff.</p>
       </div>
       <div class="bento">
         <article class="card c-8">
-          <span class="eyebrow">Any design system</span>
-          <h3>Two files point the kit at your design system</h3>
-          <p>Nothing is hard-coded. <code>kit.config.json</code> holds the language, stack and apps. A <code>ds.json</code> profile holds the token prefix, CSS bundle, theming and Figma libraries.</p>
+          <span class="eyebrow" data-i18n="f1.eb">Any design system</span>
+          <h3 data-i18n="f1.h">Two files point the kit at your design system</h3>
+          <p data-i18n="f1.p">Nothing is hard-coded. <code>kit.config.json</code> holds the language, stack and apps. A <code>ds.json</code> profile holds the token prefix, CSS bundle, theming and Figma libraries.</p>
           <div class="visual">
             <span class="chip">kit.config.json</span>
             <svg class="flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow"/></svg>
             <span class="chip chip--on">ds/acme/ds.json</span>
             <svg class="flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow"/></svg>
-            <span class="chip">14 skills</span>
+            <span class="chip" data-i18n="f1.chip">14 skills</span>
           </div>
         </article>
         <article class="card c-4">
-          <span class="eyebrow">Contrast check</span>
-          <h3>Every colour pair, light and dark</h3>
-          <p>Text needs 4.5:1, icons and borders 3:1. The thresholds are never lowered.</p>
-          <div class="big"><strong>0 fail</strong><span>In our test run</span></div>
-          <div class="mini"><div><strong>148</strong><span>Pairs checked</span></div><div><strong>11</strong><span>Pass after adjustment</span></div></div>
+          <span class="eyebrow" data-i18n="f2.eb">Contrast check</span>
+          <h3 data-i18n="f2.h">Every colour pair, light and dark</h3>
+          <p data-i18n="f2.p">Text needs 4.5:1, icons and borders 3:1. The thresholds are never lowered.</p>
+          <div class="big"><strong data-i18n="f2.big">0 fail</strong><span data-i18n="f2.bigl">In our test run</span></div>
+          <div class="mini"><div><strong>148</strong><span data-i18n="f2.m1">Pairs checked</span></div><div><strong>11</strong><span data-i18n="f2.m2">Pass after adjustment</span></div></div>
         </article>
         <article class="card c-4">
-          <span class="eyebrow">No design system yet</span>
-          <h3>Start from shadcn</h3>
-          <p><code>adopt</code> takes your brand colour, name, radius and font. The look comes from shadcn, the structure from Material Design 3.</p>
-          <div class="big"><strong>~30</strong><span>Components</span></div>
-          <div class="mini"><div><strong>48 px</strong><span>Touch targets</span></div><div><strong>3</strong><span>Platforms</span></div></div>
+          <span class="eyebrow" data-i18n="f3.eb">No design system yet</span>
+          <h3 data-i18n="f3.h">Start from shadcn</h3>
+          <p data-i18n="f3.p"><code>adopt</code> takes your brand colour, name, radius and font. The look comes from shadcn, the structure from Material Design 3.</p>
+          <div class="big"><strong>~30</strong><span data-i18n="f3.big">Components</span></div>
+          <div class="mini"><div><strong>48 px</strong><span data-i18n="f3.m1">Touch targets</span></div><div><strong>3</strong><span data-i18n="f3.m2">Platforms</span></div></div>
         </article>
         <article class="card c-8">
-          <span class="eyebrow">Handoff package</span>
-          <h3>One zip, a reading path for each role</h3>
-          <p>BA gets the spec and feature list, QC a checklist, developers <code>AGENTS.md</code> and the prototype. No screen images and no loose <code>.js</code> files, so mail filters let it through.</p>
-<pre class="term-mini"><span class="c">// layout of a handoff package</span>
+          <span class="eyebrow" data-i18n="f4.eb">Handoff package</span>
+          <h3 data-i18n="f4.h">One zip, a reading path for each role</h3>
+          <p data-i18n="f4.p">BA gets the spec and feature list, QC a checklist, developers <code>AGENTS.md</code> and the prototype. No screen images and no loose <code>.js</code> files, so mail filters let it through.</p>
+<pre class="term-mini"><span class="c" data-i18n="f4.c1">// layout of a handoff package</span>
 <span class="a">Design - &lt;work item&gt;.zip</span>
-  ├─ AGENTS.md         <span class="c">reading paths for BA, QC, developers</span>
+  ├─ AGENTS.md         <span class="c" data-i18n="f4.c2">reading paths for BA, QC, developers</span>
   ├─ README.md
   ├─ requirements/
   │   ├─ checklist-feature.csv
   │   ├─ checklist-qc.csv
   │   └─ changelog.md
-  ├─ spec/             <span class="c">one Markdown file per unit</span>
+  ├─ spec/             <span class="c" data-i18n="f4.c3">one Markdown file per unit</span>
   └─ prototype/</pre>
         </article>
       </div>
@@ -381,16 +425,16 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="process" aria-labelledby="process-h">
     <div class="wrap">
       <div class="head">
-        <span class="eyebrow">Workflow</span>
-        <h2 id="process-h">How the kit works</h2>
-        <p>One path from a requirement to a handoff. Every step is a skill you can also run on its own.</p>
+        <span class="eyebrow" data-i18n="proc.eb">Workflow</span>
+        <h2 id="process-h" data-i18n="proc.h">How the kit works</h2>
+        <p data-i18n="proc.p">One path from a requirement to a handoff. Every step is a skill you can also run on its own.</p>
       </div>
       <ol class="steps">
-        <li><span class="n">1</span><h3>Set up the project</h3><p>Build a base design system if you have none. Then pick the language, stack and design system, and the first app is created for you.</p><div class="skills"><code>adopt</code><code>kickoff</code></div></li>
-        <li><span class="n">2</span><h3>Define the work</h3><p>Turn PM and BA requirements into open questions, delivery waves and a traceability matrix.</p><div class="skills"><code>define</code></div></li>
-        <li><span class="n">3</span><h3>Build the prototype</h3><p>Screens use design-system components only. The kit asks before it creates a new component or page.</p><div class="skills"><code>prototype</code></div></li>
-        <li><span class="n">4</span><h3>Write the spec</h3><p>Screen captures, pins and styles mapped to token names. Flows and screens go on Figma.</p><div class="skills"><code>annotate</code><code>wireflow</code><code>mockup</code></div></li>
-        <li><span class="n">5</span><h3>Hand off</h3><p>Pack one zip for BA, QC and developers, and draft the email. The kit never sends it.</p><div class="skills"><code>handoff</code><code>share</code></div></li>
+        <li><span class="n">1</span><h3><span class="ico" aria-hidden="true"><svg><use href="#p-rocket-launch"/></svg></span><span data-i18n="s1.h">Set up the project</span></h3><p data-i18n="s1.p">Build a base design system if you have none. Then pick the language, stack and design system, and the first app is created for you.</p><div class="skills"><code>adopt</code><code>kickoff</code></div></li>
+        <li><span class="n">2</span><h3><span class="ico" aria-hidden="true"><svg><use href="#p-list-checks"/></svg></span><span data-i18n="s2.h">Define the work</span></h3><p data-i18n="s2.p">Turn PM and BA requirements into open questions, delivery waves and a traceability matrix.</p><div class="skills"><code>define</code></div></li>
+        <li><span class="n">3</span><h3><span class="ico" aria-hidden="true"><svg><use href="#p-layout"/></svg></span><span data-i18n="s3.h">Build the prototype</span></h3><p data-i18n="s3.p">Screens use design-system components only. The kit asks before it creates a new component or page.</p><div class="skills"><code>prototype</code></div></li>
+        <li><span class="n">4</span><h3><span class="ico" aria-hidden="true"><svg><use href="#p-note-pencil"/></svg></span><span data-i18n="s4.h">Write the spec</span></h3><p data-i18n="s4.p">Screen captures, pins and styles mapped to token names. Flows and screens go on Figma.</p><div class="skills"><code>annotate</code><code>wireflow</code><code>mockup</code></div></li>
+        <li><span class="n">5</span><h3><span class="ico" aria-hidden="true"><svg><use href="#p-package"/></svg></span><span data-i18n="s5.h">Hand off</span></h3><p data-i18n="s5.p">Pack one zip for BA, QC and developers, and draft the email. The kit never sends it.</p><div class="skills"><code>handoff</code><code>share</code></div></li>
       </ol>
     </div>
   </section>
@@ -398,18 +442,18 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="console" aria-labelledby="console-h">
     <div class="wrap">
       <div class="head">
-        <h2 id="console-h">A real run</h2>
-        <p>Output from setting up a React project with the kit. Trimmed, numbers unchanged.</p>
+        <h2 id="console-h" data-i18n="con.h">A real run</h2>
+        <p data-i18n="con.p">Output from setting up a React project with the kit. Trimmed, numbers unchanged.</p>
       </div>
       <div class="console">
         <div class="console__bar">
           <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
-          <div class="tabs" role="tablist" aria-label="Steps of the run">
+          <div class="tabs" role="tablist" aria-label="Steps of the run" data-i18n-aria="aria.runsteps">
             <button role="tab" id="t1" aria-controls="run" aria-selected="true">1. Adopt</button>
             <button role="tab" id="t2" aria-controls="run" aria-selected="false" tabindex="-1">2. Kickoff</button>
-            <button role="tab" id="t3" aria-controls="run" aria-selected="false" tabindex="-1">3. Build and audit</button>
+            <button role="tab" id="t3" aria-controls="run" aria-selected="false" tabindex="-1" data-i18n="con.t3">3. Build and audit</button>
           </div>
-          <button class="icon-btn" type="button" id="copyRun" aria-label="Copy output"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
+          <button class="icon-btn" type="button" id="copyRun" aria-label="Copy output" data-i18n-aria="aria.copyrun"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
         </div>
         <pre id="run" role="tabpanel" aria-labelledby="t1" tabindex="0"></pre>
       </div>
@@ -419,21 +463,21 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="skills" aria-labelledby="skills-h">
     <div class="wrap">
       <div class="head">
-        <h2 id="skills-h">The 14 skills</h2>
-        <p>Pick a skill to see what it does. Each one links to its full instructions on GitHub.</p>
+        <h2 id="skills-h" data-i18n="sk.h">The 14 skills</h2>
+        <p data-i18n="sk.p">Pick a skill to see what it does. Each one links to its full instructions on GitHub.</p>
       </div>
       <div class="docs">
         <div class="docs__index">
-          <span class="eyebrow">Skills index</span>
-          <ol role="tablist" aria-label="Skills" aria-orientation="vertical" id="skillList"></ol>
+          <span class="eyebrow" data-i18n="sk.idx">Skills index</span>
+          <ol role="tablist" aria-label="Skills" data-i18n-aria="aria.skills" aria-orientation="vertical" id="skillList"></ol>
         </div>
         <div class="docs__body" role="tabpanel" id="skillPanel" tabindex="0">
           <span class="group" id="sGroup"></span>
-          <h3 id="sName"></h3>
+          <h3 class="docs__title"><span class="ico ico--lg" id="sIcon" aria-hidden="true"></span><span id="sName"></span></h3>
           <p id="sDesc"></p>
           <div class="docs__foot">
             <code class="cmd" id="sCmd"></code>
-            <a class="more" id="sLink" href="#">Read SKILL.md on GitHub</a>
+            <a class="more" id="sLink" href="#" data-i18n="sk.more">Read SKILL.md on GitHub</a>
           </div>
         </div>
       </div>
@@ -443,16 +487,16 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="install" aria-labelledby="install-h">
     <div class="wrap">
       <div class="cta">
-        <span class="pill">Version 0.1.1 · MIT licence</span>
-        <h2 id="install-h">Ready to prototype with your design system?</h2>
-        <p>Run these in Claude Code. The skills are then available as <code>/kit:&lt;skill&gt;</code>.</p>
+        <span class="pill" data-i18n="ins.pill">Version 0.1.1 · MIT licence</span>
+        <h2 id="install-h" data-i18n="ins.h">Ready to prototype with your design system?</h2>
+        <p data-i18n="ins.p">Run these in Claude Code. The skills are then available as <code>/kit:&lt;skill&gt;</code>.</p>
         <div class="cmdbox">
 <pre><b>/plugin marketplace add</b> MinhNhat0201/nnminh-prototype-kit
 <b>/plugin install</b> kit@nnminh-prototype-kit</pre>
-          <button class="icon-btn" type="button" data-copy="/plugin marketplace add MinhNhat0201/nnminh-prototype-kit&#10;/plugin install kit@nnminh-prototype-kit" aria-label="Copy install commands"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
+          <button class="icon-btn" type="button" data-copy="/plugin marketplace add MinhNhat0201/nnminh-prototype-kit&#10;/plugin install kit@nnminh-prototype-kit" aria-label="Copy install commands" data-i18n-aria="aria.copyins"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
         </div>
         <div class="actions">
-          <a class="btn btn--grad" href="https://github.com/MinhNhat0201/nnminh-prototype-kit"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+          <a class="btn btn--grad" href="https://github.com/MinhNhat0201/nnminh-prototype-kit"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-github"/></svg><span data-i18n="ins.gh">View on GitHub</span></a>
         </div>
       </div>
     </div>
@@ -461,17 +505,17 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="faq" aria-labelledby="faq-h">
     <div class="wrap">
       <div class="head">
-        <h2 id="faq-h">Frequently asked questions</h2>
+        <h2 id="faq-h" data-i18n="faq.h">Frequently asked questions</h2>
       </div>
       <div class="faq">
-        <details><summary>What is nnminh-prototype-kit?</summary><div class="a">A Claude Code plugin with 14 skills that take a design from idea to developer handoff: requirement analysis, prototypes built with your design system, specs, Figma flow boards and one handoff package.</div></details>
-        <details><summary>Is it free?</summary><div class="a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.</div></details>
-        <details><summary>Do I need a design system first?</summary><div class="a">No. Without one, run <code>adopt</code>: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
-        <details><summary>Which stacks does it support?</summary><div class="a">HTML (the default, one file that opens anywhere), React and Vue. Each app can use its own stack, so they can live side by side in one repository.</div></details>
-        <details><summary>Does it send emails or publish anything on its own?</summary><div class="a">No. <code>share</code> only drafts the handoff email for you to review and send. Skills save files; they do not commit, push or publish unless you ask.</div></details>
-        <details><summary>Do I need Figma?</summary><div class="a">Only for <code>wireflow</code>, <code>mockup</code> and the optional Figma step of <code>adopt</code>, which need the Figma connector. Everything else works without it.</div></details>
-        <details><summary>Which languages can the documents be in?</summary><div class="a">Replies and generated documents follow <code>kit.config.json &gt; language</code>. English and Vietnamese ship with the kit; add a language by copying <code>locales/en/</code> and translating the values.</div></details>
-        <details><summary>What do I need installed?</summary><div class="a">Claude Code, Python 3.9+, Node 18+, Playwright with Chromium for screen capture, and Pillow for image optimisation.</div></details>
+        <details><summary data-i18n="q1.q">What is Prototype Kit?</summary><div class="a" data-i18n="q1.a">A Claude Code plugin (<code>kit@nnminh-prototype-kit</code>) with 14 skills that take a design from idea to developer handoff: requirement analysis, prototypes built with your design system, specs, Figma flow boards and one handoff package.</div></details>
+        <details><summary data-i18n="q2.q">Is it free?</summary><div class="a" data-i18n="q2.a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.</div></details>
+        <details><summary data-i18n="q3.q">Do I need a design system first?</summary><div class="a" data-i18n="q3.a">No. Without one, run <code>adopt</code>: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
+        <details><summary data-i18n="q4.q">Which stacks does it support?</summary><div class="a" data-i18n="q4.a">HTML (the default, one file that opens anywhere), React and Vue. Each app can use its own stack, so they can live side by side in one repository.</div></details>
+        <details><summary data-i18n="q5.q">Does it send emails or publish anything on its own?</summary><div class="a" data-i18n="q5.a">No. <code>share</code> only drafts the handoff email for you to review and send. Skills save files; they do not commit, push or publish unless you ask.</div></details>
+        <details><summary data-i18n="q6.q">Do I need Figma?</summary><div class="a" data-i18n="q6.a">Only for <code>wireflow</code>, <code>mockup</code> and the optional Figma step of <code>adopt</code>, which need the Figma connector. Everything else works without it.</div></details>
+        <details><summary data-i18n="q7.q">Which languages can the documents be in?</summary><div class="a" data-i18n="q7.a">Replies and generated documents follow <code>kit.config.json &gt; language</code>. English and Vietnamese ship with the kit; add a language by copying <code>locales/en/</code> and translating the values.</div></details>
+        <details><summary data-i18n="q8.q">What do I need installed?</summary><div class="a" data-i18n="q8.a">Claude Code, Python 3.9+, Node 18+, Playwright with Chromium for screen capture, and Pillow for image optimisation.</div></details>
       </div>
     </div>
   </section>
@@ -481,30 +525,37 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <div class="foot">
     <div class="foot__grid">
       <div class="foot__about">
-        <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
-        <p>Claude Code skills for prototypes and design handoff, with any design system.</p>
-        <small>© 2026 nnminh-prototype-kit. MIT licence.</small>
+        <a class="logo" href="#" aria-label="Prototype Kit, back to top" data-i18n-aria="aria.home"><img src="assets/logo.webp" width="32" height="32" alt=""><span>Prototype Kit</span></a>
+        <p data-i18n="ft.about">Claude Code skills for prototypes and design handoff, with any design system.</p>
+        <small data-i18n="ft.copy">© 2026 Prototype Kit by nnminh. MIT licence.</small>
       </div>
       <div>
         <h3>Kit</h3>
-        <ul><li><a href="#features">Features</a></li><li><a href="#process">Process</a></li><li><a href="#skills">Skills</a></li><li><a href="#install">Install</a></li></ul>
+        <ul><li><a href="#features" data-i18n="nav.features">Features</a></li><li><a href="#process" data-i18n="nav.process">Process</a></li><li><a href="#skills" data-i18n="nav.skills">Skills</a></li><li><a href="#install" data-i18n="nav.install">Install</a></li></ul>
       </div>
       <div>
-        <h3>Docs</h3>
-        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/config.md">Configuration</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/stacks.md">Stacks</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/authoring.md">Authoring</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+        <h3 data-i18n="ft.docs">Docs</h3>
+        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/config.md" data-i18n="ft.config">Configuration</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/stacks.md" data-i18n="ft.stacks">Stacks</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/authoring.md" data-i18n="ft.auth">Authoring</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/CHANGELOG.md" data-i18n="ft.log">Changelog</a></li></ul>
       </div>
       <div>
-        <h3>Project</h3>
-        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit">GitHub</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/LICENSE">Licence</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/presets/shadcn/NOTICE">shadcn notice</a></li></ul>
+        <h3 data-i18n="ft.proj">Project</h3>
+        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit">GitHub</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/LICENSE" data-i18n="ft.lic">Licence</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/presets/shadcn/NOTICE" data-i18n="ft.notice">shadcn notice</a></li></ul>
       </div>
     </div>
-    <div class="foot__base"><span>Released under the MIT licence. Contributions welcome.</span><span>v0.1.1</span></div>
+    <div class="foot__base"><span data-i18n="ft.base">Released under the MIT licence. Contributions welcome.</span><span>v0.1.1</span></div>
   </div>
 </footer>
 
 <script>
 (function () {
   var REPO = "https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/";
+  var VI = {"nav.features": "Tính năng", "nav.process": "Quy trình", "nav.console": "Console", "nav.skills": "Skill", "nav.faq": "Hỏi đáp", "nav.install": "Cài đặt", "hero.title": "Từ ý tưởng đến bàn giao cho developer, <span>với design system của bạn.</span>", "hero.lede": "Prototype Kit là bộ 14 skill miễn phí cho Claude Code. Kit lên kế hoạch, dựng prototype HTML, React hoặc Vue bằng design system của bạn, viết spec, đưa luồng màn hình lên Figma và đóng gói mọi thứ cho BA, QC và developer.", "hero.install": "Cài đặt kit", "hero.browse": "Xem các skill", "feat.h": "Kit làm được gì", "feat.p": "Các skill hiểu design system của bạn, cho mọi bước từ yêu cầu đến bàn giao.", "f1.eb": "Mọi design system", "f1.h": "Hai file nối kit với design system của bạn", "f1.p": "Không có gì bị gắn cứng. <code>kit.config.json</code> giữ ngôn ngữ, stack và các app. Profile <code>ds.json</code> giữ prefix token, gói CSS, theming và thư viện Figma.", "f1.chip": "14 skill", "f2.eb": "Kiểm tra tương phản", "f2.h": "Mọi cặp màu, cả sáng lẫn tối", "f2.p": "Chữ cần đạt 4.5:1, icon và viền cần 3:1. Ngưỡng không bao giờ bị hạ.", "f2.big": "0 lỗi", "f2.bigl": "Trong lần chạy thử", "f2.m1": "Cặp màu đã kiểm", "f2.m2": "Đạt sau khi chỉnh", "f3.eb": "Chưa có design system", "f3.h": "Bắt đầu từ shadcn", "f3.p": "<code>adopt</code> lấy màu thương hiệu, tên, độ bo góc và font của bạn. Phần giao diện lấy từ shadcn, phần cấu trúc lấy từ Material Design 3.", "f3.big": "Component", "f3.m1": "Vùng chạm", "f3.m2": "Nền tảng", "f4.eb": "Gói bàn giao", "f4.h": "Một file zip, mỗi vai trò một lối đọc riêng", "f4.p": "BA nhận spec và danh sách tính năng, QC nhận checklist, developer nhận <code>AGENTS.md</code> và prototype. Không có ảnh màn hình, không có file <code>.js</code> rời, nên bộ lọc email không chặn.", "f4.c1": "// cấu trúc một gói bàn giao", "f4.c2": "lối đọc cho BA, QC, developer", "f4.c3": "mỗi unit một file Markdown", "proc.eb": "Quy trình", "proc.h": "Kit hoạt động thế nào", "proc.p": "Một lộ trình từ yêu cầu đến bàn giao. Mỗi bước là một skill bạn cũng có thể chạy riêng.", "s1.h": "Dựng dự án", "s1.p": "Dựng một design system nền nếu bạn chưa có. Sau đó chọn ngôn ngữ, stack và design system, kit sẽ tạo sẵn app đầu tiên.", "s2.h": "Xác định phạm vi", "s2.p": "Biến yêu cầu của PM và BA thành câu hỏi mở, các đợt bàn giao và ma trận truy vết.", "s3.h": "Dựng prototype", "s3.p": "Màn hình chỉ dùng component của design system. Kit sẽ hỏi trước khi tạo component hoặc trang mới.", "s4.h": "Viết spec", "s4.p": "Ảnh chụp màn hình, ghim chú thích và style được ánh xạ sang tên token. Luồng và màn hình được đưa lên Figma.", "s5.h": "Bàn giao", "s5.p": "Đóng gói một file zip cho BA, QC và developer, rồi soạn email. Kit không bao giờ tự gửi.", "con.h": "Một lần chạy thật", "con.p": "Output khi dựng một dự án React bằng kit. Đã rút gọn, số liệu giữ nguyên.", "con.t3": "3. Build và audit", "sk.h": "14 skill", "sk.p": "Chọn một skill để xem nó làm gì. Mỗi skill đều có link tới hướng dẫn đầy đủ trên GitHub.", "sk.idx": "Danh sách skill", "sk.more": "Đọc SKILL.md trên GitHub", "ins.pill": "Phiên bản 0.1.1 · Giấy phép MIT", "ins.h": "Sẵn sàng dựng prototype với design system của bạn?", "ins.p": "Chạy các lệnh sau trong Claude Code. Sau đó các skill có sẵn dưới dạng <code>/kit:&lt;skill&gt;</code>.", "ins.gh": "Xem trên GitHub", "faq.h": "Câu hỏi thường gặp", "q1.q": "Prototype Kit là gì?", "q1.a": "Một plugin Claude Code (<code>kit@nnminh-prototype-kit</code>) gồm 14 skill đưa thiết kế từ ý tưởng đến bàn giao cho developer: phân tích yêu cầu, prototype dựng bằng design system của bạn, spec, board luồng trên Figma và một gói bàn giao.", "q2.q": "Có miễn phí không?", "q2.a": "Có. Kit phát hành theo giấy phép MIT. Preset shadcn đi kèm được dựng từ shadcn/ui và shadcn-vue, cũng theo giấy phép MIT.", "q3.q": "Có cần design system trước không?", "q3.a": "Không. Nếu chưa có, chạy <code>adopt</code>: skill này dựng một profile nền từ shadcn với màu thương hiệu, tên, độ bo góc và font của bạn. Nếu đã có, hãy viết một profile <code>ds.json</code> cho nó và <code>kickoff</code> sẽ liên kết vào.", "q4.q": "Kit hỗ trợ những stack nào?", "q4.a": "HTML (mặc định, một file mở được ở mọi nơi), React và Vue. Mỗi app có thể dùng stack riêng, nên chúng có thể nằm cạnh nhau trong một repo.", "q5.q": "Kit có tự gửi email hay tự đăng gì không?", "q5.a": "Không. <code>share</code> chỉ soạn nháp email bàn giao để bạn xem lại và tự gửi. Các skill chỉ lưu file; chúng không commit, push hay đăng gì trừ khi bạn yêu cầu.", "q6.q": "Có cần Figma không?", "q6.a": "Chỉ cần cho <code>wireflow</code>, <code>mockup</code> và bước Figma tuỳ chọn của <code>adopt</code>, vì các bước này dùng connector Figma. Mọi thứ khác chạy được mà không cần Figma.", "q7.q": "Tài liệu sinh ra có thể viết bằng ngôn ngữ nào?", "q7.a": "Câu trả lời và tài liệu sinh ra theo <code>kit.config.json &gt; language</code>. Kit có sẵn tiếng Anh và tiếng Việt; muốn thêm ngôn ngữ, sao chép <code>locales/en/</code> rồi dịch các giá trị.", "q8.q": "Cần cài những gì?", "q8.a": "Claude Code, Python 3.9+, Node 18+, Playwright kèm Chromium để chụp màn hình, và Pillow để tối ưu ảnh.", "ft.about": "Skill Claude Code cho prototype và bàn giao thiết kế, dùng với mọi design system.", "ft.copy": "© 2026 Prototype Kit bởi nnminh. Giấy phép MIT.", "ft.docs": "Tài liệu", "ft.proj": "Dự án", "ft.config": "Cấu hình", "ft.stacks": "Stack", "ft.auth": "Viết skill", "ft.log": "Nhật ký thay đổi", "ft.lic": "Giấy phép", "ft.notice": "Ghi chú shadcn", "ft.base": "Phát hành theo giấy phép MIT. Hoan nghênh đóng góp.", "meta.title": "Prototype Kit: Bộ skill Claude Code từ ý tưởng đến bàn giao thiết kế", "meta.desc": "14 skill Claude Code đưa thiết kế từ ý tưởng đến bàn giao cho developer với mọi design system: lên kế hoạch, dựng prototype HTML, React hoặc Vue, viết spec, board luồng trên Figma và một gói bàn giao."};
+  var ARIA_VI = {"aria.lang": "Ngôn ngữ", "aria.home": "Prototype Kit, về đầu trang", "aria.main": "Điều hướng chính", "aria.runsteps": "Các bước của lần chạy", "aria.copyrun": "Sao chép output", "aria.skills": "Danh sách skill", "aria.copyins": "Sao chép lệnh cài đặt"};
+  var THEME_LABEL = {"en": ["Switch to dark mode", "Switch to light mode"], "vi": ["Chuyển sang chế độ tối", "Chuyển sang chế độ sáng"]};
+  var RUN_VI = {"// Build a base design system from shadcn": "// Dựng một design system nền từ shadcn", "// Create the first app from the React template": "// Tạo app đầu tiên từ template React", "// Build, then audit the app against the design system": "// Build, rồi audit app theo design system"};
+  var SKILL_EXTRA = {"brief": ["signpost", "Hiểu yêu cầu viết bằng lời thường và chuyển tới đúng skill kèm kế hoạch một dòng. Dùng khi bạn chưa biết bắt đầu từ đâu, hoặc khi có một PRD và vài ảnh chụp màn hình."], "kickoff": ["rocket-launch", "Dựng dự án: hỏi ngôn ngữ, stack, design system và app đầu tiên, ghi kit.config.json, liên kết và kiểm tra profile design system, tạo app từ template của stack rồi chạy smoke test."], "adopt": ["palette", "Dựng một design system nền khi bạn chưa có. Giao diện lấy từ preset shadcn, cấu trúc lấy từ Material Design 3. Bạn chọn màu thương hiệu, tên, prefix, độ bo góc và font; mọi cặp màu đều được kiểm tra tương phản."], "define": ["list-checks", "Biến yêu cầu của PM và BA thành các unit, tìm chỗ mơ hồ, thiếu hoặc mâu thuẫn, viết câu hỏi, ánh xạ unit sang màn hình và catalogue component, rồi chia việc thành các đợt bàn giao có tiêu chí nghiệm thu."], "prototype": ["layout", "Dựng màn hình và luồng từ yêu cầu, một đợt trong kế hoạch, ảnh tham khảo hoặc ảnh chụp màn hình. Mỗi phần tử được ánh xạ sang catalogue của design system, và kit dừng lại hỏi trước khi tạo component hoặc trang mới."], "annotate": ["push-pin", "Viết spec thiết kế cho BA, QC và developer: mỗi unit một file Markdown, chụp đủ mọi màn hình và trạng thái, ghim phần tử kèm style ánh xạ sang tên token, và vẽ luồng nghiệp vụ dạng wireflow."], "wireflow": ["flow-arrow", "Đưa luồng prototype lên một board Figma: mỗi màn hình một ảnh chụp, nối bằng mũi tên theo luồng nghiệp vụ, có ghim và link demo. Board được cập nhật tại chỗ nên link đã chia sẻ vẫn dùng được."], "mockup": ["frame-corners", "Dựng lại từng màn hình trên Figma thành layer chỉnh sửa được, có auto layout, component và biến của design system, đặt cạnh wireflow. Phải qua một bước kiểm tra tự động mới xong."], "handoff": ["package", "Đóng gói prototype thành một file zip cho BA, QC và developer: danh sách tính năng, changelog, checklist QC, spec cho từng unit và AGENTS.md chỉ lối đọc cho từng vai trò. Dùng được cho một tính năng hoặc cả một phiên bản app."], "share": ["envelope-simple", "Soạn email bàn giao từ một gói: tiêu đề, link Figma, link demo, các thay đổi chính viết cho người đọc nghiệp vụ, kèm file zip. Kit chỉ tạo bản nháp; bạn xem lại rồi tự gửi."], "review": ["magnifying-glass", "Audit chỉ đọc, đo mức app tuân theo design system: phiên bản, token, giá trị gắn cứng, cách dùng component và các chỗ ghi đè. Mỗi sai lệch được phân loại kèm phương án sửa."], "sync": ["arrows-clockwise", "Đưa phiên bản design system mới vào các app: đọc changelog, thay CSS nhúng hoặc nâng phiên bản package, phân loại từng control, hỏi trước khi đụng tới component local, rồi test và ghi lại thay đổi."], "contribute": ["git-pull-request", "Giữ danh sách component local khớp với app, chấm điểm component local và đề xuất những cái tốt vào design system qua hai bước duyệt."], "document": ["book-open", "Duy trì profile design system và tài liệu: sửa token và component tại nguồn, build lại bundle, nâng phiên bản, viết changelog và kiểm tra tương phản."]};
+  var GROUP_VI = {"Start": "Bắt đầu", "Plan and build": "Lên kế hoạch và dựng", "Specify": "Đặc tả", "Deliver": "Bàn giao", "Design system": "Design system"};
+  var lang = document.documentElement.getAttribute("lang") === "vi" ? "vi" : "en";
 
   /* console: real output from a test run (trimmed) */
   var RUNS = [
@@ -513,6 +564,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     '<span class="c">// Build, then audit the app against the design system</span>\n<span class="p">$</span> npm run build\ndist/index.html  423.97 kB │ gzip: 123.30 kB\n<span class="g">✓ built in 327ms</span>\n<span class="p">$</span> audit_app.py\nHard-coded colours (hex, rgb/hsl, named)   <span class="g">Pass</span>\nTailwind arbitrary values                  <span class="g">Pass</span>\nDS component use                           <span class="g">Pass</span>'
   ];
   var run = document.getElementById("run");
+  var curRun = 0;
   var tabs = Array.prototype.slice.call(document.querySelectorAll(".tabs [role=tab]"));
   function showRun(i, focus) {
     tabs.forEach(function (t, k) {
@@ -521,7 +573,10 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
       t.tabIndex = on ? 0 : -1;
       if (on) { run.setAttribute("aria-labelledby", t.id); if (focus) t.focus(); }
     });
-    run.innerHTML = RUNS[i];
+    var html = RUNS[i];
+    if (lang === "vi") Object.keys(RUN_VI).forEach(function (k) { html = html.replace(k, RUN_VI[k]); });
+    run.innerHTML = html;
+    curRun = i;
   }
   tabs.forEach(function (t, i) {
     t.addEventListener("click", function () { showRun(i); });
@@ -559,7 +614,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     var b = document.createElement("button");
     b.type = "button"; b.setAttribute("role", "tab"); b.id = "sk-" + s[0];
     b.setAttribute("aria-controls", "skillPanel");
-    b.textContent = (i + 1) + ". " + s[0];
+    b.innerHTML = '<svg aria-hidden="true"><use href="#p-' + SKILL_EXTRA[s[0]][0] + '"/></svg><span>' + (i + 1) + ". " + s[0] + "</span>";
     b.addEventListener("click", function () { showSkill(i); });
     b.addEventListener("keydown", function (e) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -569,14 +624,17 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     });
     li.appendChild(b); list.appendChild(li); btns.push(b);
   });
+  var curSkill = 0;
   function showSkill(i, focus) {
     var s = SKILLS[i];
+    curSkill = i;
     btns.forEach(function (b, k) { b.setAttribute("aria-selected", k === i ? "true" : "false"); b.tabIndex = k === i ? 0 : -1; });
     if (focus) btns[i].focus();
     panel.setAttribute("aria-labelledby", btns[i].id);
-    document.getElementById("sGroup").textContent = s[1];
+    document.getElementById("sGroup").textContent = lang === "vi" ? (GROUP_VI[s[1]] || s[1]) : s[1];
+    document.getElementById("sIcon").innerHTML = '<svg><use href="#p-' + SKILL_EXTRA[s[0]][0] + '"/></svg>';
     document.getElementById("sName").textContent = s[0];
-    document.getElementById("sDesc").textContent = s[2];
+    document.getElementById("sDesc").textContent = lang === "vi" ? SKILL_EXTRA[s[0]][1] : s[2];
     document.getElementById("sCmd").textContent = "/kit:" + s[0];
     document.getElementById("sLink").href = REPO + s[0] + "/SKILL.md";
   }
@@ -584,7 +642,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
 
   /* light / dark */
   var root = document.documentElement, tb = document.getElementById("themeBtn");
-  function label() { tb.setAttribute("aria-label", root.getAttribute("data-theme") === "dark" ? "Switch to light mode" : "Switch to dark mode"); }
+  function label() { tb.setAttribute("aria-label", THEME_LABEL[lang][root.getAttribute("data-theme") === "dark" ? 1 : 0]); }
   label();
   tb.addEventListener("click", function () {
     var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
@@ -592,6 +650,31 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     try { localStorage.setItem("theme", next); } catch (e) {}
     label();
   });
+
+  /* language */
+  var metaDesc = document.querySelector('meta[name="description"]');
+  var EN = { "meta.title": document.title, "meta.desc": metaDesc.getAttribute("content") };
+  var nodes = Array.prototype.slice.call(document.querySelectorAll("[data-i18n]"));
+  nodes.forEach(function (el) { el.__en = el.innerHTML; });
+  var ariaNodes = Array.prototype.slice.call(document.querySelectorAll("[data-i18n-aria]"));
+  ariaNodes.forEach(function (el) { el.__en = el.getAttribute("aria-label"); });
+  var langBtns = Array.prototype.slice.call(document.querySelectorAll(".lang [data-lang]"));
+  function setLang(next, save) {
+    lang = next;
+    var vi = lang === "vi";
+    root.setAttribute("lang", lang);
+    nodes.forEach(function (el) { var v = VI[el.getAttribute("data-i18n")]; el.innerHTML = vi && v ? v : el.__en; });
+    ariaNodes.forEach(function (el) { var v = ARIA_VI[el.getAttribute("data-i18n-aria")]; el.setAttribute("aria-label", vi && v ? v : el.__en); });
+    document.title = vi ? VI["meta.title"] : EN["meta.title"];
+    metaDesc.setAttribute("content", vi ? VI["meta.desc"] : EN["meta.desc"]);
+    langBtns.forEach(function (b) { b.setAttribute("aria-pressed", b.getAttribute("data-lang") === lang ? "true" : "false"); });
+    label();
+    showSkill(curSkill);
+    showRun(curRun);
+    if (save) { try { localStorage.setItem("lang", lang); } catch (e) {} }
+  }
+  langBtns.forEach(function (b) { b.addEventListener("click", function () { setLang(b.getAttribute("data-lang"), true); }); });
+  if (lang === "vi") setLang("vi", false);
 
   /* copy buttons */
   function flash(b) {
