@@ -19,6 +19,7 @@ Read this before you add or change a skill.
 | `mockup` | Rebuild screens on Figma with auto layout, DS components and variables |
 | `handoff` | Package one feature or a whole app into one zip for BA, QC and developers |
 | `share` | Draft the handoff email (never sends) |
+| `verify` | Compare a developer build with the approved prototype; defects or approved deviations; verified decisions |
 | `review` | Audit an app against the DS: read-only, findings and options |
 | `sync` | Bring a new DS version into apps |
 | `contribute` | Review local components and propose them to the DS (two approval gates) |

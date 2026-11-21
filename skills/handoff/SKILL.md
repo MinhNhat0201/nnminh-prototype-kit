@@ -115,6 +115,9 @@ CSV files are UTF-8 with BOM (Excel).
 - Zip under `handoff.maxZipMB`, or the user was told why and how to send it instead.
 
 ## Step 11. Report (short)
+
+End the report with the next step after development: `verify` compares the developers' build with this prototype.
+
 Name and version, zip name and size before → after, mode and treatment, number of units, screens, flows and edges (unverified edges), features, test cases, style changes and the baseline used, unmatched items, out of scope, files removed, warnings (DS version mismatch, mock data, local components, items BA must confirm). Multi-page: pages kept and dropped, cross-page edges, size per part, how to open.
 
 ## Rules

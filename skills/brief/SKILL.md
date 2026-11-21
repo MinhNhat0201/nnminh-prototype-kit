@@ -34,6 +34,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 | `mockup` | Rebuild screens on Figma with auto layout and DS components | "rebuild in Figma", "Figma specs" |
 | `handoff` | One zip for BA, QC, developers | "package it", "handoff for PBI 1234" |
 | `share` | Draft the handoff email (never sends) | "write the handoff email" |
+| `verify` | Compare a developer build with the approved prototype; differences become defects or approved deviations | "check the implementation", "design QA", "compare the build with the design" |
 | `review` | Read-only audit of an app against the DS | "audit", "how far are we from the DS" |
 | `sync` | Bring a new DS version into apps | "update to the new DS version" |
 | `contribute` | Review local components, propose them to the DS | "which local components can go into the DS" |
@@ -44,7 +45,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 
 | Situation | Chain |
 |---|---|
-| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `validate` → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
+| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `validate` → `annotate` → `wireflow` / `mockup` → `handoff` → `share` → (after development) `verify` |
 | Quick mock from a screenshot | `prototype` |
 | Open design question ("how should this work?") | `explore` → `prototype` |
 | DS released a new version | `review` → `sync` |

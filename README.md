@@ -29,8 +29,9 @@ Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture
 2. `/kit:kickoff`: choose language, stack (`html`, `react`, `vue`) and the DS. Creates `kit.config.json`, the first app and a project `CLAUDE.md`.
 3. `/kit:define`: turn PM/BA requirements into questions, waves and a traceability matrix.
 4. `/kit:explore`: when a wave has a real design question, build 2–3 directions with the DS, compare them side by side and let the team choose one.
-5. `/kit:prototype`: build screens with DS components only, from the chosen direction. It asks before creating new components or pages.
+5. `/kit:prototype`: build screens with DS components only, from the chosen direction. It asks before creating new components or pages. `/kit:validate` checks it in the browser.
 6. `/kit:annotate`, `/kit:wireflow`, `/kit:handoff`, `/kit:share`: spec, Figma flow board, zip package, email draft.
+7. `/kit:verify`: once developers have built it, compare their build with the approved prototype and close the decisions as verified.
 
 ## Skills
 
@@ -70,6 +71,10 @@ flowchart LR
         share["share<br/>email draft"]
     end
 
+    subgraph after["6 · After development"]
+        verify["verify<br/>build vs approved design"]
+    end
+
     subgraph ds["DS maintenance loop"]
         review["review<br/>read-only audit"]
         contribute["contribute<br/>local → DS"]
@@ -95,6 +100,8 @@ flowchart LR
     wireflow -->|Figma links| handoff
     handoff --> mockup
     handoff --> share
+    handoff -.developers build.-> verify
+    verify -.verified decisions.-> context
     mockup -.Figma link.-> share
 
     prototype -->|local components| contribute
@@ -122,6 +129,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `mockup` | Rebuilds screens on Figma with auto layout, DS components and variables, with an automatic audit |
 | `handoff` | One zip for BA, QC and developers: spec, checklists, changelog, AGENTS.md, scoped prototype |
 | `share` | Drafts the handoff email (never sends) |
+| `verify` | After development: compares the build with the approved prototype (side-by-side screenshots, values outside DS tokens, missing components, changed texts, flows, accessibility); differences become defects or deviations covered by an approved decision |
 | `review` | Read-only audit of an app against the DS, with remediation options |
 | `sync` | Brings a new DS version into apps |
 | `contribute` | Reviews local components and proposes them to the DS (two approval gates) |

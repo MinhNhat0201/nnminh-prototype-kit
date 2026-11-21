@@ -23,6 +23,7 @@ Which skill does what:
 | Compare 2–4 design directions and let the team choose before building | `explore` |
 | Build screens, flows or a prototype | `prototype` |
 | Check a prototype in the browser before review or handoff | `validate` |
+| Compare the developer build with the approved prototype | `verify` |
 | Markdown spec per unit with screen captures | `annotate` |
 | Flow board of screen images on Figma | `wireflow` |
 | Rebuild screens on Figma with DS components and variables | `mockup` |
