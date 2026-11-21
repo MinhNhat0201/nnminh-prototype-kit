@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="{{LANGUAGE}}"{{HTML_ATTRS}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="{{VERSION_META}}" content="{{VERSION}}">
+<title>Settings · {{APP_NAME}}</title>
+<style>/* @ds:begin */
+{{DS_CSS}}
+/* @ds:end */</style>
+<!-- SHELL:css -->
+<!-- /SHELL:css -->
+</head>
+<body>
+<div class="app">
+  <!-- SHELL:top -->
+  <!-- /SHELL:top -->
+
+  <main class="app-main" id="view" tabindex="-1"></main>
+
+  <!-- SHELL:foot -->
+  <!-- /SHELL:foot -->
+</div>
+
+<template id="page-settings">
+  <section class="app-page">
+    <h1>Settings</h1>
+    <p>Theming attributes from ds.json &gt; theming, saved in this browser only.</p>
+    <div class="app-panel" data-slot="theming"></div>
+  </section>
+</template>
+
+<!-- SHELL:js -->
+<!-- /SHELL:js -->
+<script>
+(function () {
+  'use strict';
+  var S = APP_SHELL, root = document.documentElement;
+  S.router([
+    { path: '/', title: 'Settings', render: function () {
+      var f = document.getElementById('page-settings').content.cloneNode(true), box = f.querySelector('[data-slot="theming"]');
+      Object.keys(S.theming).forEach(function (key) {
+        var t = S.theming[key];
+        if (!t || !t.attr || !t.values || t.values.length < 2) return;
+        var label = document.createElement('label'), span = document.createElement('span'), sel = document.createElement('select');
+        label.className = 'app-field';
+        span.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+        t.values.forEach(function (v) { var o = document.createElement('option'); o.value = o.textContent = v; sel.appendChild(o); });
+        sel.value = root.getAttribute(t.attr) || t.default || t.values[0];
+        sel.addEventListener('change', function () { S.setTheming(key, sel.value); });
+        label.appendChild(span); label.appendChild(sel); box.appendChild(label);
+      });
+      return f;
+    } }
+  ], document.getElementById('view'), '{{APP_NAME}}');
+})();
+</script>
+</body>
+</html>

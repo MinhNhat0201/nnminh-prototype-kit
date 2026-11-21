@@ -1,0 +1,47 @@
+shadcn preset for the prototype kit
+===================================
+
+This preset takes design values (colour roles, neutral palette, radius scale,
+type scale, shadows, component proportions and states) from shadcn/ui, and the
+CSS variable names of its theming layer, which shadcn-vue shares. It contains
+no source code from either project.
+
+shadcn/ui    https://ui.shadcn.com    https://github.com/shadcn-ui/ui
+shadcn-vue   https://www.shadcn-vue.com    (port of shadcn/ui for Vue)
+
+Values taken from the "Default Theme CSS" (neutral) of shadcn/ui, branch main,
+read on 2026-11-21 (shadcn CLI 4.23.0). Neutral steps 300, 600 and 700 and the
+shadow scale are the matching Tailwind CSS v4 defaults (MIT, Tailwind Labs).
+
+Structure (window size classes, 48 px touch targets, bottom sheet, navigation
+bar, navigation rail, FAB, density levels) follows the published Material
+Design 3 guidelines. No assets, icons, fonts or code from Material Design are
+included.
+
+Icons: Tabler Icons, MIT licence, Copyright (c) 2020-2024 Paweł Kuna,
+https://tabler.io/icons
+
+-------------------------------------------------------------------------------
+shadcn/ui licence
+
+MIT License
+
+Copyright (c) 2023 shadcn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

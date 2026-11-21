@@ -1,0 +1,14 @@
+{
+  "wireflow.page": "[{pbi}] {feature}",
+  "wireflow.title": "Wireflow · {feature} v{version}",
+  "wireflow.meta": "{pbi} · {feature} · {app} · {ds}",
+  "wireflow.openPrototype": "Mở prototype",
+  "wireflow.openFlow": "Mở demo luồng",
+  "wireflow.demoNote": "Nút \"Mở demo luồng\" mở site demo ở màn đầu của từng luồng. Site có thể cần tài khoản có quyền xem app. Site là bản đang chạy, có thể mới hơn ảnh chụp trên bảng.",
+  "wireflow.legend": "Vòng cam trên ảnh: chỗ bấm đi tiếp · Số tròn: điểm ghim (mã quy tắc) · Nét đứt: cần xác nhận · Thẻ \"Chuyển trang\": sang tệp khác · Ô xám nét đứt: ngoài phạm vi",
+  "wireflow.toConfirm": "cần xác nhận",
+  "wireflow.pageChange": "Chuyển trang",
+  "wireflow.outOfScope": "Ngoài phạm vi",
+  "wireflow.offflow": "Màn ngoài luồng",
+  "wireflow.start": "Bắt đầu: {start}"
+}
