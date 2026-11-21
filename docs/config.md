@@ -49,7 +49,11 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
   "paths": {
     "changelog": "CHANGELOG.md",
     "plans": "docs/plans",
-    "audits": "docs/audits"
+    "audits": "docs/audits",
+    "explorations": "docs/explorations",
+    "context": "product-context",
+    "validation": "docs/validation",
+    "verify": "docs/verify"
   }
 }
 ```
@@ -72,6 +76,10 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
+| `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
+| `paths.validation` | validation plans, runs (report, screenshots, diffs) and the accepted baseline, one sub-folder per app | `docs/validation` | `validate`, `handoff` |
+| `paths.verify` | implementation checks: pairs, runs (report, screenshots, side-by-side images) and accepted deviations | `docs/verify` | `verify` |
+| `paths.explorations` | folder of design explorations, one sub-folder per question | `docs/explorations` | `explore`, `prototype` |
 
 ## `ds/<name>/ds.json`
 
@@ -140,6 +148,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `version_label` | Footer text and `<meta>` name that state which DS version a prototype uses. |
 | `theming` | Attributes the DS reads on `<html>`. Skills set them only through these keys; they never invent new attributes. |
 | `catalog` | Component catalogue for agents: class, variants, states, tokens, and the `components.map` table (HTML class ↔ React ↔ Vue component). |
+| `catalog_json` | Machine-readable catalogue (default `catalog.json`), built from `catalog` by `document/scripts/catalog.py build`. Adds fields people maintain: `figma` (component, key, node), `status` (`active`, `experimental`, `deprecated` with `replacedBy` and `reason`), `usage` (`use`, `avoid`) and `a11y`. Rebuilding keeps them. Read by `prototype`, `review`, `mockup`. |
 | `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override"). Every skill reads it before it builds or reviews. |
 | `figma` | Libraries, variable collections and modes for `mockup` and `adopt`. |
 | `preset` | The public DS the profile was adopted from, if any (`adopt`). |

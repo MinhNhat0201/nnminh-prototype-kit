@@ -29,7 +29,7 @@ DEFAULTS = {
     "handoff": {"dir": "docs/handover", "zipName": "Design - {pbi}", "maxZipMB": 3, "figmaRequired": True},
     "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3},
     "deploy": {"type": "none", "site": None},
-    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits"},
+    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify"},
 }
 
 DS_DEFAULTS = {
@@ -43,6 +43,7 @@ DS_DEFAULTS = {
     "breakpoints": {"compact": 0, "medium": 600, "expanded": 840},
     "icons": {},
     "catalog": "catalog.md",
+    "catalog_json": "catalog.json",
     "rules": "rules.md",
     "library": {},
     "figma": {"libraries": [], "collections": {}, "modes": {}},

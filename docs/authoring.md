@@ -10,12 +10,16 @@ Read this before you add or change a skill.
 | `kickoff` | Set up a project: `kit.config.json`, DS profile link, stack, first app skeleton |
 | `adopt` | No DS yet: build a base DS profile from a public preset (default shadcn) |
 | `define` | Analyse PM/BA requirements, questions, delivery plan, traceability |
+| `context` | Product context files and the decision log (status lifecycle, who decided) |
+| `explore` | Two to four design directions with the DS, comparison page, human decision before building |
 | `prototype` | Build screens and flows with the DS; gates before new components and new pages |
+| `validate` | Browser checks of a prototype and one report: fail, needs a human, skipped |
 | `annotate` | Markdown spec per unit: screen captures, pins, computed styles mapped to tokens, flows |
 | `wireflow` | Put the flow board (screen images joined by arrows) on Figma |
 | `mockup` | Rebuild screens on Figma with auto layout, DS components and variables |
 | `handoff` | Package one feature or a whole app into one zip for BA, QC and developers |
 | `share` | Draft the handoff email (never sends) |
+| `verify` | Compare a developer build with the approved prototype; defects or approved deviations; verified decisions |
 | `review` | Audit an app against the DS: read-only, findings and options |
 | `sync` | Bring a new DS version into apps |
 | `contribute` | Review local components and propose them to the DS (two approval gates) |

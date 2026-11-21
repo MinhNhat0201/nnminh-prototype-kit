@@ -27,6 +27,8 @@ Scripts run from the project folder (or take `--project`).
 python3 <kit>/skills/review/scripts/audit_app.py [app ...] --json <scratchpad>/audit.json
 ```
 
+When the profile has `catalog.json`: `python3 <kit>/skills/document/scripts/catalog.py scan --app <id>` for each app. Components it lists as deprecated and still in use are findings (level: hard-rule violation), with the replacement it names as the remediation.
+
 DS region = text between `/* <css.marker.begin> */` and `/* <css.marker.end> */`. App region = every other CSS, `style=""`, and per stack:
 
 | Stack | Also scanned |

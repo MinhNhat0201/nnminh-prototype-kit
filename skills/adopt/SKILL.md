@@ -79,7 +79,9 @@ Alias contract: the bundle defines `--background`, `--foreground`, `--card*`, `-
 python3 $S check --out ds/acme
 ```
 
-Must print `Profile OK`. It checks files, bundle markers, no hex/`rgb()`/px/primitive tokens in component CSS, every used token defined, the alias layer, and contrast. Fix the generator input, never the generated CSS by hand.
+Then build the machine-readable catalogue: `python3 <kit>/skills/document/scripts/catalog.py --ds ds/acme build` and `… check` (must print `Catalog OK`).
+
+`Profile OK` from the first command is required. It checks files, bundle markers, no hex/`rgb()`/px/primitive tokens in component CSS, every used token defined, the alias layer, and contrast. Fix the generator input, never the generated CSS by hand.
 
 Then open `library.html` with Playwright (installed Chromium; never `playwright install`): no `pageerror`, no console errors, no horizontal scroll at 400, 768 and 1280 px, light and dark. Take one screenshot per mode and look at it.
 

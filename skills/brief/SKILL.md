@@ -25,12 +25,16 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 | `kickoff` | Set up the project: config, DS link, stack, first app | "start a new project", "set up the kit" |
 | `adopt` | No DS yet: base DS profile from a public preset | "we have no design system", "start from shadcn" |
 | `define` | Requirements → questions, plan, waves, traceability | "here is the PRD", "plan this feature", "impact of this change" |
+| `context` | Product memory: overview, personas, principles, rules, decision log | "remember this decision", "why did we decide X", "set up product context" |
+| `explore` | 2–4 design directions with the DS, compare, human chooses | "show me options", "explore directions", "what are the ways to design this" |
 | `prototype` | Build screens and flows with the DS | "build this screen", "make it like this image", "add a page" |
+| `validate` | Browser checks of a prototype: errors, overflow, accessibility, focus, states, flows, visual changes; one report | "test the prototype", "QA this", "is it ready for handoff" |
 | `annotate` | Markdown spec per unit with screenshots, pins, tokens, flows | "write the spec", "annotate the screens" |
 | `wireflow` | Flow board of screen images on Figma | "put the flow on Figma", "wireflow" |
 | `mockup` | Rebuild screens on Figma with auto layout and DS components | "rebuild in Figma", "Figma specs" |
 | `handoff` | One zip for BA, QC, developers | "package it", "handoff for PBI 1234" |
 | `share` | Draft the handoff email (never sends) | "write the handoff email" |
+| `verify` | Compare a developer build with the approved prototype; differences become defects or approved deviations | "check the implementation", "design QA", "compare the build with the design" |
 | `review` | Read-only audit of an app against the DS | "audit", "how far are we from the DS" |
 | `sync` | Bring a new DS version into apps | "update to the new DS version" |
 | `contribute` | Review local components, propose them to the DS | "which local components can go into the DS" |
@@ -41,8 +45,9 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 
 | Situation | Chain |
 |---|---|
-| New feature from a PRD | `define` → `prototype` (per wave) → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
+| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `validate` → `annotate` → `wireflow` / `mockup` → `handoff` → `share` → (after development) `verify` |
 | Quick mock from a screenshot | `prototype` |
+| Open design question ("how should this work?") | `explore` → `prototype` |
 | DS released a new version | `review` → `sync` |
 | Many local components | `contribute` → `document` → `sync` |
 

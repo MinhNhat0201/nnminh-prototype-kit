@@ -17,7 +17,9 @@ Reason: the DS is the single source of truth; every home-made component is maint
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
 - Read the DS profile: `ds.json`, `rules.md`, `catalog.md`. `rules.md` overrides everything else here.
-- Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again). Open reference images with Read. Existing app: read the screens you change, one at a time.
+- Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`; read UX principles, business rules, constraints and the `approved` decisions in scope. Building against an approved decision → stop and ask; never silently override it.
+- Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
+- Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.
 - **Reference images give layout, order, behaviour and ideas only.** Never copy colours, fonts, radii, shadows or icons from them.
 - Write an image breakdown: every region and element you see (nav, card, table, form, dialog, empty state…), and the anatomy of unfamiliar patterns (parts, arrangement, relations).
 - An image shows one moment. List what it does **not** show: hover, focus, error, empty, loading, scroll, small-screen behaviour. Mark them "not in the image", use the DS component defaults, and never invent behaviour.
@@ -25,7 +27,7 @@ Reason: the DS is the single source of truth; every home-made component is maint
 
 ## Step 2. Load the DS sources
 
-- Component classes, variants, states and `components.map` from `catalog.md`; tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
+- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`catalog.py find <words>` to look a role up, `catalog.py show <id>` for details). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Follow each component's `usage.use` / `usage.avoid` rules. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
 - Icons from `ds.json > icons`.
 - Never write a token, class, component name or version from memory. Source unreadable → stop and say so; never invent styles.
 
@@ -128,7 +130,7 @@ Per stack (see `<kit>/docs/stacks.md`):
 
 ## Step 6. Test
 
-Playwright with the installed Chromium; never run `playwright install`.
+Run `validate` for the screens, states and flows of this wave (`validation.py run --app <id>`; add them to its `plan.json` first). It covers errors, overflow, accessibility, focus, touch targets and visual changes at 390, 768 and 1280 px in each mode; the build is not done until its report shows **Fail (0)**. Also check by hand (Playwright with the installed Chromium; never run `playwright install`):
 - No `pageerror`; no console errors (blocked web fonts in a sandbox are acceptable).
 - No horizontal scroll at 400, 768 and 1280 px.
 - Light and dark mode; at least two brands if `theming.brand.values` has several.
@@ -141,6 +143,7 @@ Playwright with the installed Chromium; never run `playwright install`.
 ## Step 7. Save and report
 
 - Save the files. Add an entry to `paths.changelog` (date, app, screens, DS version, tests). Open a PR only if the user asks; never merge.
+- Decision log (if the project has one): each `approved` decision you built → `decisions.py set <id> implemented --note "<app, screens>"`. Design choices you made that nobody approved → `decisions.py add --status proposed`, and list them in the report.
 - Short report:
   - element mapping table (element | DS component | match level), with differences from the reference image and why;
   - component decisions (A / B / C) and registry entries written;
