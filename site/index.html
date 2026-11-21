@@ -193,8 +193,9 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .term-mini .a { color: var(--accent-soft); }
 
 /* timeline */
-.steps { list-style: none; margin: 0 auto; padding: 0; max-width: 38rem; position: relative; }
-.steps::before { content: ""; position: absolute; left: 0.85rem; top: 1rem; bottom: 1rem; width: 1px; background: linear-gradient(180deg, var(--accent) 0%, var(--line) 100%); opacity: 0.6; }
+.steps { --pad: 2.75rem; list-style: none; margin: 0 auto; padding: var(--pad); max-width: 44rem; position: relative; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); box-shadow: var(--card-shadow); }
+@media (max-width: 639.98px) { .steps { --pad: 1.5rem; } .steps li { padding-left: 2.75rem; } }
+.steps::before { content: ""; position: absolute; left: calc(var(--pad) + 0.85rem); top: calc(var(--pad) + 1rem); bottom: calc(var(--pad) + 1rem); width: 1px; background: linear-gradient(180deg, var(--accent) 0%, var(--line) 100%); opacity: 0.6; }
 .steps li { position: relative; padding: 0 0 3.25rem 3.5rem; }
 .steps li:last-child { padding-bottom: 0; }
 .steps .n { position: absolute; left: 0; top: 0.2rem; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font: 500 0.75rem/1 var(--mono); color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); }
