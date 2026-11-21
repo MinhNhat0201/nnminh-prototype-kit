@@ -19,7 +19,7 @@ const DS_DEFAULTS = {
   css: { bundle: null, sources: [], marker: { begin: '@ds:begin', end: '@ds:end' } },
   version_label: { text: '{label} {version}', meta: 'ds-version' },
   theming: {}, breakpoints: { compact: 0, medium: 600, expanded: 840 }, icons: {},
-  catalog: 'catalog.md', rules: 'rules.md', library: {},
+  catalog: 'catalog.md', catalog_json: 'catalog.json', rules: 'rules.md', library: {},
   figma: { libraries: [], collections: {}, modes: {} }, preset: {},
 };
 

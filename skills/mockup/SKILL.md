@@ -34,7 +34,7 @@ Before the first `use_figma` call: load `figma-use` (mandatory). Before the firs
 ## Step 1. Screen list (agree before building)
 Table: `screen id | name | flow | source (image, route) | DS components | local parts | outside DS`.
 - **Id and name** exactly as in `screens.json` and the wireflow (`S18a · Paused`). Both boards use the same ids, or step 4 cannot compare them.
-- **DS components:** from the spec style notes or DOM classes, matched to library components via `ds.json > catalog` (`components.map`) and step 3a.
+- **DS components:** from the spec style notes or DOM classes, matched to library components via `ds.json > catalog` (`components.map`) and step 3a. When `catalog.json` has a `figma` entry for the component (`component`, `key`, `node`), use it first; a code component without one is matched by name and reported so `document` can record the mapping.
 - **Local parts** (`kit.config.json > local.prefix`): look them up in `local.registry` (description, tokens). In Figma build them as auto-layout frames with the same variables, named `<name> · <class>`. Never create components in the DS library.
 - **Outside the DS on purpose:** simulated OS chrome (status bar, home screen), other apps' logos or icons, content images (photos, avatars). Name them with the prefix from locale key `mockup.exemptPrefix` so step 4 skips them, and list them in the report.
 More than 5 new screens, or parts not in the DS: show the list to the user before building.

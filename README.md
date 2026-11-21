@@ -132,7 +132,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 Two files, no hard-coded design system:
 
 - `kit.config.json` in the project: language of replies and documents, stack, apps, local-component prefix, handoff and email settings. See [docs/config.md](docs/config.md).
-- `ds/<name>/ds.json` in the DS profile: token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries. Made by `adopt`, or written by hand for an existing DS.
+- `ds/<name>/ds.json` in the DS profile: token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries. Made by `adopt`, or written by hand for an existing DS. Next to it, `catalog.md` (for people) and `catalog.json` (for agents: variants, states, tokens, code and Figma mapping, deprecated components and their replacement, usage rules).
 
 Stacks are described in [docs/stacks.md](docs/stacks.md). Each app can override the project stack, so old HTML apps and new Vue apps can live side by side.
 

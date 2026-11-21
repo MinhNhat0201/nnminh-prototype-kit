@@ -43,6 +43,7 @@ DS_DEFAULTS = {
     "breakpoints": {"compact": 0, "medium": 600, "expanded": 840},
     "icons": {},
     "catalog": "catalog.md",
+    "catalog_json": "catalog.json",
     "rules": "rules.md",
     "library": {},
     "figma": {"libraries": [], "collections": {}, "modes": {}},

@@ -40,6 +40,7 @@ DS answer "coded package": the profile still needs `ds.json`, `catalog.md` (with
 
 - Run `python3 <kit>/scripts/kitconf.py check`. Fix what it reports (wrong path, missing `ds.json`, missing `css.bundle`, bad prefix) or ask the user.
 - Confirm `catalog.md` and `rules.md` exist in the profile. Missing → say which skills will be limited and suggest `adopt` or `document`.
+- No `catalog.json` → build it: `python3 <kit>/skills/document/scripts/catalog.py build`, then `check`. A catalogue that does not parse (custom format) → say so; skills fall back to `catalog.md`.
 - Never edit the DS profile here.
 
 ## Step 5. Create the first app

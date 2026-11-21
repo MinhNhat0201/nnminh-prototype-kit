@@ -34,6 +34,7 @@ Read `ds.json` first; paths below are its defaults (see `docs/config.md` of the 
 | `css.bundle` (`dist/<name>.css`) | the files above joined in `css.sources` order |
 | `tokens.json` | tokens in DTCG format |
 | `catalog.md` | components, variants, states, tokens, `components.map` (HTML class ↔ React ↔ Vue) |
+| `catalog.json` | machine-readable catalogue built from `catalog.md`, plus maintained fields: Figma mapping, status (active, experimental, deprecated + `replacedBy`), usage rules (`use`, `avoid`), accessibility notes |
 | `rules.md` | hard rules and protected intentional deviations |
 | `CHANGELOG.md` | one entry per version |
 
@@ -51,7 +52,9 @@ Read `ds.json` first; paths below are its defaults (see `docs/config.md` of the 
    | docs only, no token or CSS change | no bump; add a "Docs" line to `CHANGELOG.md` |
 
 4. **Changelog**: one entry per version: what changed, tokens (name, old → new value), impact on apps, "Needs design confirmation" (every contrast drop, Figma deviation, unmatched name), apps not synced yet.
-5. **Rebuild**: join `css.sources` into `css.bundle` in order, regenerate `tokens.json` and `catalog.md` entries that changed, then the profile's own library build if it has one.
+5. **Rebuild**: join `css.sources` into `css.bundle` in order, regenerate `tokens.json` and `catalog.md` entries that changed, then `python3 <kit>/skills/document/scripts/catalog.py build` (keeps the maintained fields) and `… check`, then the profile's own library build if it has one.
+   - Retiring a component: never delete it in the same version. `catalog.py set <id> --status deprecated --replaced-by <id> --reason "..."`, note it in the changelog, run `review` (its scan lists apps still using it), remove it in a later major version.
+   - Figma mapping and usage rules: `catalog.py set <id> --figma-component "..." --figma-key <key> --figma-node <id> --use "..." --avoid "..."`, only from facts you read in Figma or that the user stated.
 6. **Update the shared docs in the same change** (same branch, same PR): `catalog.md` for components and variants, `rules.md` for rules and deviations, foundation docs for tokens, the "What's new" page for the version. Do not wait to be asked.
 7. **Test** (below), including the contrast table.
 8. **Report**: what changed, docs updated, version, apps still on the old version; propose `sync` for the apps.

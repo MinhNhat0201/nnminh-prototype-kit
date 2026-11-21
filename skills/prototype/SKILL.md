@@ -27,7 +27,7 @@ Reason: the DS is the single source of truth; every home-made component is maint
 
 ## Step 2. Load the DS sources
 
-- Component classes, variants, states and `components.map` from `catalog.md`; tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
+- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`catalog.py find <words>` to look a role up, `catalog.py show <id>` for details). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Follow each component's `usage.use` / `usage.avoid` rules. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
 - Icons from `ds.json > icons`.
 - Never write a token, class, component name or version from memory. Source unreadable → stop and say so; never invent styles.
 
