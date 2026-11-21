@@ -25,6 +25,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 | `kickoff` | Set up the project: config, DS link, stack, first app | "start a new project", "set up the kit" |
 | `adopt` | No DS yet: base DS profile from a public preset | "we have no design system", "start from shadcn" |
 | `define` | Requirements → questions, plan, waves, traceability | "here is the PRD", "plan this feature", "impact of this change" |
+| `explore` | 2–4 design directions with the DS, compare, human chooses | "show me options", "explore directions", "what are the ways to design this" |
 | `prototype` | Build screens and flows with the DS | "build this screen", "make it like this image", "add a page" |
 | `annotate` | Markdown spec per unit with screenshots, pins, tokens, flows | "write the spec", "annotate the screens" |
 | `wireflow` | Flow board of screen images on Figma | "put the flow on Figma", "wireflow" |
@@ -41,8 +42,9 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
 
 | Situation | Chain |
 |---|---|
-| New feature from a PRD | `define` → `prototype` (per wave) → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
+| New feature from a PRD | `define` → `explore` (waves with a design question) → `prototype` (per wave) → `annotate` → `wireflow` / `mockup` → `handoff` → `share` |
 | Quick mock from a screenshot | `prototype` |
+| Open design question ("how should this work?") | `explore` → `prototype` |
 | DS released a new version | `review` → `sync` |
 | Many local components | `contribute` → `document` → `sync` |
 

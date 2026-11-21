@@ -29,7 +29,7 @@ DEFAULTS = {
     "handoff": {"dir": "docs/handover", "zipName": "Design - {pbi}", "maxZipMB": 3, "figmaRequired": True},
     "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3},
     "deploy": {"type": "none", "site": None},
-    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits"},
+    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations"},
 }
 
 DS_DEFAULTS = {

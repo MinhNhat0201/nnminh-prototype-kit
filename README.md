@@ -28,8 +28,9 @@ Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture
 1. `/kit:adopt`: only if you have no DS. Pick a brand colour, name and radius; get a DS profile in `ds/<name>/`.
 2. `/kit:kickoff`: choose language, stack (`html`, `react`, `vue`) and the DS. Creates `kit.config.json`, the first app and a project `CLAUDE.md`.
 3. `/kit:define`: turn PM/BA requirements into questions, waves and a traceability matrix.
-4. `/kit:prototype`: build screens with DS components only. It asks before creating new components or pages.
-5. `/kit:annotate`, `/kit:wireflow`, `/kit:handoff`, `/kit:share`: spec, Figma flow board, zip package, email draft.
+4. `/kit:explore`: when a wave has a real design question, build 2–3 directions with the DS, compare them side by side and let the team choose one.
+5. `/kit:prototype`: build screens with DS components only, from the chosen direction. It asks before creating new components or pages.
+6. `/kit:annotate`, `/kit:wireflow`, `/kit:handoff`, `/kit:share`: spec, Figma flow board, zip package, email draft.
 
 ## Skills
 
@@ -48,7 +49,8 @@ flowchart LR
         define["define<br/>requirements → waves"]
     end
 
-    subgraph build["3 · Build"]
+    subgraph build["3 · Explore & build"]
+        explore["explore<br/>directions → choice"]
         prototype["prototype<br/>screens with DS"]
     end
 
@@ -70,12 +72,14 @@ flowchart LR
         sync["sync<br/>new DS into apps"]
     end
 
-    brief -.routes.-> kickoff & define & prototype & annotate & handoff & review
+    brief -.routes.-> kickoff & define & explore & prototype & annotate & handoff & review
 
     adopt -->|DS profile| kickoff
     kickoff -.no DS.-> adopt
     kickoff --> define
     define -->|waves| prototype
+    define -.design question.-> explore
+    explore -->|chosen direction| prototype
     prototype --> annotate
     annotate -->|captures + flows| wireflow
     wireflow --> mockup
@@ -101,6 +105,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `kickoff` | Sets up a project: config, DS link, stack, first app |
 | `adopt` | Builds a base DS from a preset (shadcn) plus Material 3 structure for mobile and tablet |
 | `define` | Requirement analysis, questions for PM/BA, delivery waves, traceability |
+| `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
 | `prototype` | Builds screens and flows with the DS; component and new-page gates |
 | `annotate` | Markdown spec per unit with screen captures, pins, token-level style notes and flows |
 | `wireflow` | Flow board on Figma from captures; updates in place so shared links keep working |

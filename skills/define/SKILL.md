@@ -136,7 +136,8 @@ Table: `R-id | summary | type | screens (S-id) | wave | status (not started / wa
 ## Step 9. Confirm before building
 
 Present, in this order: BLOCKING questions; **new pages** (A/B/C needed before building); component decisions; the wave you propose to start with. Ask the user to approve or adjust.
-Move to `prototype` only when the user says to start a specific wave. Pass it the wave's R-ids, S-ids, assumptions, page decisions and component decisions.
+Mark each wave that has a real design question (structure, navigation, main interaction, information order) and suggest `explore` for it before `prototype`.
+Move on only when the user says to start a specific wave: to `explore` for a marked wave if the user agrees, otherwise to `prototype`. Pass the wave's R-ids, S-ids, assumptions, page decisions and component decisions.
 
 ## Update a plan (requirements changed)
 

@@ -17,7 +17,8 @@ Reason: the DS is the single source of truth; every home-made component is maint
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
 - Read the DS profile: `ds.json`, `rules.md`, `catalog.md`. `rules.md` overrides everything else here.
-- Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again). Open reference images with Read. Existing app: read the screens you change, one at a time.
+- Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
+- Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.
 - **Reference images give layout, order, behaviour and ideas only.** Never copy colours, fonts, radii, shadows or icons from them.
 - Write an image breakdown: every region and element you see (nav, card, table, form, dialog, empty state…), and the anatomy of unfamiliar patterns (parts, arrangement, relations).
 - An image shows one moment. List what it does **not** show: hover, focus, error, empty, loading, scroll, small-screen behaviour. Mark them "not in the image", use the DS component defaults, and never invent behaviour.

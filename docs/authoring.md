@@ -10,6 +10,7 @@ Read this before you add or change a skill.
 | `kickoff` | Set up a project: `kit.config.json`, DS profile link, stack, first app skeleton |
 | `adopt` | No DS yet: build a base DS profile from a public preset (default shadcn) |
 | `define` | Analyse PM/BA requirements, questions, delivery plan, traceability |
+| `explore` | Two to four design directions with the DS, comparison page, human decision before building |
 | `prototype` | Build screens and flows with the DS; gates before new components and new pages |
 | `annotate` | Markdown spec per unit: screen captures, pins, computed styles mapped to tokens, flows |
 | `wireflow` | Put the flow board (screen images joined by arrows) on Figma |
