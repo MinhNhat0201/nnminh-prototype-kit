@@ -8,7 +8,7 @@ Read this before you add or change a skill.
 |---|---|
 | `brief` | Entry point: find out what the designer wants and route to the right skill |
 | `kickoff` | Set up a project: `kit.config.json`, DS profile link, stack, first app skeleton |
-| `adopt` | No DS yet: build a base DS profile from a public preset (default shadcn) |
+| `adopt` | No DS yet: build a base DS profile from a preset (shadcn by default, or atelier) |
 | `define` | Analyse PM/BA requirements, questions, delivery plan, traceability |
 | `context` | Product context files and the decision log (status lifecycle, who decided) |
 | `explore` | Two to four design directions with the DS, comparison page, human decision before building |

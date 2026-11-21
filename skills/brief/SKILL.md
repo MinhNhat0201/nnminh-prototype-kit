@@ -24,7 +24,7 @@ Model and effort: `kit.config.json > skills.brief` (`model`, `effort`) when set.
 | Skill | Job | Typical phrases |
 |---|---|---|
 | `kickoff` | Set up the project: config, DS link, stack, first app | "start a new project", "set up the kit" |
-| `adopt` | No DS yet: base DS profile from a public preset | "we have no design system", "start from shadcn" |
+| `adopt` | No DS yet: base DS profile from a public preset | "we have no design system", "start from shadcn", "use atelier" |
 | `define` | Requirements → questions, plan, waves, traceability | "here is the PRD", "plan this feature", "impact of this change" |
 | `context` | Product memory: overview, personas, principles, rules, decision log | "remember this decision", "why did we decide X", "set up product context" |
 | `explore` | 2–4 design directions with the DS, compare, human chooses | "show me options", "explore directions", "what are the ways to design this" |

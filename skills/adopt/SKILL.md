@@ -1,6 +1,6 @@
 ---
 name: adopt
-description: "Build a base DS profile for a project that has no design system: aesthetic layer (tokens, component recipes) from a public preset (default and only preset now: shadcn, which also serves shadcn-vue) and structure layer from Material Design 3 (window size classes, 48 px touch targets, bottom sheet, tab bar, navigation rail, FAB, density). Asks for brand seed colour, name and prefix, radius, font, dark mode; generates ds.json, tokens (DTCG and CSS), components, bundle, catalog, rules, library page, Flutter theme; checks contrast; optionally pushes variables and text styles to Figma. Use when the user says 'we have no design system', 'start from shadcn', 'create a base DS', 'make a DS from our brand colour', or when `kickoff`/`brief` finds no DS. Do not use to link an existing profile (`kickoff`), to change tokens of an existing DS (`document`), or to bring a new DS version into apps (`sync`). Also use for the same request in any language."
+description: "Build a base DS profile for a project that has no design system: aesthetic layer (tokens, component recipes) from a preset (shadcn: neutral, light-first, also serves shadcn-vue; atelier: dark-first, warm neutrals, accent-only brand, inset sheen) and structure layer from Material Design 3 (window size classes, 48 px touch targets, bottom sheet, tab bar, navigation rail, FAB, density). Asks for brand seed colour, name and prefix, radius, font, dark mode; generates ds.json, tokens (DTCG and CSS), components, bundle, catalog, rules, library page, Flutter theme; checks contrast; optionally pushes variables and text styles to Figma. Use when the user says 'we have no design system', 'start from shadcn', 'use the atelier preset', 'create a base DS', 'make a DS from our brand colour', or when `kickoff`/`brief` finds no DS. Do not use to link an existing profile (`kickoff`), to change tokens of an existing DS (`document`), or to bring a new DS version into apps (`sync`). Also use for the same request in any language."
 ---
 
 # Adopt: base DS profile from a preset
@@ -34,10 +34,10 @@ The result must not look like a copy of the preset: the seed colour and the pref
 
 | # | Question | Options |
 |---|---|---|
-| 1 | Preset | `shadcn` (default; shadcn/ui, same variables for shadcn-vue). Show other presets as "later", not selectable. |
+| 1 | Preset | `shadcn` (default; neutral, light-first; shadcn/ui, same variables for shadcn-vue) or `atelier` (dark-first, warm neutrals, brand only for the main action and the selected state, inset sheen on surfaces, Manrope headings on Geist; suggested seed `#f0dd99`). Both render shadcn/ui and shadcn-vue through the same alias layer. |
 | 2 | Brand seed colour | Hex the user types (`#2563eb` is only an example). Offer 3 starter hues if they have none; never choose for them. |
 | 3 | Name and token prefix | Name (`acme`), label ("Acme DS"), prefix (default `--<name>-`). Classes use the prefix without the dashes (`acme-btn`). |
-| 4 | Radius, font, dark mode | Radius in px (preset default 10; 0 square, 6 tight, 8, 10, 12 soft); font (default Inter, OFL; never a font owned by a platform vendor); dark mode yes (default) / no |
+| 4 | Radius, font, dark mode | Radius in px (preset default 10; 0 square, 6 tight, 8, 10, 12 soft); font (preset default: shadcn Inter, atelier Geist with Manrope for headings and labels via `--font-display`; OFL; never a font owned by a platform vendor); dark mode yes (default) / no. atelier is dark-first: `ds.json > theming.mode.default` is `dark`. |
 
 Platforms default to `web,mobile,tablet`; change only if the user says so. Icons: Tabler (MIT). Density default: `auto`.
 
@@ -45,10 +45,11 @@ Platforms default to `web,mobile,tablet`; change only if the user says so. Icons
 
 ```bash
 python3 $S --name acme --label "Acme DS" --prefix --acme- --seed "#2563eb" \
-  --radius 8 --font Inter --out ds/acme [--no-dark] [--lang vi]
+  --radius 8 --font Inter --out ds/acme [--preset atelier] [--font-display Manrope] [--no-dark] [--lang vi]
 ```
 
 - The script prints every contrast pair (light and dark): text 4.5:1; icons, strokes, component boundaries 3:1. A failing role is moved one half tone at a time (darker in light mode, lighter in dark) until it passes; the move is reported as ADJUSTED and written to `rules.md`.
+- A preset may replace a check (`preset.json > contrast_skip`): atelier skips brand fill on canvas because every brand fill draws a `stroke-brand` border that meets 3:1, so a pale brand colour keeps its tone. The replaced pairs are listed in `ds.json > contrast.skip` and in `rules.md`.
 - A pair that still fails → the script stops with `ERROR:` and writes nothing. Tell the user which pair and ask for another seed (usually darker or more saturated). Never lower the thresholds.
 
 Profile written (layout per `<kit>/docs/config.md`):

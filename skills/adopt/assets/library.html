@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="{{LANG}}" data-brand="default" data-mode="light" data-density="{{DENSITY_DEFAULT}}">
+<html lang="{{LANG}}" data-brand="default" data-mode="{{MODE_DEFAULT}}" data-density="{{DENSITY_DEFAULT}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -333,7 +333,7 @@
     store.set('ZZ-lib-mode', m);
   }
   function setDensity(d) { root.setAttribute('data-density', d); document.getElementById('densitySel').value = d; store.set('ZZ-lib-density', d); }
-  setMode(store.get('ZZ-lib-mode') || 'light');
+  setMode(store.get('ZZ-lib-mode') || '{{MODE_DEFAULT}}');
   setDensity(store.get('ZZ-lib-density') || '{{DENSITY_DEFAULT}}');
   document.getElementById('modeBtn').addEventListener('click', function () { setMode(root.getAttribute('data-mode') === 'dark' ? 'light' : 'dark'); });
   document.querySelectorAll('[data-mode-set]').forEach(function (b) { b.addEventListener('click', function () { setMode(b.dataset.modeSet); }); });

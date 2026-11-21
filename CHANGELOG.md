@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0 · 2026-11-21
+- New preset `atelier` for `adopt` (`--preset atelier`): dark-first, warm neutral surfaces that lighten step by step, the brand colour kept for the main action and the selected state (text, stroke and tint plus a check mark), inset sheen on dark surfaces and soft drop shadows in light mode, a brand glow on the primary button, Manrope for headings and labels on Geist body text, Geist Mono for metadata, dashed list separators. Light mode included. Same class names and shadcn alias layer as the shadcn preset, so prototypes, stack templates and audits work unchanged. Taken from the author's own design system under MIT; no code, images or personal content.
+- `adopt`: radius, font and the new display font (`--font-display`) default to the preset's values; `preset.json > defaults.mode` sets the default mode in `ds.json` and the library page (atelier: dark); shadows may name semantic tokens (`{bg-brand}`); a preset may replace a contrast pair with another check (`contrast_skip`, recorded in `ds.json > contrast.skip` and `rules.md`); the bundle header names the preset's licence. Every profile now defines `font-family-display` (the sans family unless the preset sets one). shadcn profiles are otherwise unchanged.
+
 ## 0.7.0 · 2026-11-21
 Fixes from a real handoff run, and extension points so a project can keep its own scripts. Every new key has a default that keeps the 0.6 behaviour; the fixes change behaviour only where 0.6 was wrong.
 

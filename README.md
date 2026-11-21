@@ -4,7 +4,7 @@ A design workflow for Claude Code that works with **any design system**: 18 skil
 
 **People decide, the kit does the work and checks it.** Every design choice goes through a gate where a named person decides, and the decision log remembers who decided what and why across sessions.
 
-No design system yet? `adopt` builds a base one from a public preset (shadcn by default) with your brand colour, for web, mobile and tablet.
+No design system yet? `adopt` builds a base one from a preset (shadcn, light-first and neutral, or atelier, dark-first with a warm accent) with your brand colour, for web, mobile and tablet.
 
 Website: [nnminh-prototype-kit.vercel.app](https://nnminh-prototype-kit.vercel.app) · Repository: `MinhNhat0201/nnminh-prototype-kit`
 
@@ -119,7 +119,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 |---|---|
 | `brief` | Entry point: understands the request and routes to the right skill |
 | `kickoff` | Sets up a project: config, DS link, stack, first app |
-| `adopt` | Builds a base DS from a preset (shadcn) plus Material 3 structure for mobile and tablet |
+| `adopt` | Builds a base DS from a preset (shadcn or atelier) plus Material 3 structure for mobile and tablet |
 | `define` | Requirement analysis, questions for PM/BA, delivery waves, traceability |
 | `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, and a decision log with statuses (observed → proposed → approved → implemented → verified) |
 | `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
@@ -194,4 +194,4 @@ Read [docs/authoring.md](docs/authoring.md) before adding or changing a skill. B
 
 ## Licence
 
-MIT. The shadcn preset is derived from shadcn/ui and shadcn-vue (MIT); see `presets/shadcn/NOTICE`. Profiles made by `adopt` carry their own `NOTICE`.
+MIT. The shadcn preset is derived from shadcn/ui and shadcn-vue (MIT); see `presets/shadcn/NOTICE`. The atelier preset comes from the author's own design system (MIT; fonts Geist and Manrope named, not bundled); see `presets/atelier/NOTICE`. Profiles made by `adopt` carry their own `NOTICE`.
