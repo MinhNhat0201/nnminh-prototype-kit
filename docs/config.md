@@ -136,6 +136,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `tokens.scale.spacing` | Primitive spacing scale. Used to match hard-coded `margin`, `padding`, `gap`. |
 | `css.bundle` | One CSS file with the whole DS. Prototypes in the `html` stack embed it; the spec viewer and the audit read it. Path is relative to the profile folder, or a URL. |
 | `css.marker` | Comments that wrap the embedded DS CSS inside an app, so `sync` can replace it and `review` can tell DS CSS from app CSS. |
+| `css.styleBlocks` | Optional id prefix (for example `lib`): every `<style id="<prefix>…">` block in an app is DS CSS. For DS that embed their library blocks by id instead of marker comments. A file in the app named like the bundle (for example `mds.css`) and a `<link href>` to it also count as DS CSS. |
 | `version_label` | Footer text and `<meta>` name that state which DS version a prototype uses. |
 | `theming` | Attributes the DS reads on `<html>`. Skills set them only through these keys; they never invent new attributes. |
 | `catalog` | Component catalogue for agents: class, variants, states, tokens, and the `components.map` table (HTML class ↔ React ↔ Vue component). |

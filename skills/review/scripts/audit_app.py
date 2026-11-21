@@ -6,7 +6,8 @@ outside tokens, Tailwind arbitrary values and inline style objects (react, vue),
 tokens used but never defined, DS component use, theming attributes and the local-component registry.
 It does not run a browser: overflow, console errors, contrast and large text are checked by the review skill.
 
-DS region  = text between the comments /* <css.marker.begin> */ and /* <css.marker.end> */ (ds.json).
+DS region  = text between the comments /* <css.marker.begin> */ and /* <css.marker.end> */ (ds.json), plus whole
+             <style id="<css.styleBlocks>…"> blocks when ds.json sets css.styleBlocks (e.g. "lib").
 App region = every other CSS (other <style> blocks, .css files outside the region, style="" attributes,
              style={{...}} objects, :style bindings, Tailwind arbitrary values).
 
@@ -119,6 +120,9 @@ class Ctx:
         self.VISUAL = re.compile(r"(?:^|[;\s])(?:%s|%s[a-z0-9-]+)\s*:" % (VISUAL_PROPS, p))
         mk = self.ds["css"]["marker"]
         self.REGION = re.compile(r"/\*\s*%s[^*]*\*/(.*?)/\*\s*%s[^*]*\*/" % (re.escape(mk["begin"]), re.escape(mk["end"])), re.S)
+        # Optional: whole <style id="<prefix>…"> blocks are DS CSS (DS that embed their library blocks by id)
+        sb = self.ds["css"].get("styleBlocks")
+        self.STYLE_ID = re.compile(r'\bid\s*=\s*["\']%s[^"\']*["\']' % re.escape(sb), re.I) if sb else None
         loc = cfg["local"]
         self.local_prefix = loc["prefix"]
         self.LOCAL = re.compile(r"/\*\s*%s:\s*([^*]*?)\s*\*/" % re.escape(loc["marker"]))
@@ -162,7 +166,7 @@ def app_files(ctx, app):
             continue
         if ds_dir in f.resolve().parents:
             continue  # a DS profile copied inside the app is DS, not app
-        if f.name == ctx.bundle_name or f.name.endswith((".min.js", ".min.css")):
+        if f.name.endswith((".min.js", ".min.css")):
             continue
         out.append(f)
     return out
@@ -312,15 +316,25 @@ def css_blocks(ctx, path, text):
     suf = path.suffix.lower()
     mask = lambda m: re.sub(r"[^\n]", " ", m.group(0))
     if suf in EXT_CSS:
+        if path.name == ctx.bundle_name:
+            return [(1, text, re.sub(r"[^\n]", " ", text))]  # a copy of the DS bundle inside the app is DS CSS
         return [(1, "\n".join(ctx.REGION.findall(text)), ctx.REGION.sub(mask, text))]
     if suf in EXT_HTML | EXT_VUE:
-        return [(text.count("\n", 0, m.start(2)) + 1, "\n".join(ctx.REGION.findall(m.group(2))), ctx.REGION.sub(mask, m.group(2)))
-                for m in STYLE.finditer(text)]
+        out = []
+        for m in STYLE.finditer(text):
+            line = text.count("\n", 0, m.start(2)) + 1
+            if ctx.STYLE_ID and ctx.STYLE_ID.search(m.group(1)):
+                out.append((line, m.group(2), re.sub(r"[^\n]", " ", m.group(2))))
+            else:
+                out.append((line, "\n".join(ctx.REGION.findall(m.group(2))), ctx.REGION.sub(mask, m.group(2))))
+        return out
     return []
 
 
 def imports_bundle(ctx, text):
-    return bool(re.search(r"""(?:@import|import)\s*(?:url\()?\s*['"][^'"]*%s['"]""" % re.escape(ctx.bundle_name), text))
+    n = re.escape(ctx.bundle_name)
+    return bool(re.search(r"""(?:@import|import)\s*(?:url\()?\s*['"][^'"]*%s['"]""" % n, text)
+                or re.search(r"""<link\b[^>]*\bhref\s*=\s*['"][^'"]*%s['"]""" % n, text, re.I))
 
 
 def declared_versions(ctx, files):
@@ -462,14 +476,20 @@ def audit_app(ctx, app, lib):
     blob = "\n".join(ctx.REGION.sub("", x) for x in texts.values())  # the DS region only reads the attributes
     th = {}
     for key, spec in (ctx.ds.get("theming") or {}).items():
+        if not isinstance(spec, dict):
+            continue  # notes or other non-attribute entries
         attr = spec.get("attr")
         if not attr:
             continue
         camel = re.sub(r"-([a-z])", lambda m: m.group(1).upper(), attr[5:]) if attr.startswith("data-") else None
-        vals = set(re.findall(r'(?<!\[)%s="([\w-]+)"' % re.escape(attr), blob))
-        vals |= set(re.findall(r"""setAttribute\(\s*['"]%s['"]\s*,\s*['"]([\w-]+)['"]""" % re.escape(attr), blob))
+        # only the root element carries theming attributes: <html …>, documentElement.setAttribute/dataset
+        # (the same attribute name on other elements is app state, e.g. data-mode="edit" on a panel)
+        vals = set()
+        for tag in re.findall(r"<html\b[^>]*>", blob, re.I):
+            vals |= set(re.findall(r'%s="([\w-]+)"' % re.escape(attr), tag))
+        vals |= set(re.findall(r"""documentElement\.setAttribute\(\s*['"]%s['"]\s*,\s*['"]([\w-]+)['"]""" % re.escape(attr), blob))
         if camel:
-            vals |= set(re.findall(r"""dataset\.%s\s*=\s*['"]([\w-]+)['"]""" % camel, blob))
+            vals |= set(re.findall(r"""documentElement\.dataset\.%s\s*=\s*['"]([\w-]+)['"]""" % camel, blob))
         allowed = spec.get("values") or []
         th[key] = {"attr": attr, "values": sorted(vals), "unknown": sorted(v for v in vals if allowed and v not in allowed),
                    "default": spec.get("default")}
@@ -484,6 +504,7 @@ def audit_app(ctx, app, lib):
         comps = [c for c in items if isinstance(c, dict) and c.get("app") in (app["id"], app.get("name"))]
     blocks = sorted({m.strip() for txt in texts.values() for m in ctx.LOCAL.findall(txt)})
     known = {str(c.get(k)) for c in comps for k in ("block", "name", "title", "id") if c.get(k)}
+    known |= {m.strip() for c in comps if c.get("anchor") for m in ctx.LOCAL.findall(str(c["anchor"]))}  # registry keeps the full comment
     res["local"] = {"registry": str(reg_path.relative_to(ctx.root)), "registry_found": reg_path.is_file(), "total": len(comps),
                     "by_status": dict(collections.Counter(c.get("status") for c in comps)),
                     "pending": [c.get("title") or c.get("name") or c.get("id") for c in comps if c.get("status") == "pending"],
