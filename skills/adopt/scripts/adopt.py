@@ -7,7 +7,8 @@ sheet, tab bar, navigation rail, FAB, density) follows Material Design 3.
 
 Commands:
   adopt.py [generate] --name acme --label "Acme DS" --prefix --acme- --seed "#2563eb"
-           --radius 8 --font Inter --out ds/acme [--no-dark] [--preset shadcn]
+           --radius 8 --font Inter --out ds/acme [--no-dark] [--preset shadcn|atelier]
+           [--font-display Manrope]
            [--platforms web,mobile,tablet] [--lang en] [--force]
       Generate the profile folder. Stops with ERROR if a contrast pair still
       fails after automatic tone adjustment, or if --out is not empty (use --force).
@@ -225,11 +226,12 @@ def hex_alpha(h, alpha):
 
 
 # ---------------------------------------------------------- contrast pairs
-def contrast_pairs():
+def contrast_pairs(skip=()):
+    """skip: 'fg on bg' pairs a preset replaces with another check (preset.json > contrast_skip)."""
     P = []
 
     def add(fg, bgs, m):
-        P.extend((fg, b, m) for b in bgs)
+        P.extend((fg, b, m) for b in bgs if f"{fg} on {b}" not in skip)
     add("bg-brand", ["bg-canvas", "bg-brand-subtle"], NONTEXT)
     add("bg-danger", ["bg-canvas"], NONTEXT)
     add("stroke-strong", ["bg-canvas", "bg-surface"], NONTEXT)
@@ -367,15 +369,24 @@ def generate(a):
         die("--prefix must look like --acme- (two leading hyphens, one trailing hyphen)")
     if not re.fullmatch(r"#[0-9a-fA-F]{6}", a.seed or ""):
         die("--seed must be a hex colour like #2563eb")
+    preset = read_json(preset_dir / "preset.json")
+    pdef = preset.get("defaults", {})
+    if a.radius is None:
+        a.radius = int(pdef.get("radius", 10))
+    if a.font is None:
+        a.font = pdef.get("font", "Inter")
+    if a.font_display is None:
+        a.font_display = pdef.get("font_display")
     if not 0 <= a.radius <= 32:
         die("--radius must be between 0 and 32 (px)")
     if not re.fullmatch(r"[A-Za-z0-9 ]{2,40}", a.font):
         die("--font must be a plain family name, e.g. Inter")
+    if a.font_display and not re.fullmatch(r"[A-Za-z0-9 ]{2,40}", a.font_display):
+        die("--font-display must be a plain family name, e.g. Manrope")
     out = Path(a.out).resolve()
     if out.exists() and any(out.iterdir()) and not a.force:
         die(f"{a.out} is not empty. Choose another --out or pass --force to overwrite the generated files.")
 
-    preset = read_json(preset_dir / "preset.json")
     base = read_json(preset_dir / "tokens.base.json")
     comps = read_json(preset_dir / "components.json")["components"]
     cfg = kit_load(require=False)
@@ -383,6 +394,10 @@ def generate(a):
     T = lambda key, **kw: kit_t(lang, key, **kw)  # noqa: E731
     dark = not a.no_dark
     modes = ["light", "dark"] if dark else ["light"]
+    mode_default = pdef.get("mode", "light") if dark else "light"
+    if pdef.get("mode") == "dark" and not dark:
+        print("WARNING: this preset is dark-first; with --no-dark the profile has the light mode only.")
+    licence = preset.get("upstream", {}).get("licence", "MIT")
     cls = prefix[2:]          # class prefix, e.g. "acme-"
     label = a.label or a.name.capitalize() + " DS"
     platforms = [p.strip() for p in a.platforms.split(",") if p.strip()]
@@ -403,7 +418,8 @@ def generate(a):
         pals.add(name, {k: parse_colour(v) for k, v in base["palettes"][name].items()})
 
     semantic = base["semantic"]
-    pairs = contrast_pairs()
+    skip = preset.get("contrast_skip", {})
+    pairs = contrast_pairs(skip)
     res, rows = {}, []
     for m in modes:
         res[m] = resolve_mode(m, semantic, pals, pairs)
@@ -425,6 +441,7 @@ def generate(a):
     dens = base["density"]["tokens"]
     fixed = base["spacing"]["fixed"]
     font_stack = f"\"{a.font}\", {typo['fallback']['sans']}"
+    display_stack = f"\"{a.font_display}\", {font_stack}" if a.font_display else var(prefix, "font-family-sans")
     mono_stack = f"{typo['family']['mono']}, {typo['fallback']['mono']}"
     styles = typo["styles"]
 
@@ -443,16 +460,17 @@ def generate(a):
     L += sem_lines(prefix, res["light"])
     L.append("  /* semantic: radius, type, shadow, space, size, motion, z */")
     L += [f"  {prefix}radius-{k}: {px(v)};" for k, v in radius.items()]
-    L += [f"  {prefix}font-family-sans: {font_stack};", f"  {prefix}font-family-mono: {mono_stack};"]
+    L += [f"  {prefix}font-family-sans: {font_stack};", f"  {prefix}font-family-display: {display_stack};",
+          f"  {prefix}font-family-mono: {mono_stack};"]
     L += [f"  {prefix}font-weight-{k}: {var(prefix, 'num-font-weight-' + k)};" for k in typo["weight"]]
     for st, v in styles.items():
         L += [f"  {prefix}font-size-{st}: {var(prefix, 'num-font-size-' + v['size'])};",
               f"  {prefix}line-height-{st}: {var(prefix, 'num-line-height-' + v['lineHeight'])};",
               f"  {prefix}font-weight-{st}: {var(prefix, 'num-font-weight-' + v['weight'])};"]
-    L += [f"  {prefix}shadow-{k}: {v};" for k, v in base["shadow"]["light"].items()]
+    L += [f"  {prefix}shadow-{k}: {shadow_value(prefix, v)};" for k, v in base["shadow"]["light"].items()]
     L += [f"  {prefix}space-{k}: {var(prefix, 'num-spacing-' + v)};" for k, v in fixed.items()]
     L += [f"  {prefix}size-{k}: {px(v)};" for k, v in sizes.items()]
-    L += [f"  {prefix}motion-{k}: {v};" for k, v in base["motion"].items()]
+    L += [f"  {prefix}motion-{k}: {v};" for k, v in base["motion"].items() if not k.startswith("$")]
     L += [f"  {prefix}z-{k}: {v};" for k, v in base["z"].items()]
     L.append("}")
     L.append("")
@@ -491,7 +509,7 @@ def generate(a):
         D = [f"/* tokens-dark.css · {label} {PROFILE_VERSION} · dark mode: <html data-mode=\"dark\"> (also .dark for shadcn/ui and shadcn-vue). */",
              '[data-mode="dark"], .dark {', "  color-scheme: dark;"]
         D += sem_lines(prefix, res["dark"])
-        D += [f"  {prefix}shadow-{k}: {v};" for k, v in base["shadow"]["dark"].items()]
+        D += [f"  {prefix}shadow-{k}: {shadow_value(prefix, v)};" for k, v in base["shadow"]["dark"].items()]
         D.append("}")
         dark_css = "\n".join(D) + "\n"
 
@@ -504,7 +522,7 @@ def generate(a):
     sources = ["tokens.css"] + (["tokens-dark.css"] if dark else []) + ["base.css", "components.css", "responsive.css"]
     texts = {"tokens.css": tokens_css, "tokens-dark.css": dark_css, "base.css": base_css,
              "components.css": comp_css, "responsive.css": resp_css}
-    bundle = (f"/* @ds:begin */\n/* {label} {PROFILE_VERSION} · {a.preset} preset (MIT) + Material Design 3 structure · see NOTICE */\n"
+    bundle = (f"/* @ds:begin */\n/* {label} {PROFILE_VERSION} · {a.preset} preset ({licence}) + Material Design 3 structure · see NOTICE */\n"
               + "\n".join(f"/* ---- {s} ---- */\n{texts[s]}" for s in sources) + "/* @ds:end */\n")
 
     # ------------------------------------------------------------ write files
@@ -529,7 +547,7 @@ def generate(a):
         "version_label": {"text": "{label} {version}", "meta": "ds-version"},
         "theming": {
             "brand": {"attr": "data-brand", "values": ["default"]},
-            "mode": {"attr": "data-mode", "values": modes, "default": "light"},
+            "mode": {"attr": "data-mode", "values": modes, "default": mode_default},
             "density": {"attr": "data-density", "values": ["auto"] + DENSITIES, "default": "auto"}},
         "breakpoints": {"compact": 0, "medium": 600, "expanded": 840},
         "icons": {"set": "tabler", "file": "icons.json"},
@@ -540,21 +558,24 @@ def generate(a):
                   "variables": "figma-variables.json"},
         "preset": {"name": a.preset, "version": preset["values"]["upstream_version"]},
     }
+    if skip:
+        ds["contrast"] = {"skip": skip}
     write(out / "ds.json", json.dumps(ds, ensure_ascii=False, indent=2) + "\n")
 
-    write(out / "tokens.json", json.dumps(dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, styles, font_stack, label, a.preset),
+    write(out / "tokens.json", json.dumps(dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, styles, font_stack, label, a.preset, a.font_display),
                                           ensure_ascii=False, indent=2) + "\n")
-    write(out / "figma-variables.json", json.dumps(figma_data(prefix, pals, res, modes, sp, typo, radius, fixed, dens, sizes, styles, a.font, label),
+    write(out / "figma-variables.json", json.dumps(figma_data(prefix, pals, res, modes, sp, typo, radius, fixed, dens, sizes, styles, a.font, label, a.font_display),
                                                    ensure_ascii=False, indent=2) + "\n")
     icons = read_json(ASSETS / "icons.json")
     write(out / "icons.json", json.dumps(icons, ensure_ascii=False, indent=2) + "\n")
 
     write(out / "catalog.md", catalog_md(T, label, prefix, cls, a.preset, preset, comps, comp_css + resp_css, modes))
-    write(out / "rules.md", rules_md(T, label, prefix, a.font, adjusted, comps, rows))
-    write(out / "library.html", library_html(T, lang, label, a.name, prefix, cls, bundle, res, pals, modes, styles, typo, radius, a.font, icons))
-    write(out / "flutter" / f"{a.name.replace('-', '_')}_theme.dart", flutter_dart(a.name, label, res, modes, sp, typo, radius, styles, a.font, dens, sizes))
+    write(out / "rules.md", rules_md(T, label, prefix, a.font, adjusted, comps, rows, skip))
+    write(out / "library.html", library_html(T, lang, label, a.name, prefix, cls, bundle, res, pals, modes, styles, typo, radius, a.font, icons, mode_default))
+    write(out / "flutter" / f"{a.name.replace('-', '_')}_theme.dart", flutter_dart(a.name, label, res, modes, sp, typo, radius, styles, a.font, dens, sizes, a.font_display))
     notice = (f"{label} {PROFILE_VERSION}\nGenerated on {today} by the adopt skill of the prototype kit from the {a.preset} preset.\n"
-              f"Brand palette generated from the seed {seed}; prefix {prefix}; radius {a.radius} px; font {a.font} (not bundled).\n\n"
+              f"Brand palette generated from the seed {seed}; prefix {prefix}; radius {a.radius} px; font {a.font}"
+              + (f", display font {a.font_display}" if a.font_display else "") + " (not bundled).\n\n"
               + (preset_dir / "NOTICE").read_text(encoding="utf-8"))
     write(out / "NOTICE", notice)
     yes_no = T("adopt.yes") if dark else T("adopt.no")
@@ -577,6 +598,11 @@ def generate(a):
     print(f"Next: python3 {HERE} check --out {a.out}")
 
 
+def shadow_value(prefix, v):
+    """Shadows may name semantic tokens in braces, e.g. {bg-brand}: they become var(--acme-bg-brand)."""
+    return re.sub(r"\{([a-z0-9-]+)\}", lambda m: var(prefix, m.group(1)), v)
+
+
 def sem_lines(prefix, res):
     out = []
     for tok, r in res.items():
@@ -596,7 +622,7 @@ def print_contrast(rows):
 
 
 # ---------------------------------------------------------------- tokens.json
-def dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, styles, font_stack, label, preset):
+def dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, styles, font_stack, label, preset, display_font=None):
     prim = {"color": {}}
     for pal in pals.p:
         prim["color"][pal] = {s: {"$type": "color", "$value": pals.p[pal][s]} for s in pals.order(pal)}
@@ -621,7 +647,7 @@ def dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, s
         entry["$extensions"] = {"kit.modes": ext, "kit.css": f"{prefix}{tok}"}
         sem.setdefault(role, {})[name] = entry
     sem["radius"] = {k: {"$type": "dimension", "$value": px(v)} for k, v in radius.items()}
-    sem["shadow"] = {k: {"$type": "shadow", "$value": v, "$extensions": {"kit.modes": {"dark": base["shadow"]["dark"][k]}}}
+    sem["shadow"] = {k: {"$type": "shadow", "$value": shadow_value(prefix, v), "$extensions": {"kit.modes": {"dark": shadow_value(prefix, base["shadow"]["dark"][k])}}}
                      for k, v in base["shadow"]["light"].items()}
     sem["space"] = {k: {"$type": "dimension", "$value": "{primitive.spacing.%s}" % v} for k, v in fixed.items()}
     for k, v in dens.items():
@@ -629,8 +655,10 @@ def dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, s
                            "$extensions": {"kit.density": {d: "{primitive.spacing.%s}" % v[d] for d in DENSITIES}}}
     sem["size"] = {k: {"$type": "dimension", "$value": px(v)} for k, v in sizes.items()}
     sem["fontFamily"] = {"sans": {"$type": "fontFamily", "$value": font_stack}}
+    if display_font:
+        sem["fontFamily"]["display"] = {"$type": "fontFamily", "$value": f"\"{display_font}\", {font_stack}"}
     sem["typography"] = {st: {"$type": "typography", "$value": {
-        "fontFamily": "{semantic.fontFamily.sans}", "fontSize": "{primitive.fontSize.%s}" % v["size"],
+        "fontFamily": "{semantic.fontFamily.%s}" % ("display" if display_font and v.get("family") == "display" else "sans"), "fontSize": "{primitive.fontSize.%s}" % v["size"],
         "lineHeight": "{primitive.lineHeight.%s}" % v["lineHeight"], "fontWeight": "{primitive.fontWeight.%s}" % v["weight"]}}
         for st, v in styles.items()}
     return {"$description": f"{label} {PROFILE_VERSION}: W3C Design Tokens (DTCG). Semantic colours: $value is the light mode; $extensions.kit.modes holds every mode. Generated by adopt ({preset} preset).",
@@ -638,7 +666,7 @@ def dtcg(prefix, pals, res, modes, sp, typo, radius, base, fixed, dens, sizes, s
 
 
 # ---------------------------------------------------------------- figma
-def figma_data(prefix, pals, res, modes, sp, typo, radius, fixed, dens, sizes, styles, font, label):
+def figma_data(prefix, pals, res, modes, sp, typo, radius, fixed, dens, sizes, styles, font, label, display_font=None):
     P = []
     for pal in pals.p:
         for s in pals.order(pal):
@@ -675,7 +703,7 @@ def figma_data(prefix, pals, res, modes, sp, typo, radius, fixed, dens, sizes, s
                    "scopes": sc, "code": f"{prefix}space-{k}"})
     for k, v in sizes.items():
         SP.append({"name": f"size/{k}", "type": "FLOAT", "values": {dnames[d]: v for d in DENSITIES}, "scopes": ["WIDTH_HEIGHT"], "code": f"{prefix}size-{k}"})
-    text_styles = [{"name": f"{label}/{st}", "fontFamily": font, "fontStyle": WEIGHT_STYLE[typo["weight"][v["weight"]]],
+    text_styles = [{"name": f"{label}/{st}", "fontFamily": display_font if display_font and v.get("family") == "display" else font, "fontStyle": WEIGHT_STYLE[typo["weight"][v["weight"]]],
                     "fontSize": typo["size"][v["size"]], "lineHeight": typo["lineHeight"][v["lineHeight"]],
                     "letterSpacing": LETTER.get(st, 0), "description": f"{prefix}font-size-{st}"} for st, v in styles.items()]
     return {"$description": "Figma level 1 data for skills/adopt/assets/figma-push.js (use_figma).",
@@ -726,7 +754,7 @@ def catalog_md(T, label, prefix, cls, preset_name, preset, comps, css, modes):
     return "\n".join(L)
 
 
-def rules_md(T, label, prefix, font, adjusted, comps, rows):
+def rules_md(T, label, prefix, font, adjusted, comps, rows, skip=None):
     L = [f"# {T('adopt.rules.title', label=label)}", "", f"## {T('adopt.rules.hard')}", ""]
     for i in range(1, 13):
         L.append(f"{i}. " + T(f"adopt.rules.r{i}", prefix=prefix, font=font))
@@ -742,7 +770,7 @@ def rules_md(T, label, prefix, font, adjusted, comps, rows):
         L.append("- " + T("adopt.rules.noneAdjusted"))
     L += ["", f"## {T('adopt.rules.composed')}", "", T("adopt.rules.composedIntro"), ""]
     L += [f"- {c['name']}: {c.get('structure', '')}" for c in comps if c["source"] == "composed"]
-    L += ["", f"## {T('adopt.rules.contrast')}", "", T("adopt.rules.contrastIntro", exempt=", ".join(EXEMPT)), "",
+    L += ["", f"## {T('adopt.rules.contrast')}", "", T("adopt.rules.contrastIntro", exempt=", ".join(EXEMPT + [f"{k} ({v})" for k, v in (skip or {}).items()])), "",
           f"| {T('adopt.rules.colMode')} | {T('adopt.rules.colFg')} | {T('adopt.rules.colBg')} | {T('adopt.rules.colRatio')} | {T('adopt.rules.colMin')} | {T('adopt.rules.colResult')} |",
           "|---|---|---|---|---|---|"]
     for r in rows:
@@ -752,7 +780,7 @@ def rules_md(T, label, prefix, font, adjusted, comps, rows):
 
 
 # ---------------------------------------------------------------- library page
-def library_html(T, lang, label, name, prefix, cls, bundle, res, pals, modes, styles, typo, radius, font, icons):
+def library_html(T, lang, label, name, prefix, cls, bundle, res, pals, modes, styles, typo, radius, font, icons, mode_default="light"):
     tpl = (ASSETS / "library.html").read_text(encoding="utf-8")
     svg = icons["svg"]
 
@@ -776,7 +804,7 @@ def library_html(T, lang, label, name, prefix, cls, bundle, res, pals, modes, st
     rep = {"{{LANG}}": lang, "{{LABEL}}": label, "{{VERSION}}": PROFILE_VERSION, "{{VERSION_LABEL}}": f"{label} {PROFILE_VERSION}",
            "{{META}}": "ds-version", "{{DENSITY_DEFAULT}}": "auto", "{{INITIAL}}": label[:1].upper(), "{{FONT}}": font,
            "{{SWATCHES_SEMANTIC}}": "".join(sw), "{{SWATCHES_PALETTES}}": "".join(ramps), "{{TYPE}}": ty, "{{RADII}}": rad,
-           "{{HAS_DARK}}": "true" if "dark" in modes else "false",
+           "{{HAS_DARK}}": "true" if "dark" in modes else "false", "{{MODE_DEFAULT}}": mode_default,
            "{{DARK_HIDDEN}}": "" if "dark" in modes else "hidden", "{{DARK_DISABLED}}": "" if "dark" in modes else "disabled"}
     for k, v in rep.items():
         html = html.replace(k, v)
@@ -799,7 +827,7 @@ def _dart_color(h):
     return f"Color(0x{a.upper()}{h[:6].upper()})"
 
 
-def flutter_dart(name, label, res, modes, sp, typo, radius, styles, font, dens, sizes):
+def flutter_dart(name, label, res, modes, sp, typo, radius, styles, font, dens, sizes, display_font=None):
     C = "".join(p.capitalize() for p in name.split("-"))
     toks = list(res["light"])
     f = [f"// {label} {PROFILE_VERSION}: Flutter theme generated by the adopt skill from tokens.json.",
@@ -840,7 +868,8 @@ def flutter_dart(name, label, res, modes, sp, typo, radius, styles, font, dens, 
           "body-large": "bodyLarge", "body": "bodyMedium", "label": "labelLarge", "caption": "bodySmall"}
     for st, v in styles.items():
         size, lh, w = typo["size"][v["size"]], typo["lineHeight"][v["lineHeight"]], typo["weight"][v["weight"]]
-        f.append(f"  {m3[st]}: TextStyle(fontFamily: '{font}', fontSize: {size}, height: {lh}/{size}, fontWeight: FontWeight.{wmap[w]}, color: color),")
+        fam = display_font if display_font and v.get("family") == "display" else font
+        f.append(f"  {m3[st]}: TextStyle(fontFamily: '{fam}', fontSize: {size}, height: {lh}/{size}, fontWeight: FontWeight.{wmap[w]}, color: color),")
     f.append(");")
     f.append("")
     f.append(f"ThemeData {_camel(name)}Theme({{Brightness brightness = Brightness.light, VisualDensity density = VisualDensity.standard}}) {{")
@@ -926,7 +955,7 @@ def check(a):
         if m not in res:
             errs.append(f"tokens.json has no '{m}' values")
             continue
-        rows += verify(m, res[m], contrast_pairs())
+        rows += verify(m, res[m], contrast_pairs((ds.get("contrast") or {}).get("skip", {})))
     bad = [r for r in rows if r["status"] == "FAIL"]
     for r in bad:
         errs.append(f"contrast {r['mode']} {r['fg']} on {r['bg']}: {r['ratio']}:1 < {r['min']}:1")
@@ -983,8 +1012,9 @@ def main(argv):
         p.add_argument("--label", help='display name, e.g. "Acme DS"')
         p.add_argument("--prefix", help="token prefix, e.g. --acme- (default --<name>-)")
         p.add_argument("--seed", required=True, help="brand seed colour, #rrggbb")
-        p.add_argument("--radius", type=int, default=10, help="base radius in px (preset default 10)")
-        p.add_argument("--font", default="Inter", help="font family name (default Inter)")
+        p.add_argument("--radius", type=int, default=None, help="base radius in px (default: the preset's, 10)")
+        p.add_argument("--font", default=None, help="font family name (default: the preset's; shadcn Inter, atelier Geist)")
+        p.add_argument("--font-display", default=None, help="display font for headings and labels (default: the preset's; atelier Manrope)")
         p.add_argument("--no-dark", action="store_true", help="light mode only")
         p.add_argument("--preset", default="shadcn", help="preset folder under presets/ (default shadcn)")
         p.add_argument("--platforms", default="web,mobile,tablet", help="comma list (default web,mobile,tablet)")

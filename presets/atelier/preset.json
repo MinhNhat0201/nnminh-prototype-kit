@@ -1,0 +1,65 @@
+{
+  "name": "atelier",
+  "label": "Atelier",
+  "description": "Dark-first aesthetic layer: warm neutral surfaces that lighten step by step, text hierarchy by tone, the brand colour kept for the main action and the selected state, surfaces lit by an inset sheen, a display face for headings and labels. Light mode included. Works with shadcn/ui and shadcn-vue components through the same alias layer as the shadcn preset.",
+  "upstream": {
+    "project": "Atelier design system (portfolio design system of the kit author)",
+    "url": "https://github.com/MinhNhat0201/nnminh-prototype-kit/tree/main/presets/atelier",
+    "repository": "https://github.com/MinhNhat0201/nnminh-prototype-kit",
+    "licence": "MIT",
+    "copyright": "Copyright (c) 2026 MinhNhat0201"
+  },
+  "values": {
+    "source": "design-system/tokens/tokens.json and STYLEGUIDE.md of the author's portfolio design system (private repository), contributed by the author under MIT",
+    "upstream_version": "atelier 1.0",
+    "fetched": "2026-11-21",
+    "from_memory": false,
+    "verify": "Neutral steps 300 and 700 are interpolated between the source steps. The source has no warning or info role: warning uses the source orange, info the kit default. Line heights are rounded to whole px; the subtitle and body line heights are opened up for UI text."
+  },
+  "taken": [
+    "Warm neutral palette and how surfaces step from canvas to raised in dark and light",
+    "Brand used only for the main action, accents and the selected state (text, stroke, tint)",
+    "Inset sheen shadows for dark surfaces, soft drop shadows for light, the brand glow on the primary button, hover ring",
+    "Radius scale (sm 4 to 3xl 20) and type scale (32 display to 13 label), display face for headings and labels",
+    "Motion: 200 to 400 ms with a non-bouncing ease-out",
+    "Component recipes: glass secondary button, raised inputs with a focus ring, dashed list separators, gold selected state"
+  ],
+  "not_taken": [
+    "No source code, no React components, no decorative components (globe, particles, cursor, bookshelf)",
+    "No logos, images, brand names or personal content from the portfolio",
+    "No breakpoints from the source (Framer frame sizes); the kit's Material Design 3 window size classes apply",
+    "No web font files; the profile names font families only"
+  ],
+  "structure": {
+    "source": "Material Design 3 guidelines (published layout and component guidance; no assets, icons or fonts)",
+    "taken": [
+      "Window size classes: compact < 600, medium 600-839, expanded >= 840",
+      "48 px minimum touch target",
+      "Bottom sheet, navigation bar (bottom tab bar), navigation rail, FAB, top app bar, segmented button, chips, snackbar placement, list row heights",
+      "Density levels 0, -1, -2 (comfortable, standard, compact)"
+    ]
+  },
+  "files": {
+    "tokens": "tokens.base.json",
+    "components": "components.json",
+    "templates": [
+      "templates/base.css",
+      "templates/components.css",
+      "templates/responsive.css"
+    ],
+    "notice": "NOTICE"
+  },
+  "defaults": {
+    "radius": 10,
+    "font": "Geist",
+    "font_display": "Manrope",
+    "icons": "tabler",
+    "mode": "dark",
+    "seed": "#f0dd99"
+  },
+  "contrast_skip": {
+    "bg-brand on bg-canvas": "replaced by stroke-brand on bg-canvas: brand fills carry a stroke-brand border that meets 3:1 (WCAG 1.4.11), so a pale brand colour keeps its tone",
+    "bg-brand on bg-brand-subtle": "replaced by stroke-brand on bg-canvas: brand fills carry a stroke-brand border that meets 3:1 (WCAG 1.4.11), so a pale brand colour keeps its tone"
+  },
+  "semantic_note": "Brand fills (primary button, filled icon button, FAB, checked checkbox, radio and switch) always draw a stroke-brand border."
+}

@@ -1,0 +1,45 @@
+/* responsive.css: Material Design 3 window size classes.
+   compact < 600 px · medium 600-839 px · expanded >= 840 px.
+   App shell: navigation rail on medium and expanded, bottom tab bar on compact.
+   Media queries cannot read custom properties, so breakpoints are written here and in ds.json > breakpoints. */
+
+/* == component: app-shell == */
+.ZZ-app {
+  display: grid; min-height: 100dvh;
+  grid-template: "top top" auto "rail main" 1fr / auto minmax(0, 1fr);
+}
+.ZZ-app > .ZZ-topbar { grid-area: top; }
+.ZZ-app > .ZZ-rail { grid-area: rail; position: sticky; top: var(--T-size-topbar-h); height: calc(100dvh - var(--T-size-topbar-h)); overflow-y: auto; }
+.ZZ-app > .ZZ-main { grid-area: main; min-width: 0; }
+.ZZ-app > .ZZ-tabbar { display: none; }
+.ZZ-main { padding: var(--T-space-xl); }
+.ZZ-container { width: 100%; max-width: var(--T-size-container); margin-inline: auto; }
+
+/* compact: phones */
+@media (max-width: 599.98px) {
+  .ZZ-app { grid-template: "top" auto "main" 1fr "tab" auto / minmax(0, 1fr); }
+  .ZZ-app > .ZZ-rail { display: none; }
+  .ZZ-app > .ZZ-tabbar { display: flex; grid-area: tab; position: sticky; bottom: 0; z-index: var(--T-z-sticky); }
+  .ZZ-main { padding: var(--T-space-lg); }
+  .ZZ-hide-compact { display: none !important; }
+  .ZZ-dialog__footer { flex-direction: column-reverse; align-items: stretch; }
+  .ZZ-dialog__footer > .ZZ-btn { width: 100%; }
+  body:has(.ZZ-tabbar) .ZZ-toast-region { bottom: calc(var(--T-size-tabbar-h) + env(safe-area-inset-bottom, 0)); }
+  body:has(.ZZ-tabbar) .ZZ-fab--fixed { bottom: calc(var(--T-size-tabbar-h) + var(--T-space-lg) + env(safe-area-inset-bottom, 0)); }
+  .ZZ-toast-region { padding: var(--T-space-sm); }
+  .ZZ-toast { max-width: none; }
+}
+
+/* medium: tablets in portrait, small windows */
+@media (min-width: 600px) and (max-width: 839.98px) {
+  .ZZ-hide-medium { display: none !important; }
+}
+
+/* expanded: tablets in landscape, desktops */
+@media (min-width: 840px) {
+  .ZZ-hide-expanded { display: none !important; }
+  .ZZ-toast-region { align-items: flex-start; }
+}
+@media (max-width: 839.98px) {
+  .ZZ-show-expanded { display: none !important; }
+}

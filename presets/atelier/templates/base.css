@@ -1,0 +1,43 @@
+/* base.css: reset, fonts (display face for headings and labels), focus ring, text styles. Semantic tokens only. */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  margin: 0;
+  min-height: 100dvh;
+  font-family: var(--T-font-family-sans);
+  font-size: var(--T-font-size-body);
+  line-height: var(--T-line-height-body);
+  font-weight: var(--T-font-weight-regular);
+  letter-spacing: -0.01em;
+  color: var(--T-text-primary);
+  background: var(--T-bg-canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+h1, h2, h3, h4, h5, h6, p, figure, blockquote { margin: 0; }
+h1, h2, h3, h4, h5, h6 { font-family: var(--T-font-family-display); font-weight: var(--T-font-weight-medium); letter-spacing: -0.02em; }
+img, svg, video, canvas { display: block; max-width: 100%; }
+button, input, select, textarea { font: inherit; color: inherit; }
+a { color: var(--T-text-link); text-underline-offset: 0.2em; }
+code, kbd, pre { font-family: var(--T-font-family-mono); font-size: var(--T-font-size-caption); }
+hr { border: 0; border-top: var(--T-size-border) solid var(--T-stroke-default); margin: 0; }
+[hidden] { display: none !important; }
+::selection { background: var(--T-bg-brand-subtle); color: var(--T-text-primary); }
+:focus-visible { outline: var(--T-size-focus-ring) solid var(--T-stroke-focus); outline-offset: var(--T-size-focus-offset); }
+:focus:not(:focus-visible) { outline: none; }
+
+.ZZ-text-display { font-family: var(--T-font-family-display); font-size: var(--T-font-size-display); line-height: var(--T-line-height-display); font-weight: var(--T-font-weight-display); letter-spacing: -0.02em; }
+.ZZ-text-headline { font-family: var(--T-font-family-display); font-size: var(--T-font-size-headline); line-height: var(--T-line-height-headline); font-weight: var(--T-font-weight-headline); letter-spacing: -0.03em; }
+.ZZ-text-title { font-family: var(--T-font-family-display); font-size: var(--T-font-size-title); line-height: var(--T-line-height-title); font-weight: var(--T-font-weight-title); letter-spacing: -0.03em; }
+.ZZ-text-subtitle { font-family: var(--T-font-family-display); font-size: var(--T-font-size-subtitle); line-height: var(--T-line-height-subtitle); font-weight: var(--T-font-weight-subtitle); letter-spacing: -0.02em; }
+.ZZ-text-body-large { font-size: var(--T-font-size-body-large); line-height: var(--T-line-height-body-large); font-weight: var(--T-font-weight-body-large); }
+.ZZ-text-body { font-size: var(--T-font-size-body); line-height: var(--T-line-height-body); font-weight: var(--T-font-weight-body); }
+.ZZ-text-label { font-family: var(--T-font-family-display); font-size: var(--T-font-size-label); line-height: var(--T-line-height-label); font-weight: var(--T-font-weight-label); letter-spacing: -0.01em; }
+.ZZ-text-caption { font-size: var(--T-font-size-caption); line-height: var(--T-line-height-caption); font-weight: var(--T-font-weight-caption); }
+.ZZ-text-secondary { color: var(--T-text-secondary); }
+
+.ZZ-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
