@@ -6,6 +6,7 @@ description: "Write or update the design spec for BA, QC and developers from a p
 # Annotate: Markdown spec mapped to prototype screens
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.annotate` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 Goal: a reader opens the spec, sees the whole flow first, and every spec unit shows its own screens and design notes, not a design section collected at the end.
 
@@ -96,6 +97,8 @@ spec/FR-01.md …      one file per unit; each screen is "### S01 · <name>" wit
 spec/cross-page.md   multi-page prototypes only
 screens/screens.json requirements/flows.json requirements/spec-map.json
 ```
+
+`cross-page.md` and `archive.md` are the default names; a project may rename them in `kit.config.json > handoff.specFiles` (`crossPage`, `archive`; `legacy` lists older names still read as special files, never as units).
 
 - `ds` in the frontmatter is the DS version label (`ds.json > version_label`) of the version you read.
 - Pin code `S01-2` = screen and pin number in screens.json (same number as on the viewer image).

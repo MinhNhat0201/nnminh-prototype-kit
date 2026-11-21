@@ -6,6 +6,7 @@ description: "Put a prototype flow board on Figma: one screenshot per screen, jo
 # Wireflow board on Figma
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.wireflow` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 The result is a **flow reference board** in a Figma Design file, not an editable design. Each screen is a real prototype capture; arrows carry the user action, as in the flows section of the spec.
 
@@ -56,8 +57,9 @@ Scripts: `S=skills/wireflow/scripts` (inside the kit). Every script has `--help`
 ## Step 0b. Demo links per flow
 Every board has demo buttons by default: "Open prototype" in the header and "Open flow demo" next to each flow. Reuse `url` already in `flows.json`. Otherwise:
 ```
-python3 -I $S/demo_links.py fill --screens <screens.json> --flows <flows.json> --app <app id> [--site <https URL>] [--manifest <capture manifest>]
+python3 -I $S/demo_links.py fill --screens <screens.json> --flows <flows.json> --app <app id> [--site <https URL>] [--manifest <capture manifest>] [--page-root prototype]
 ```
+- Page paths keep their folder (`tasks/index.html` → `<site>/<app path>/tasks/`). Captures of a package copy served from the package folder: `--page-root prototype`.
 - `--site` defaults to `kit.config.json > deploy.site`. No site at all: skip; the board has no buttons, and say so in the report.
 - Link = site + page path + hash route of the first screen. A flow with a hand-set `url` keeps it. Links must be https on the site, else ERROR.
 - With `--manifest`: a REMINDER lists flows whose first screen needs steps and has no `start`. Fill `start` with the exact on-screen label; never guess.

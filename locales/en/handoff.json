@@ -19,7 +19,7 @@
  "handoff.agents.ba": "| BA: write or review the spec | `spec/index.md` (scope, unit table, \"needs confirmation\") → `spec/<code>.md` of the unit → `spec/flows.md` when the flow matters → `requirements/checklist-feature.csv` |",
  "handoff.agents.qc": "| QC: write and run test cases | `requirements/checklist-qc.csv` (filter by unit code, flow) → `spec/flows.md` (steps, route, demo link) → `screens/screens.json` for the route and steps to a screen |",
  "handoff.agents.dev": "| Dev: build a unit | `spec/<code>.md` (requirements, design notes: components, tokens, states) → `screens/screens.json` (pin selectors, route) → {last} |",
- "handoff.agents.devCross": "`spec/cross-page.md` (page changes, data passed between pages)",
+ "handoff.agents.devCross": "`spec/{file}` (page changes, data passed between pages)",
  "handoff.agents.devNoCross": "`spec/index.md`, section \"Prototype entry points\"",
  "handoff.agents.design": "| Design, wireflow | `spec/flows.md` or `requirements/flows.json` → Figma link of each screen in `screens/screens.json` |",
  "handoff.agents.versions": "| Version history | `requirements/changelog.md` (last {keep} versions) |",
@@ -30,7 +30,10 @@
  "handoff.agents.view4": "- Pin `S30-2` = screen S30, pin 2 (selector in `screens.json`; style and tokens in the \"Design notes\" table of `spec/<code>.md`).",
  "handoff.agents.codesTitle": "## Code conventions",
  "handoff.agents.grep": "- Find with grep: {labels}.",
- "handoff.agents.archived": "- Replaced or removed units ({ids}) are in `spec/archive.md`; read only for traceability.",
+ "handoff.agents.archived": "- Replaced or removed units ({ids}) are in `spec/{file}`; read only for traceability.",
  "handoff.agents.tokens": "Token source: {ds} (tokens `{prefix}*`). Local components of the app use the prefix `{local}` (listed in `spec/index.md`).",
- "handoff.agents.note": "Note: the prototype is a sample to show behaviour and look; data is mock. Do not copy prototype code into the product."
+ "handoff.agents.note": "Note: the prototype is a sample to show behaviour and look; data is mock. Do not copy prototype code into the product.",
+ "handoff.spec.imagesOnBoard": "Screen images are on the Figma wireflow board: open the `figma` link of each screen in `screens/screens.json`.",
+ "handoff.layer.lock": "lock {name}",
+ "handoff.layer.hide": "hide {name}"
 }

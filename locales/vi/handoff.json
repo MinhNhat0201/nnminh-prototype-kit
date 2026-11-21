@@ -19,7 +19,7 @@
  "handoff.agents.ba": "| BA: viết, rà spec | `spec/index.md` (phạm vi, bảng đơn vị, mục \"Cần xác nhận\") → `spec/<mã>.md` của đơn vị cần làm → `spec/flows.md` nếu cần luồng → `requirements/checklist-feature.csv` |",
  "handoff.agents.qc": "| QC: soạn, chạy ca kiểm thử | `requirements/checklist-qc.csv` (lọc theo mã đơn vị, luồng) → `spec/flows.md` (bước, route, link demo) → `screens/screens.json` khi cần route, các bước tới một màn |",
  "handoff.agents.dev": "| Dev: dựng một đơn vị | `spec/<mã>.md` (yêu cầu, ghi chú thiết kế: component, token, trạng thái) → `screens/screens.json` (selector ghim, route) → {last} |",
- "handoff.agents.devCross": "`spec/cross-page.md` (chuyển trang, dữ liệu giữa trang)",
+ "handoff.agents.devCross": "`spec/{file}` (chuyển trang, dữ liệu giữa trang)",
  "handoff.agents.devNoCross": "`spec/index.md` mục \"Lối vào prototype\"",
  "handoff.agents.design": "| Thiết kế, wireflow | `spec/flows.md` hoặc `requirements/flows.json` → link Figma của màn trong `screens/screens.json` |",
  "handoff.agents.versions": "| Xem lại phiên bản | `requirements/changelog.md` ({keep} bản gần nhất) |",
@@ -30,7 +30,10 @@
  "handoff.agents.view4": "- Ghim `S30-2` = màn S30, ghim thứ 2 (selector ở `screens.json`, style và token ở bảng \"Ghi chú thiết kế\" của `spec/<mã>.md`).",
  "handoff.agents.codesTitle": "## Quy ước mã",
  "handoff.agents.grep": "- Tra bằng grep: {labels}.",
- "handoff.agents.archived": "- Đơn vị đã thay hoặc đã bỏ ({ids}) ở `spec/archive.md`; chỉ đọc khi cần truy vết.",
+ "handoff.agents.archived": "- Đơn vị đã thay hoặc đã bỏ ({ids}) ở `spec/{file}`; chỉ đọc khi cần truy vết.",
  "handoff.agents.tokens": "Nguồn token: {ds} (token `{prefix}*`); thành phần cục bộ của app có tiền tố `{local}` (liệt kê ở `spec/index.md`).",
- "handoff.agents.note": "Lưu ý: prototype là bản mẫu để xem hành vi và giao diện, dữ liệu là mock; không chép mã prototype vào sản phẩm."
+ "handoff.agents.note": "Lưu ý: prototype là bản mẫu để xem hành vi và giao diện, dữ liệu là mock; không chép mã prototype vào sản phẩm.",
+ "handoff.spec.imagesOnBoard": "Ảnh màn ở bảng wireflow Figma: mở link `figma` của từng màn trong `screens/screens.json`.",
+ "handoff.layer.lock": "khoá phạm vi · {name}",
+ "handoff.layer.hide": "ẩn phạm vi · {name}"
 }

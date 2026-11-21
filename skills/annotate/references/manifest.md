@@ -48,6 +48,12 @@ module.exports = {
 
 Any step may add `in: 'F'` (act inside frame `F`) and `timeout` (ms, default 8000).
 
+Every frame named by a selector (`F|…`) or by `in` must be declared in `frames`; otherwise `capture.js` stops with an ERROR that lists each place, before it opens a browser (a pin is never silently reported as "not found").
+
+Older manifests may use frame-prefixed step names: `fclick: sel` is read as `{ click: sel, in: 'F' }`, `ehover`, `ffill`, `etype`, `ffiles` likewise, and `ewait: sel` (a selector) as `{ waitFor: sel, in: 'E' }`. The frame letter still needs a `frames` entry. `screens.json` records the steps in the current form.
+
+`--only S05,S07` captures those screens only. Screens they continue from (`cont: 1` in the same flow) run first to set up the state, without a screenshot; no other screen runs.
+
 ## Output: `screens.json`
 
 ```json

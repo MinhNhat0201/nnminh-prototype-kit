@@ -1,0 +1,5 @@
+{
+ "_note": "Overlay on templates/vue for ds.json > tailwind: false or ds.json > components.vue (scaffold.py). Files here replace the base files; drop lists base files and folders left out.",
+ "base": "vue",
+ "drop": ["components.json", "src/components/ui", "src/lib/utils.ts"]
+}

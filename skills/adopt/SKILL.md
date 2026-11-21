@@ -6,6 +6,7 @@ description: "Build a base DS profile for a project that has no design system: a
 # Adopt: base DS profile from a preset
 
 Reply in the project language (`kit.config.json > language`; no config yet → the user's language). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.adopt` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 

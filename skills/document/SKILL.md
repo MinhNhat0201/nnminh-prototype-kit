@@ -6,6 +6,7 @@ description: "Maintain the DS profile and its documentation: change tokens and c
 # Document: maintain the DS and its docs
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.document` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 

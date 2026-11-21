@@ -2,7 +2,11 @@
 // Browser checks for a prototype, driven by a validation plan. Called by validation.py run; usable alone.
 //
 //   node validate.js --url <file:// or http:// entry> --plan plan.json --out <run dir>
-//                    [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode]
+//                    [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44]
+//
+// Screens may carry steps (same vocabulary as flows and as the capture manifest: goto, reset, click, hover, fill,
+// type, select, press, eval, wait, waitFor, waitEval, waitUrl, files, expect*; "in": "F" or "F|sel" act inside the
+// iframe plan.frames.F) and viewports (only these widths).
 //
 // For every screen x state x viewport x mode: page errors and console errors, horizontal overflow,
 // accessibility (axe-core, when installed), keyboard focus visibility, touch targets on phones, clipped text,
@@ -24,13 +28,15 @@ function args() {
 }
 const A = args();
 if (A.help || !A.url || !A.plan || !A.out) {
-  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--project <dir>]');
+  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44] [--project <dir>]');
   process.exit(A.help ? 0 : 1);
 }
 const plan = JSON.parse(fs.readFileSync(A.plan, 'utf8'));
 const viewports = String(A.viewports || plan.viewports || '390,768,1280').split(',').map(Number).filter(Boolean);
 const modes = String(A.modes || plan.modes || 'light').split(',').filter(Boolean);
 const modeAttr = A['mode-attr'] || plan.modeAttr || 'data-mode';
+const touchMin = Number(A['touch-min'] || plan.touchMin || 44);
+const FRAMES = plan.frames || {};
 const out = path.resolve(A.out);
 fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
 
@@ -51,7 +57,7 @@ function urlFor(route) {
 }
 
 async function pageChecks(page, vp) {
-  return page.evaluate(({ vp }) => {
+  return page.evaluate(({ vp, touchMin }) => {
     const r = { overflow: null, touch: [], clipped: [], hidden: false };
     const vis = el => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== 'hidden' && s.display !== 'none' && b.width > 0 && b.height > 0; };
     const name = el => { const id = el.id ? '#' + el.id : ''; const c = (el.getAttribute('class') || '').trim().split(/\s+/).slice(0, 2).filter(Boolean).map(x => '.' + x).join(''); const tx = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 40); return el.tagName.toLowerCase() + id + c + (tx ? ' "' + tx + '"' : ''); };
@@ -70,7 +76,7 @@ async function pageChecks(page, vp) {
       document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch]').forEach(el => {
         if (!vis(el)) return;
         const b = el.getBoundingClientRect();
-        if (b.width < 44 || b.height < 44) {
+        if (b.width < touchMin || b.height < touchMin) {
           const inline = getComputedStyle(el).display === 'inline' && el.closest('p, li, td, dd');
           if (!inline) r.touch.push(name(el) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height));
         }
@@ -85,7 +91,42 @@ async function pageChecks(page, vp) {
       if (own && el.scrollWidth > el.clientWidth + 1) r.clipped.push(name(el));
     });
     return r;
-  }, { vp });
+  }, { vp, touchMin });
+}
+
+// One step of a screen or a flow. Selectors "F|sel" or "in": "F" act inside the iframe plan.frames.F.
+async function runStep(page, s) {
+  const T = s.timeout || 3000;
+  const loc = sel => {
+    const m = /^([A-Za-z]\w*)\|(.*)$/.exec(sel), key = s.in || (m && FRAMES[m[1]] ? m[1] : null);
+    if (key && !FRAMES[key]) throw new Error('frame ' + key + ' is not declared in plan.frames');
+    const inner = m && FRAMES[m[1]] ? m[2] : sel;
+    return (key ? page.frameLocator(FRAMES[key]) : page).locator(inner).first();
+  };
+  if (s.goto !== undefined) { await page.goto(urlFor(s.goto)); await page.waitForTimeout(150); }
+  else if (s.reset) { await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await page.reload(); await page.waitForTimeout(300); }
+  else if (s.click) await loc(s.click).click({ timeout: T });
+  else if (s.hover) await loc(s.hover).hover({ timeout: T });
+  else if (s.fill) await loc(s.fill[0]).fill(s.fill[1], { timeout: T });
+  else if (s.type) { if (Array.isArray(s.type)) { await loc(s.type[0]).click({ timeout: T }); await page.keyboard.type(s.type[1]); } else await page.keyboard.type(s.type); }
+  else if (s.select) await loc(s.select[0]).selectOption(s.select[1], { timeout: T });
+  else if (s.press) await page.keyboard.press(s.press);
+  else if (s.eval) await page.evaluate(code => (0, eval)(code), s.eval);
+  else if (s.wait) await page.waitForTimeout(Math.min(+s.wait, 5000));
+  else if (s.waitFor) await loc(s.waitFor).waitFor({ timeout: T });
+  else if (s.waitEval) await page.waitForFunction(s.waitEval, null, { timeout: T });
+  else if (s.waitUrl) await page.waitForURL(new RegExp(s.waitUrl), { timeout: T });
+  else if (s.files) {
+    const [fc] = await Promise.all([page.waitForEvent('filechooser', { timeout: T }), loc(s.files[0]).click({ timeout: T })]);
+    await fc.setFiles(s.files[1].map(f => path.resolve(plan.att || '.', f)));
+  }
+  else if (s.expectVisible) await loc(s.expectVisible).waitFor({ state: 'visible', timeout: T });
+  else if (s.expectHidden) await loc(s.expectHidden).waitFor({ state: 'hidden', timeout: T });
+  else if (s.expectText) {
+    const txt = await loc(s.expectText[0]).textContent({ timeout: T });
+    if (!txt || !txt.includes(s.expectText[1])) throw new Error('text of ' + s.expectText[0] + ' does not contain "' + s.expectText[1] + '"');
+  } else if (s.expectUrl) { if (!page.url().includes(s.expectUrl)) throw new Error('URL ' + page.url() + ' does not contain ' + s.expectUrl); }
+  else throw new Error('unknown step ' + JSON.stringify(s));
 }
 
 async function focusCheck(page) {
@@ -145,19 +186,7 @@ async function runFlow(browser, flow) {
     for (let i = 0; i < (flow.steps || []).length; i++) {
       const s = flow.steps[i];
       try {
-        if (s.goto !== undefined) { await page.goto(urlFor(s.goto)); await page.waitForTimeout(150); }
-        else if (s.click) await page.click(s.click, { timeout: 3000 });
-        else if (s.fill) await page.fill(s.fill[0], s.fill[1], { timeout: 3000 });
-        else if (s.select) await page.selectOption(s.select[0], s.select[1], { timeout: 3000 });
-        else if (s.press) await page.keyboard.press(s.press);
-        else if (s.wait) await page.waitForTimeout(Math.min(+s.wait, 5000));
-        else if (s.expectVisible) await page.waitForSelector(s.expectVisible, { state: 'visible', timeout: 3000 });
-        else if (s.expectHidden) await page.waitForSelector(s.expectHidden, { state: 'hidden', timeout: 3000 });
-        else if (s.expectText) {
-          const txt = await page.textContent(s.expectText[0], { timeout: 3000 });
-          if (!txt || !txt.includes(s.expectText[1])) throw new Error('text of ' + s.expectText[0] + ' does not contain "' + s.expectText[1] + '"');
-        } else if (s.expectUrl) { if (!page.url().includes(s.expectUrl)) throw new Error('URL ' + page.url() + ' does not contain ' + s.expectUrl); }
-        else throw new Error('unknown step ' + JSON.stringify(s));
+        await runStep(page, s);
       } catch (e) {
         res.ok = false; res.failedStep = i + 1; res.error = String(e.message || e).split('\n')[0].slice(0, 240); break;
       }
@@ -180,17 +209,24 @@ async function runFlow(browser, flow) {
   const screens = plan.screens && plan.screens.length ? plan.screens : [{ id: 'S01', name: 'Entry', route: '' }];
   for (const sc of screens) {
     const states = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || []);
+    const vps = sc.viewports && sc.viewports.length ? sc.viewports.map(Number) : viewports;
     for (const st of states) {
-      for (const vp of viewports) {
+      for (const vp of vps) {
         for (const mode of modes) {
           const ctx = await browser.newContext({ viewport: { width: vp, height: vp < 600 ? 844 : 900 } });
           const errors = [];
           const item = { screen: sc.id, screenName: sc.name || '', state: st.name, vp, mode, route: sc.route || '', errors, shot: null };
           try {
-            const page = await openPage(ctx, sc.route, modes.length > 1 || mode !== 'light' ? mode : null, st.prepare, errors);
+            const page = await openPage(ctx, sc.route, null, null, errors);
+            for (let i = 0; i < (sc.steps || []).length; i++) {
+              try { await runStep(page, sc.steps[i]); } catch (e) { throw new Error('step ' + (i + 1) + ': ' + String(e.message || e).split('\n')[0]); }
+            }
+            if (modes.length > 1 || mode !== 'light') await page.evaluate(({ a, m }) => document.documentElement.setAttribute(a, m), { a: modeAttr, m: mode });
+            if (st.prepare) await page.evaluate(code => (0, eval)(code), st.prepare);
+            await page.waitForTimeout(150);
             Object.assign(item, await pageChecks(page, vp));
             if (st.name === 'default' && mode === modes[0]) item.focus = await focusCheck(page);
-            if (st.name === 'default' && vp === viewports[viewports.length - 1]) item.axe = await axeCheck(page);
+            if (st.name === 'default' && vp === vps[vps.length - 1]) item.axe = await axeCheck(page);
             const shot = [slug(sc.id), slug(st.name), vp, mode].join('__') + '.png';
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.screenshot({ path: path.join(out, 'shots', shot), fullPage: true });

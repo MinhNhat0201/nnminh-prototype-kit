@@ -7,10 +7,16 @@ const path = require('path');
 const KIT_ROOT = path.resolve(__dirname, '..');
 const DEFAULTS = {
   language: 'en', stack: 'html', ds: null, apps: [],
-  local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json' },
-  handoff: { dir: 'docs/handover', zipName: 'Design - {pbi}', maxZipMB: 3, figmaRequired: true },
-  email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3 },
+  local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json', command: { update: null, check: null }, fields: {} },
+  handoff: { dir: 'docs/handover', zipName: 'Design - {pbi}', maxZipMB: 3, figmaRequired: true, itemLabel: '', grepLabels: [],
+    dsLabel: 'auto', dsLabelCheck: 'warn', specFiles: { archive: 'archive.md', crossPage: 'cross-page.md', legacy: [] },
+    csv: { feature: null, qc: null }, pre: null, post: null },
+  email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3, demoLinks: true, maxItems: 12 },
   deploy: { type: 'none', site: null },
+  sync: { command: null, check: null },
+  review: { extraChecks: [] },
+  validate: { touchTarget: { default: 44, desktop: 24 } },
+  skills: {},
   paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits', explorations: 'docs/explorations', context: 'product-context', validation: 'docs/validation', verify: 'docs/verify' },
 };
 const DS_DEFAULTS = {

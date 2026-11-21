@@ -74,5 +74,11 @@
  "review.map.note.scale": "spacing scale",
  "review.map.note.scale_extra": "spacing scale; {n} component tokens share the value",
  "review.map.note.check_role": "same value, check the text role",
- "review.map.note.other_role": "only {token} matches, a token of another role: check the meaning before reusing it"
+ "review.map.note.other_role": "only {token} matches, a token of another role: check the meaning before reusing it",
+ "review.row.dsvue": "DS Vue components",
+ "review.res.dsvue": "{n} DS Vue components in `{package}`; {rebuilt} rebuilt locally; {shadcn} files import shadcn-vue components",
+ "review.b.dsvue_rebuilt": "Local Vue files named like a DS Vue component (rebuilt instead of used) ({n}): {list}",
+ "review.b.dsvue_shadcn": "Files that import shadcn-vue components although the DS has its own Vue layer ({n}): {list}",
+ "review.res.extra": "exit {code}: {summary}",
+ "review.extra.title": "Project checks (kit.config.json > review.extraChecks)"
 }

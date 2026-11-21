@@ -6,6 +6,7 @@ description: "Audit how well one or more prototype apps follow the DS: DS versio
 # Review: audit an app against the DS
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.review` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -26,6 +27,10 @@ Scripts run from the project folder (or take `--project`).
 ```
 python3 <kit>/skills/review/scripts/audit_app.py [app ...] --json <scratchpad>/audit.json
 ```
+
+Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines) to the app's table, or to "Project checks" when it is not per app. Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+
+DS with its own Vue component layer (`ds.json > components.vue`): vue apps get a "DS Vue components" row: local `.vue` files named like a DS component (rebuilt instead of used) and shadcn-vue imports are hard-rule violations. With `ds.json > tailwind: false` there is no Tailwind row and Tailwind is never asked for.
 
 When the profile has `catalog.json`: `python3 <kit>/skills/document/scripts/catalog.py scan --app <id>` for each app. Components it lists as deprecated and still in use are findings (level: hard-rule violation), with the replacement it names as the remediation.
 

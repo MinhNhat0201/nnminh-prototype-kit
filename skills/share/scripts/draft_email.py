@@ -13,6 +13,9 @@ and spec/index.md from the zip. It does not unzip the whole package, call the ne
 - Subject: kit.config.json > email.subject with {app}, {feature}, {version}, {pbi}.
 - Version: --version, else read from README.md, requirements/changelog.md or spec/index.md of the package.
 - Demo link: --demo, else kit.config.json > deploy.site + the app path; flows with "url" in flows.json add one link per flow.
+  kit.config.json > email.demoLinks = false (or --no-demo): no demo, prototype or flow link in the email at all.
+- Long lists keep the first email.maxItems items (default 12; --max-items overrides).
+- Feature columns: kit.config.json > handoff.csv.feature when set (roles), else the locale headers.
 - Section 3 (key features or changelog) is written for business readers: pass --business <json> (SKILL.md step 2).
   Without it, a draft is built from checklist-feature.csv (out-of-scope rows dropped, grouped by the group column) and
   the version's changelog section (technical lines folded into one line), with a NOTE to rewrite it.
@@ -27,7 +30,7 @@ from urllib.parse import urlparse
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, t  # noqa: E402
+from kitconf import load, t, csv_header, CSV_ROLES  # noqa: E402
 
 BLOCKED = ('.js', '.mjs', '.cjs', '.exe', '.bat', '.cmd', '.com', '.msi', '.ps1', '.sh', '.vbs', '.jar', '.scr', '.dll',
            '.apk', '.py', '.hta', '.lnk', '.reg')
@@ -102,9 +105,12 @@ def feature_items(cfg, root):
         return []
     head = [h.strip().lower() for h in rows[0]]
     std = [[c.strip().lower() for c in h.split(',')] for h in both(cfg, 'handoff.csv.feature')]
+    hdr, roles = csv_header(cfg, 'feature')   # kit.config.json > handoff.csv.feature (names and roles), or the locale
+    declared = {r: n.strip().lower() for r, n in zip(roles, hdr.split(',')) if r}
 
     def col(i):  # i = position in the standard header list
-        names = {h[i] for h in std if i < len(h)}
+        role = CSV_ROLES['feature'][i]
+        names = {h[i] for h in std if i < len(h)} | ({declared[role]} if role in declared else set())
         return next((j for j, h in enumerate(head) if h in names), None)
     ci, cn, cg, cm, cs = col(0), col(1), col(2), col(3), col(7)
     if cn is None:
@@ -162,7 +168,8 @@ def main():
     ap.add_argument('--greeting', default='')
     ap.add_argument('--signature', default='')
     ap.add_argument('--with-features', action='store_true', help='list key features as well as the changelog')
-    ap.add_argument('--max-items', type=int, default=12)
+    ap.add_argument('--max-items', type=int, default=None, help='items kept per section (default: email.maxItems, else 12)')
+    ap.add_argument('--no-demo', action='store_true', help='no demo or flow links (as email.demoLinks = false)')
     ap.add_argument('--business', default='', help='JSON of section 3 rewritten for business readers (SKILL.md step 2)')
     ap.add_argument('--attach-limit-mb', type=float, default=None, help='attachment limit in MB (default: kit.config.json > email.attachLimitMB, else 3)')
     ap.add_argument('--package-link', default='', help='download link used when the zip is too big to attach')
@@ -172,6 +179,9 @@ def main():
     cfg = load()
     if a.attach_limit_mb is None:
         a.attach_limit_mb = float((cfg.get('email') or {}).get('attachLimitMB') or 3)
+    if a.max_items is None:
+        a.max_items = int((cfg.get('email') or {}).get('maxItems') or 12)
+    demo_links = not a.no_demo and (cfg.get('email') or {}).get('demoLinks', True) is not False
     T = lambda k, **kw: t(cfg, 'share.' + k, **kw)
     app_name, app_path = a.app, ''
     for x in cfg['apps']:
@@ -183,6 +193,8 @@ def main():
     flows, home = flow_links(root)
     demo = a.demo or home or ((cfg['deploy'].get('site') or '').rstrip('/') + '/' + app_path.strip('/') + '/'
                               if cfg['deploy'].get('site') and app_path else '')
+    if not demo_links:
+        flows, demo = [], ''
     if not version:
         err.append('no version found in the package: pass --version x.y.z')
     if a.figma and urlparse(a.figma).netloc not in ('figma.com', 'www.figma.com'):
@@ -191,7 +203,10 @@ def main():
         err.append(f'demo link must be https: {demo}')
     if not a.figma:
         warn.append('no Figma link: the email says "not available yet"; ask the user before creating the draft.')
-    if not demo:
+    if not demo_links:
+        if a.demo:
+            warn.append('email.demoLinks is false (or --no-demo): --demo is ignored, the email has no demo link')
+    elif not demo:
         warn.append('no demo link: the email says "not available yet"; ask the user before creating the draft.')
     elif not a.demo:
         warn.append(f'no --demo given; using {demo} (from flows.json > home or deploy.site): confirm with the user')
@@ -284,10 +299,12 @@ def main():
 
     # plain text
     L = [greeting, '', T('intro', feature=a.feature, version=version, app=app_name), '']
-    L += ['1. ' + T('figma') + ': ' + (a.figma or na), '2. ' + T('demo') + ': ' + (demo or na)]
+    L += ['1. ' + T('figma') + ': ' + (a.figma or na)]
+    if demo_links:
+        L.append('2. ' + T('demo') + ': ' + (demo or na))
     for fid, fname, url, start in flows:
         L.append(f'   - {fid} {fname}: {url}' + (' (' + T('start', start=start) + ')' if start else ''))
-    n = 3
+    n = 3 if demo_links else 2
     for sec in sections:
         groups, more = cut(sec)
         L += ['', f'{n}. {sec["title"]}:']
@@ -299,7 +316,7 @@ def main():
             L.append('   - ' + T('more', n=more) + (' (' + T('seeFile', file=sec['more']) + ')' if sec['more'] else ''))
         n += 1
     L += ['', f'{n}. {T("package")}: {pkg_line}', '   ' + T('howToOpen')]
-    if a.demo_needs_login:
+    if a.demo_needs_login and demo_links:
         L += ['', T('demoLogin')]
     L += ['', T('feedback'), '', T('thanks')] + ([a.signature] if a.signature else [])
     body = '\n'.join(L)
@@ -309,12 +326,13 @@ def main():
     A = lambda u, label=None: f'<a href="{E(u)}">{E(label or u)}</a>'
     H = [f'<p>{E(greeting)}</p>', '<p>' + E(T('intro', feature=a.feature, version=version, app=app_name)) + '</p>', '<ol>']
     H.append(f'<li><b>{E(T("figma"))}:</b> ' + (A(a.figma, T('openFigma')) if a.figma else E(na)) + '</li>')
-    d = f'<li><b>{E(T("demo"))}:</b> ' + (A(demo, T('openDemo')) if demo else E(na))
-    if flows:
-        d += '<ul>' + ''.join(f'<li>{E(fid)} {E(fname)}: {A(url, T("openFlow"))}'
-                              + (' (' + E(T('start', start=start)) + ')' if start else '') + '</li>'
-                              for fid, fname, url, start in flows) + '</ul>'
-    H.append(d + '</li>')
+    if demo_links:
+        d = f'<li><b>{E(T("demo"))}:</b> ' + (A(demo, T('openDemo')) if demo else E(na))
+        if flows:
+            d += '<ul>' + ''.join(f'<li>{E(fid)} {E(fname)}: {A(url, T("openFlow"))}'
+                                  + (' (' + E(T('start', start=start)) + ')' if start else '') + '</li>'
+                                  for fid, fname, url, start in flows) + '</ul>'
+        H.append(d + '</li>')
     for sec in sections:
         groups, more = cut(sec)
         li = f'<li><b>{E(sec["title"])}:</b>'
@@ -325,7 +343,7 @@ def main():
             li += '<p style="margin:4px 0 0">' + E(T('more', n=more)) + (' (' + E(T('seeFile', file=sec['more'])) + ')' if sec['more'] else '') + '</p>'
         H.append(li + '</li>')
     H.append(f'<li><b>{E(T("package"))}:</b> {pkg_html}<br>{E(T("howToOpen"))}</li></ol>')
-    if a.demo_needs_login:
+    if a.demo_needs_login and demo_links:
         H.append(f'<p>{E(T("demoLogin"))}</p>')
     H.append(f'<p>{E(T("feedback"))}</p>')
     H.append(f'<p>{E(T("thanks"))}' + (f'<br>{E(a.signature)}' if a.signature else '') + '</p>')
@@ -335,7 +353,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     res = {'subject': subject, 'body': body, 'htmlBody': htmlbody, 'attachment': att, 'attachmentDropped': dropped,
            'version': version, 'demo': demo, 'sections': sections, 'businessRewritten': not auto, 'firstRelease': first,
-           'flowLinks': len(flows), 'warnings': warn, 'errors': err}
+           'flowLinks': len(flows), 'demoLinks': demo_links, 'warnings': warn, 'errors': err}
     (out / 'email.json').write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding='utf-8')
     (out / 'subject.txt').write_text(subject, encoding='utf-8')
     (out / 'body.txt').write_text(body, encoding='utf-8')
