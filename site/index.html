@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nnminh-prototype-kit</title>
+<meta name="description" content="14 Claude Code skills that take a design from idea to developer handoff with any design system: plan, prototype in HTML, React or Vue, spec, Figma flows and one handoff package.">
+<meta property="og:title" content="nnminh-prototype-kit">
+<meta property="og:description" content="From idea to developer handoff, with your design system. 14 Claude Code skills.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#020203" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23020203'/%3E%3Crect x='7' y='9' width='8' height='14' rx='1.5' fill='none' stroke='%23d4a72c' stroke-width='2'/%3E%3Crect x='19' y='9' width='6' height='14' rx='1.5' fill='%23d4a72c'/%3E%3C/svg%3E">
+<script>
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("theme"); } catch (e) {}
+  if (t !== "light" && t !== "dark") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  document.documentElement.setAttribute("data-theme", t);
+})();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #ffffff;
+  --panel: #f8fafc;
+  --panel-2: #f1f5f9;
+  --line: #e2e8f0;
+  --line-2: #cbd5e1;
+  --fg: #0f172a;
+  --muted: #475569;
+  --dim: #5b6b80;
+  --accent: #a17400;
+  --accent-2: #c99a1e;
+  --accent-soft: #7a5800;
+  --ok: #047857;
+  --title-a: #0f172a;
+  --title-b: #475569;
+  --nav-bg: rgba(255, 255, 255, 0.78);
+  --cta-hover: #1e293b;
+  --hover-line: #94a3b8;
+  --glow: 10%;
+  color-scheme: light;
+  --display: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --wide: 68.75rem;
+  --gutter: 1.25rem;
+}
+:root[data-theme="dark"] {
+  --bg: #020203;
+  --panel: #09090c;
+  --panel-2: #0e0e13;
+  --line: #1b1b22;
+  --line-2: #26262f;
+  --fg: #f8fafc;
+  --muted: #94a3b8;
+  --dim: #64748b;
+  --accent: #d4a72c;
+  --accent-2: #f5d77a;
+  --accent-soft: #e8c15a;
+  --ok: #34d399;
+  --title-a: #ffffff;
+  --title-b: #9ca3af;
+  --nav-bg: rgba(9, 9, 12, 0.72);
+  --cta-hover: #e2e8f0;
+  --hover-line: #3a3a46;
+  --glow: 16%;
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #020203;
+    --panel: #09090c;
+    --panel-2: #0e0e13;
+    --line: #1b1b22;
+    --line-2: #26262f;
+    --fg: #f8fafc;
+    --muted: #94a3b8;
+    --dim: #64748b;
+    --accent: #d4a72c;
+    --accent-2: #f5d77a;
+    --accent-soft: #e8c15a;
+    --ok: #34d399;
+    --title-a: #ffffff;
+    --title-b: #9ca3af;
+    --nav-bg: rgba(9, 9, 12, 0.72);
+    --cta-hover: #e2e8f0;
+    --hover-line: #3a3a46;
+    --glow: 16%;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 6rem; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; border-radius: 6px; }
+h1, h2, h3, p { margin: 0; }
+code, pre { font-family: var(--mono); }
+p code, .a code { font-size: 0.875em; color: var(--fg); }
+.skip { position: absolute; left: -999px; }
+.skip:focus { left: 1rem; top: 1rem; z-index: 50; background: var(--fg); color: var(--bg); padding: 0.4rem 0.7rem; border-radius: 6px; }
+.wrap { max-width: calc(var(--wide) + 2 * var(--gutter)); margin: 0 auto; padding: 0 var(--gutter); }
+
+/* glows */
+.glow { position: absolute; border-radius: 50%; filter: blur(80px); pointer-events: none; z-index: 0; }
+.glow--a { width: 22rem; height: 22rem; left: 8%; top: 2rem; background: color-mix(in srgb, var(--accent) var(--glow), transparent); }
+.glow--b { width: 18rem; height: 18rem; right: 7%; top: 18rem; background: color-mix(in srgb, var(--accent-2) var(--glow), transparent); }
+.glow--c { width: min(30rem, 100%); height: 14rem; left: 50%; top: -8rem; transform: translateX(-50%); background: color-mix(in srgb, var(--accent) calc(var(--glow) * 0.65), transparent); }
+
+/* nav */
+.nav { position: sticky; top: 1rem; z-index: 20; display: flex; justify-content: center; padding: 1rem var(--gutter) 0; margin-top: -1rem; }
+.nav__bar { width: 100%; max-width: 56rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.45rem 0.45rem 1.5rem; border: 1px solid var(--line); border-radius: 999px; background: var(--nav-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.logo { display: inline-flex; align-items: center; gap: 0.6rem; font: 500 0.9375rem/1 var(--mono); margin-right: auto; white-space: nowrap; }
+.logo b { color: var(--accent-soft); font-weight: 500; }
+.nav__links { display: flex; gap: 0.25rem; }
+.nav__links a { font-size: 0.875rem; color: var(--muted); padding: 0.5rem 0.8rem; border-radius: 999px; }
+.nav__links a:hover { color: var(--fg); }
+.nav__cta { display: inline-flex; align-items: center; height: 2.4rem; padding: 0 1.2rem; border-radius: 999px; background: var(--fg); color: var(--bg); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.nav__cta:hover { background: var(--cta-hover); }
+.theme-btn { width: 2.4rem; height: 2.4rem; display: grid; place-items: center; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; flex: none; }
+.theme-btn:hover { color: var(--fg); border-color: var(--line-2); }
+.theme-btn svg { width: 1.1rem; height: 1.1rem; }
+.theme-btn .moon { display: none; }
+:root[data-theme="dark"] .theme-btn .sun { display: none; }
+:root[data-theme="dark"] .theme-btn .moon { display: block; }
+@media (max-width: 859.98px) { .nav__links { display: none; } }
+
+/* hero */
+.hero { position: relative; text-align: center; padding: 8rem 0 7rem; }
+.hero > .wrap { position: relative; z-index: 1; }
+.hero h1 { font: 800 clamp(2.4rem, 6.4vw, 4.25rem)/1.1 var(--display); letter-spacing: -0.045em; max-width: 60rem; margin: 0 auto; }
+.hero h1 span { display: block; padding-bottom: 0.12em; margin-bottom: -0.12em; background: linear-gradient(180deg, var(--title-a) 0%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero .lede { margin: 1.75rem auto 0; max-width: 39rem; color: var(--muted); font-size: 1.1875rem; line-height: 1.6; }
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 2.5rem; }
+.btn { display: inline-flex; align-items: center; gap: 0.55rem; height: 2.6rem; padding: 0 1.25rem; border-radius: 999px; font-size: 0.875rem; font-weight: 600; border: 1px solid var(--line-2); background: var(--panel); color: var(--fg); cursor: pointer; }
+.btn:hover { border-color: var(--hover-line); }
+.btn svg { width: 1rem; height: 1rem; }
+.btn--grad { border: 0; color: #1a1300; background: linear-gradient(90deg, #c9971c, #f2d06b); box-shadow: 0 8px 30px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
+.btn--grad:hover { filter: brightness(1.08); }
+
+/* sections */
+.sec { position: relative; padding: 7rem 0; }
+.sec + .sec::before { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(var(--wide), calc(100% - 2 * var(--gutter))); height: 1px; background: var(--line); }
+.head { text-align: center; max-width: 40rem; margin: 0 auto 4rem; }
+.eyebrow { display: block; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-soft); margin-bottom: 1rem; }
+.head h2 { font: 800 clamp(2rem, 4.4vw, 2.5rem)/1.15 var(--display); padding-bottom: 0.12em; margin-bottom: -0.12em; letter-spacing: -0.03em; background: linear-gradient(180deg, var(--title-a) 30%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.head p { margin-top: 1rem; color: var(--muted); font-size: 1.0625rem; }
+
+/* bento */
+.bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1.5rem; }
+.card { position: relative; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); padding: 2.5rem; display: flex; flex-direction: column; min-width: 0; }
+.card .eyebrow { font-size: 0.6875rem; margin-bottom: 0.9rem; }
+.card h3 { font: 700 1.35rem/1.15 var(--display); letter-spacing: -0.03em; }
+.card > p { margin-top: 0.75rem; color: var(--muted); font-size: 0.9375rem; line-height: 1.6; }
+.c-8 { grid-column: span 8; } .c-4 { grid-column: span 4; }
+@media (max-width: 899.98px) { .c-8, .c-4 { grid-column: 1 / -1; } .card { padding: 2rem 1.5rem; } }
+.visual { margin-top: 2rem; flex: 1; min-height: 11rem; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--panel-2); display: flex; align-items: center; justify-content: center; gap: 1.25rem; padding: 1.5rem; flex-wrap: wrap; }
+.chip { font: 400 0.8125rem/1 var(--mono); padding: 0.75rem 1rem; border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--bg); white-space: nowrap; }
+.chip--on { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 24px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
+.flow-arrow { color: var(--accent-soft); width: 1.4rem; height: 1.4rem; flex: none; }
+@media (max-width: 639.98px) { .visual { flex-direction: column; gap: 0.75rem; } .flow-arrow { transform: rotate(90deg); } }
+.big { margin-top: 2.25rem; text-align: center; }
+.big strong { display: block; font: 800 3.5rem/1 var(--display); letter-spacing: -0.04em; background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.big span { display: block; margin-top: 0.9rem; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+.mini { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; text-align: center; gap: 1rem; }
+.mini strong { display: block; font-weight: 600; }
+.mini span { font-size: 0.75rem; color: var(--muted); }
+.term-mini { margin: 2rem 0 0; flex: 1; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--panel-2); padding: 1.5rem; font: 400 0.8125rem/1.75 var(--mono); overflow-x: auto; white-space: pre; }
+.term-mini .c { color: var(--dim); }
+.term-mini .a { color: var(--accent-soft); }
+
+/* timeline */
+.steps { list-style: none; margin: 0 auto; padding: 0; max-width: 38rem; position: relative; }
+.steps::before { content: ""; position: absolute; left: 0.85rem; top: 1rem; bottom: 1rem; width: 1px; background: linear-gradient(180deg, var(--accent) 0%, var(--line) 100%); opacity: 0.6; }
+.steps li { position: relative; padding: 0 0 3.25rem 3.5rem; }
+.steps li:last-child { padding-bottom: 0; }
+.steps .n { position: absolute; left: 0; top: 0.2rem; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font: 500 0.75rem/1 var(--mono); color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); }
+.steps h3 { font: 700 1.375rem/1.25 var(--display); letter-spacing: -0.03em; }
+.steps p { margin-top: 0.6rem; color: var(--muted); font-size: 1rem; }
+.steps .skills { margin-top: 0.75rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.steps .skills code { font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 999px; border: 1px solid var(--line-2); color: var(--accent-soft); }
+
+/* console */
+.console { border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); overflow: hidden; box-shadow: 0 40px 120px -40px color-mix(in srgb, var(--accent) 25%, transparent); }
+.console__bar { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem 0.75rem 1.5rem; border-bottom: 1px solid var(--line); }
+.dots { display: flex; gap: 0.45rem; }
+.dots i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #7f1d1d; }
+.dots i:nth-child(2) { background: #854d0e; } .dots i:nth-child(3) { background: #14532d; }
+.tabs { display: flex; gap: 0.25rem; margin: 0 auto; overflow-x: auto; }
+.tabs button { font: 500 0.8125rem/1 var(--sans); color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 0.5rem; padding: 0.55rem 0.9rem; cursor: pointer; white-space: nowrap; }
+.tabs button[aria-selected="true"] { color: var(--fg); background: var(--panel-2); border-color: var(--line-2); }
+.icon-btn { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 0.5rem; border: 0; background: transparent; color: var(--muted); cursor: pointer; flex: none; }
+.icon-btn:hover { color: var(--fg); background: var(--panel-2); }
+.icon-btn svg { width: 1rem; height: 1rem; }
+.console pre { margin: 0; padding: 2.25rem 2rem; min-height: 15rem; font-size: 0.875rem; line-height: 1.8; overflow-x: auto; }
+.console .c { color: var(--dim); } .console .g { color: var(--ok); } .console .p { color: var(--accent-soft); }
+@media (max-width: 639.98px) { .dots { display: none; } .console__bar { padding-left: 0.75rem; } .console pre { padding: 1.5rem 1.25rem; font-size: 0.8125rem; } }
+
+/* skills browser */
+.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr); border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); overflow: hidden; }
+.docs__index { border-right: 1px solid var(--line); padding: 2rem 1.25rem; }
+.docs__index .eyebrow { color: var(--dim); font-size: 0.6875rem; padding-left: 0.75rem; }
+.docs__index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
+.docs__index button { width: 100%; text-align: left; font: 400 0.84375rem/1.3 var(--sans); color: var(--muted); background: transparent; border: 0; border-left: 2px solid transparent; border-radius: 0 0.5rem 0.5rem 0; padding: 0.55rem 0.75rem; cursor: pointer; }
+.docs__index button:hover { color: var(--fg); }
+.docs__index button[aria-selected="true"] { color: var(--fg); font-weight: 600; background: var(--panel-2); border-left-color: var(--accent); }
+.docs__body { padding: 3rem 3.5rem; min-width: 0; }
+.docs__body .group { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-soft); }
+.docs__body h3 { margin-top: 0.9rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); font: 800 2rem/1.15 var(--display); letter-spacing: -0.035em; }
+.docs__body p { margin-top: 1.5rem; color: var(--muted); font-size: 1rem; line-height: 1.75; max-width: 40rem; }
+.docs__foot { margin-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.25rem; }
+.docs__body .cmd { font: 400 0.8125rem/1 var(--mono); padding: 0.75rem 1rem; border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--bg); }
+.docs__body .more { color: var(--accent-soft); font-size: 0.875rem; font-weight: 500; }
+.docs__body .more:hover { color: var(--fg); }
+@media (max-width: 799.98px) {
+  .docs { grid-template-columns: minmax(0, 1fr); }
+  .docs__index { border-right: 0; border-bottom: 1px solid var(--line); padding: 1.25rem; }
+  .docs__index ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .docs__body { padding: 2rem 1.5rem; }
+}
+
+/* CTA */
+.cta { max-width: 45rem; margin: 0 auto; text-align: center; border: 1px solid var(--line); border-radius: 1.5rem; padding: 5rem 2rem; background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%), var(--panel); }
+.pill { display: inline-block; font: 400 0.75rem/1 var(--mono); color: var(--accent-soft); padding: 0.6rem 1rem; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.cta h2 { margin-top: 1.75rem; font: 800 clamp(1.75rem, 4vw, 2.1rem)/1.2 var(--display); letter-spacing: -0.035em; }
+.cta > p { margin: 0.9rem auto 0; color: var(--muted); max-width: 30rem; }
+.cmdbox { position: relative; margin: 2rem auto 0; max-width: 34rem; text-align: left; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--bg); }
+.cmdbox pre { margin: 0; padding: 1rem 3.25rem 1rem 1.25rem; font-size: 0.8125rem; line-height: 1.9; color: var(--muted); overflow-x: auto; }
+.cmdbox pre b { color: var(--fg); font-weight: 400; }
+.cmdbox .icon-btn { position: absolute; top: 0.5rem; right: 0.5rem; }
+
+/* FAQ */
+.faq { max-width: 47.5rem; margin: 0 auto; border-top: 1px solid var(--line); }
+.faq details { border-bottom: 1px solid var(--line); }
+.faq summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.6rem 0; cursor: pointer; font-size: 1.0625rem; font-weight: 500; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font: 300 1.5rem/1 var(--sans); color: var(--muted); flex: none; transition: transform 0.2s; }
+.faq details[open] summary::after { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .faq summary::after { transition: none; } }
+.faq .a { padding: 0 2.5rem 1.6rem 0; color: var(--muted); line-height: 1.7; }
+
+/* footer */
+footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
+.foot { max-width: 63rem; margin: 0 auto; padding: 0 var(--gutter); }
+.foot__grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 2.5rem; }
+.foot__about p { margin-top: 1.25rem; color: var(--dim); font-size: 0.875rem; max-width: 18rem; }
+.foot__about small { display: block; margin-top: 1rem; color: var(--dim); font-size: 0.8125rem; }
+.foot h3 { font: 600 0.75rem/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.25rem; }
+.foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; font-size: 0.875rem; }
+.foot ul a { color: var(--muted); }
+.foot ul a:hover { color: var(--fg); }
+.foot__base { margin-top: 4rem; padding-top: 1.75rem; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; color: var(--dim); font-size: 0.75rem; }
+@media (max-width: 759.98px) { .foot__grid { grid-template-columns: 1fr 1fr; } .foot__about { grid-column: 1 / -1; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <g id="i-download" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/></g>
+    <g id="i-book" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 19a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6a9 9 0 0 1 9 0a9 9 0 0 1 9 0"/><path d="M3 6l0 13"/><path d="M12 6l0 13"/><path d="M21 6l0 13"/></g>
+    <g id="i-arrow" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l14 0"/><path d="M13 18l6 -6"/><path d="M13 6l6 6"/></g>
+    <g id="i-copy" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7m0 2.667a2.667 2.667 0 0 1 2.667 -2.667h8.666a2.667 2.667 0 0 1 2.667 2.667v8.666a2.667 2.667 0 0 1 -2.667 2.667h-8.666a2.667 2.667 0 0 1 -2.667 -2.667z"/><path d="M4.012 16.737a2.005 2.005 0 0 1 -1.012 -1.737v-10c0 -1.1 .9 -2 2 -2h10c.75 0 1.158 .385 1.5 1"/></g>
+    <g id="i-sun" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/></g>
+    <g id="i-moon" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></g>
+    <g id="i-check" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5l10 -10"/></g>
+    <g id="i-github" fill="currentColor"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></g>
+  </defs>
+</svg>
+
+<div class="glow glow--c" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav__bar">
+    <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
+    <nav class="nav__links" aria-label="Main">
+      <a href="#features">Features</a>
+      <a href="#process">Process</a>
+      <a href="#console">Console</a>
+      <a href="#skills">Skills</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="theme-btn" type="button" id="themeBtn" aria-label="Switch to dark mode"><svg class="sun" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-sun"/></svg><svg class="moon" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-moon"/></svg></button>
+    <a class="nav__cta" href="#install">Install</a>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="glow glow--a" aria-hidden="true"></div>
+    <div class="glow glow--b" aria-hidden="true"></div>
+    <div class="wrap">
+      <h1>From idea to developer handoff, <span>with your design system.</span></h1>
+      <p class="lede">nnminh-prototype-kit is a free set of 14 Claude Code skills. It plans the work, builds HTML, React or Vue prototypes with your design system, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers.</p>
+      <div class="actions">
+        <a class="btn btn--grad" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-download"/></svg>Install the kit</a>
+        <a class="btn" href="#skills"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"/></svg>Browse the skills</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="features" aria-labelledby="features-h">
+    <div class="wrap">
+      <div class="head">
+        <h2 id="features-h">What the kit does</h2>
+        <p>Design-system-aware skills for every step between a requirement and a handoff.</p>
+      </div>
+      <div class="bento">
+        <article class="card c-8">
+          <span class="eyebrow">Any design system</span>
+          <h3>Two files point the kit at your design system</h3>
+          <p>Nothing is hard-coded. <code>kit.config.json</code> holds the language, stack and apps. A <code>ds.json</code> profile holds the token prefix, CSS bundle, theming and Figma libraries.</p>
+          <div class="visual">
+            <span class="chip">kit.config.json</span>
+            <svg class="flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow"/></svg>
+            <span class="chip chip--on">ds/acme/ds.json</span>
+            <svg class="flow-arrow" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-arrow"/></svg>
+            <span class="chip">14 skills</span>
+          </div>
+        </article>
+        <article class="card c-4">
+          <span class="eyebrow">Contrast check</span>
+          <h3>Every colour pair, light and dark</h3>
+          <p>Text needs 4.5:1, icons and borders 3:1. The thresholds are never lowered.</p>
+          <div class="big"><strong>0 fail</strong><span>In our test run</span></div>
+          <div class="mini"><div><strong>148</strong><span>Pairs checked</span></div><div><strong>11</strong><span>Pass after adjustment</span></div></div>
+        </article>
+        <article class="card c-4">
+          <span class="eyebrow">No design system yet</span>
+          <h3>Start from shadcn</h3>
+          <p><code>adopt</code> takes your brand colour, name, radius and font. The look comes from shadcn, the structure from Material Design 3.</p>
+          <div class="big"><strong>~30</strong><span>Components</span></div>
+          <div class="mini"><div><strong>48 px</strong><span>Touch targets</span></div><div><strong>3</strong><span>Platforms</span></div></div>
+        </article>
+        <article class="card c-8">
+          <span class="eyebrow">Handoff package</span>
+          <h3>One zip, a reading path for each role</h3>
+          <p>BA gets the spec and feature list, QC a checklist, developers <code>AGENTS.md</code> and the prototype. No screen images and no loose <code>.js</code> files, so mail filters let it through.</p>
+<pre class="term-mini"><span class="c">// layout of a handoff package</span>
+<span class="a">Design - &lt;work item&gt;.zip</span>
+  ├─ AGENTS.md         <span class="c">reading paths for BA, QC, developers</span>
+  ├─ README.md
+  ├─ requirements/
+  │   ├─ checklist-feature.csv
+  │   ├─ checklist-qc.csv
+  │   └─ changelog.md
+  ├─ spec/             <span class="c">one Markdown file per unit</span>
+  └─ prototype/</pre>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="process" aria-labelledby="process-h">
+    <div class="wrap">
+      <div class="head">
+        <span class="eyebrow">Workflow</span>
+        <h2 id="process-h">How the kit works</h2>
+        <p>One path from a requirement to a handoff. Every step is a skill you can also run on its own.</p>
+      </div>
+      <ol class="steps">
+        <li><span class="n">1</span><h3>Set up the project</h3><p>Build a base design system if you have none. Then pick the language, stack and design system, and the first app is created for you.</p><div class="skills"><code>adopt</code><code>kickoff</code></div></li>
+        <li><span class="n">2</span><h3>Define the work</h3><p>Turn PM and BA requirements into open questions, delivery waves and a traceability matrix.</p><div class="skills"><code>define</code></div></li>
+        <li><span class="n">3</span><h3>Build the prototype</h3><p>Screens use design-system components only. The kit asks before it creates a new component or page.</p><div class="skills"><code>prototype</code></div></li>
+        <li><span class="n">4</span><h3>Write the spec</h3><p>Screen captures, pins and styles mapped to token names. Flows and screens go on Figma.</p><div class="skills"><code>annotate</code><code>wireflow</code><code>mockup</code></div></li>
+        <li><span class="n">5</span><h3>Hand off</h3><p>Pack one zip for BA, QC and developers, and draft the email. The kit never sends it.</p><div class="skills"><code>handoff</code><code>share</code></div></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec" id="console" aria-labelledby="console-h">
+    <div class="wrap">
+      <div class="head">
+        <h2 id="console-h">A real run</h2>
+        <p>Output from setting up a React project with the kit. Trimmed, numbers unchanged.</p>
+      </div>
+      <div class="console">
+        <div class="console__bar">
+          <div class="dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="tabs" role="tablist" aria-label="Steps of the run">
+            <button role="tab" id="t1" aria-controls="run" aria-selected="true">1. Adopt</button>
+            <button role="tab" id="t2" aria-controls="run" aria-selected="false" tabindex="-1">2. Kickoff</button>
+            <button role="tab" id="t3" aria-controls="run" aria-selected="false" tabindex="-1">3. Build and audit</button>
+          </div>
+          <button class="icon-btn" type="button" id="copyRun" aria-label="Copy output"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
+        </div>
+        <pre id="run" role="tabpanel" aria-labelledby="t1" tabindex="0"></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="skills" aria-labelledby="skills-h">
+    <div class="wrap">
+      <div class="head">
+        <h2 id="skills-h">The 14 skills</h2>
+        <p>Pick a skill to see what it does. Each one links to its full instructions on GitHub.</p>
+      </div>
+      <div class="docs">
+        <div class="docs__index">
+          <span class="eyebrow">Skills index</span>
+          <ol role="tablist" aria-label="Skills" aria-orientation="vertical" id="skillList"></ol>
+        </div>
+        <div class="docs__body" role="tabpanel" id="skillPanel" tabindex="0">
+          <span class="group" id="sGroup"></span>
+          <h3 id="sName"></h3>
+          <p id="sDesc"></p>
+          <div class="docs__foot">
+            <code class="cmd" id="sCmd"></code>
+            <a class="more" id="sLink" href="#">Read SKILL.md on GitHub</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="install" aria-labelledby="install-h">
+    <div class="wrap">
+      <div class="cta">
+        <span class="pill">Version 0.1.1 · MIT licence</span>
+        <h2 id="install-h">Ready to prototype with your design system?</h2>
+        <p>Run these in Claude Code. The skills are then available as <code>/kit:&lt;skill&gt;</code>.</p>
+        <div class="cmdbox">
+<pre><b>/plugin marketplace add</b> MinhNhat0201/nnminh-prototype-kit
+<b>/plugin install</b> kit@nnminh-prototype-kit</pre>
+          <button class="icon-btn" type="button" data-copy="/plugin marketplace add MinhNhat0201/nnminh-prototype-kit&#10;/plugin install kit@nnminh-prototype-kit" aria-label="Copy install commands"><svg viewBox="0 0 24 24"><use href="#i-copy"/></svg></button>
+        </div>
+        <div class="actions">
+          <a class="btn btn--grad" href="https://github.com/MinhNhat0201/nnminh-prototype-kit"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-github"/></svg>View on GitHub</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="faq" aria-labelledby="faq-h">
+    <div class="wrap">
+      <div class="head">
+        <h2 id="faq-h">Frequently asked questions</h2>
+      </div>
+      <div class="faq">
+        <details><summary>What is nnminh-prototype-kit?</summary><div class="a">A Claude Code plugin with 14 skills that take a design from idea to developer handoff: requirement analysis, prototypes built with your design system, specs, Figma flow boards and one handoff package.</div></details>
+        <details><summary>Is it free?</summary><div class="a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.</div></details>
+        <details><summary>Do I need a design system first?</summary><div class="a">No. Without one, run <code>adopt</code>: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
+        <details><summary>Which stacks does it support?</summary><div class="a">HTML (the default, one file that opens anywhere), React and Vue. Each app can use its own stack, so they can live side by side in one repository.</div></details>
+        <details><summary>Does it send emails or publish anything on its own?</summary><div class="a">No. <code>share</code> only drafts the handoff email for you to review and send. Skills save files; they do not commit, push or publish unless you ask.</div></details>
+        <details><summary>Do I need Figma?</summary><div class="a">Only for <code>wireflow</code>, <code>mockup</code> and the optional Figma step of <code>adopt</code>, which need the Figma connector. Everything else works without it.</div></details>
+        <details><summary>Which languages can the documents be in?</summary><div class="a">Replies and generated documents follow <code>kit.config.json &gt; language</code>. English and Vietnamese ship with the kit; add a language by copying <code>locales/en/</code> and translating the values.</div></details>
+        <details><summary>What do I need installed?</summary><div class="a">Claude Code, Python 3.9+, Node 18+, Playwright with Chromium for screen capture, and Pillow for image optimisation.</div></details>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="foot">
+    <div class="foot__grid">
+      <div class="foot__about">
+        <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
+        <p>Claude Code skills for prototypes and design handoff, with any design system.</p>
+        <small>© 2026 nnminh-prototype-kit. MIT licence.</small>
+      </div>
+      <div>
+        <h3>Kit</h3>
+        <ul><li><a href="#features">Features</a></li><li><a href="#process">Process</a></li><li><a href="#skills">Skills</a></li><li><a href="#install">Install</a></li></ul>
+      </div>
+      <div>
+        <h3>Docs</h3>
+        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/config.md">Configuration</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/stacks.md">Stacks</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/docs/authoring.md">Authoring</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/CHANGELOG.md">Changelog</a></li></ul>
+      </div>
+      <div>
+        <h3>Project</h3>
+        <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit">GitHub</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/LICENSE">Licence</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/presets/shadcn/NOTICE">shadcn notice</a></li></ul>
+      </div>
+    </div>
+    <div class="foot__base"><span>Released under the MIT licence. Contributions welcome.</span><span>v0.1.1</span></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var REPO = "https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/";
+
+  /* console: real output from a test run (trimmed) */
+  var RUNS = [
+    '<span class="c">// Build a base design system from shadcn</span>\n<span class="p">$</span> adopt.py --name nnminh --seed "#2563eb" --radius 10 --out ds/nnminh\nContrast: 148 pairs · 137 pass · 11 pass after tone adjustment · 0 fail\nBrand seed #2563eb sits at brand-600. Adjusted tones: 4.\n<span class="p">$</span> adopt.py check --out ds/nnminh\n<span class="g">Profile OK</span>',
+    '<span class="c">// Create the first app from the React template</span>\n<span class="p">$</span> kitconf.py check\n<span class="g">kit.config.json OK</span>\n<span class="p">$</span> scaffold.py --app nnminh-web --name "Nnminh Web" --type spa\nCreated apps/nnminh-web (react, spa) from templates/react: 23 file(s).\nDS: Nnminh DS 0.1.0, bundle dist/nnminh.css\nCLAUDE.md: written from templates/CLAUDE.md',
+    '<span class="c">// Build, then audit the app against the design system</span>\n<span class="p">$</span> npm run build\ndist/index.html  423.97 kB │ gzip: 123.30 kB\n<span class="g">✓ built in 327ms</span>\n<span class="p">$</span> audit_app.py\nHard-coded colours (hex, rgb/hsl, named)   <span class="g">Pass</span>\nTailwind arbitrary values                  <span class="g">Pass</span>\nDS component use                           <span class="g">Pass</span>'
+  ];
+  var run = document.getElementById("run");
+  var tabs = Array.prototype.slice.call(document.querySelectorAll(".tabs [role=tab]"));
+  function showRun(i, focus) {
+    tabs.forEach(function (t, k) {
+      var on = k === i;
+      t.setAttribute("aria-selected", on ? "true" : "false");
+      t.tabIndex = on ? 0 : -1;
+      if (on) { run.setAttribute("aria-labelledby", t.id); if (focus) t.focus(); }
+    });
+    run.innerHTML = RUNS[i];
+  }
+  tabs.forEach(function (t, i) {
+    t.addEventListener("click", function () { showRun(i); });
+    t.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        showRun((i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length, true);
+      }
+    });
+  });
+  showRun(0);
+
+  /* skills browser */
+  var SKILLS = [
+    ["brief", "Start", "Understands a plain-language request and routes it to the right skill with a one-line plan. Use it when you are not sure where to start, or when you have a PRD and some screenshots."],
+    ["kickoff", "Start", "Sets up a project: asks for language, stack, design system and the first app, writes kit.config.json, links and checks the design-system profile, creates the app from the stack template and runs a smoke test."],
+    ["adopt", "Start", "Builds a base design system when you have none. The look comes from the shadcn preset, the structure from Material Design 3. You choose the brand colour, name, prefix, radius and font; every colour pair is checked for contrast."],
+    ["define", "Plan and build", "Turns PM and BA requirements into units, finds what is vague, missing or contradictory, writes questions, maps units to screens and the component catalogue, and splits the work into delivery waves with acceptance criteria."],
+    ["prototype", "Plan and build", "Builds screens and flows from a request, a plan wave, reference images or screenshots. Every element is mapped to the design-system catalogue, and it stops to ask before any new component or page."],
+    ["annotate", "Specify", "Writes the design spec for BA, QC and developers: one Markdown file per unit, every screen and state captured, elements pinned with their styles mapped to token names, and the business flow drawn as a wireflow."],
+    ["wireflow", "Specify", "Puts the prototype flow on a Figma board: one screenshot per screen, joined by arrows along the business flows, with pins and demo links. It updates the board in place, so shared links keep working."],
+    ["mockup", "Specify", "Rebuilds each screen on Figma as editable layers with auto layout, design-system components and variables, next to the wireflow. An automatic check must pass before it is done."],
+    ["handoff", "Deliver", "Packages a prototype into one zip for BA, QC and developers: feature list, changelog, QC checklist, a spec per unit and AGENTS.md with reading paths per role. Works for one feature or a whole app version."],
+    ["share", "Deliver", "Drafts the handoff email from a package: subject, Figma link, demo links, key changes for business readers and the zip attached. It only creates a draft; you review and send it."],
+    ["review", "Design system", "A read-only audit of how well an app follows the design system: version, tokens, hard-coded values, component use and overrides. Each deviation is classified with options to fix it."],
+    ["sync", "Design system", "Brings a new design-system version into your apps: reads the changelog, replaces the embedded CSS or bumps the package, sorts every control, asks before touching local components, then tests and records the change."],
+    ["contribute", "Design system", "Keeps the local-component registry in step, scores local components and proposes the good ones to the design system through two approval gates."],
+    ["document", "Design system", "Maintains the design-system profile and its docs: changes tokens and components at the source, rebuilds the bundle, bumps the version, writes the changelog and checks contrast."]
+  ];
+  var list = document.getElementById("skillList");
+  var panel = document.getElementById("skillPanel");
+  var btns = [];
+  SKILLS.forEach(function (s, i) {
+    var li = document.createElement("li");
+    var b = document.createElement("button");
+    b.type = "button"; b.setAttribute("role", "tab"); b.id = "sk-" + s[0];
+    b.setAttribute("aria-controls", "skillPanel");
+    b.textContent = (i + 1) + ". " + s[0];
+    b.addEventListener("click", function () { showSkill(i); });
+    b.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        showSkill((i + (e.key === "ArrowDown" ? 1 : SKILLS.length - 1)) % SKILLS.length, true);
+      }
+    });
+    li.appendChild(b); list.appendChild(li); btns.push(b);
+  });
+  function showSkill(i, focus) {
+    var s = SKILLS[i];
+    btns.forEach(function (b, k) { b.setAttribute("aria-selected", k === i ? "true" : "false"); b.tabIndex = k === i ? 0 : -1; });
+    if (focus) btns[i].focus();
+    panel.setAttribute("aria-labelledby", btns[i].id);
+    document.getElementById("sGroup").textContent = s[1];
+    document.getElementById("sName").textContent = s[0];
+    document.getElementById("sDesc").textContent = s[2];
+    document.getElementById("sCmd").textContent = "/kit:" + s[0];
+    document.getElementById("sLink").href = REPO + s[0] + "/SKILL.md";
+  }
+  showSkill(0);
+
+  /* light / dark */
+  var root = document.documentElement, tb = document.getElementById("themeBtn");
+  function label() { tb.setAttribute("aria-label", root.getAttribute("data-theme") === "dark" ? "Switch to light mode" : "Switch to dark mode"); }
+  label();
+  tb.addEventListener("click", function () {
+    var next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    root.setAttribute("data-theme", next);
+    try { localStorage.setItem("theme", next); } catch (e) {}
+    label();
+  });
+
+  /* copy buttons */
+  function flash(b) {
+    var old = b.innerHTML;
+    b.innerHTML = '<svg viewBox="0 0 24 24"><use href="#i-check"/></svg>';
+    setTimeout(function () { b.innerHTML = old; }, 1500);
+  }
+  function copy(text, b) { if (navigator.clipboard) navigator.clipboard.writeText(text).then(function () { flash(b); }, function () {}); }
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.addEventListener("click", function () { copy(b.getAttribute("data-copy"), b); });
+  });
+  var cr = document.getElementById("copyRun");
+  cr.addEventListener("click", function () { copy(run.textContent, cr); });
+})();
+</script>
+</body>
+</html>

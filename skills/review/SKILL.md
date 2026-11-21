@@ -45,7 +45,7 @@ For `react` / `vue` the DS CSS is normally imported, not embedded: the script re
 | Hard-coded colours | hex, rgb/hsl, colour names outside token definitions | any |
 | Font size, radius, shadow | raw px or literal values | any |
 | Tailwind arbitrary values | arbitrary values that bypass tokens; `bg-[var(<prefix>…)]` is a token use and is not counted | any (palette classes = Note: depends on the Tailwind theme) |
-| Component use | DS root classes used; variants (`btn.xxx`) found neither in the DS nor in the app; native `<button>`, `<input>`, `<select>`, `<textarea>`, `<table>` with no DS or local class | unknown variant or home-made control |
+| Component use | DS root classes used; variants (`btn.xxx`) found neither in the DS nor in the app; native `<button>`, `<input>`, `<select>`, `<textarea>`, `<table>` with no DS or local class (a control inside a DS wrapper that the DS CSS styles, such as `.acme-select > select`, counts as DS) | unknown variant or home-made control |
 | CSS over DS classes | app rules that touch visual properties (colour, background, border, text, height, padding) of DS classes; selectors equal to DS selectors with other content; verbatim DS rules outside the region are excluded | any |
 | Undefined tokens | `var(<prefix>…)` used but defined nowhere | any |
 | Theming | values of the attributes in `ds.json > theming` | a value the DS does not declare |
@@ -53,7 +53,7 @@ For `react` / `vue` the DS CSS is normally imported, not embedded: the script re
 
 Spacing in px (`margin`, `padding`, `gap`) is counted for scale only and does **not** set the level: many places have a token, many are valid. Check clusters before concluding.
 
-Limits of the static scan (state them in the report): native controls are judged by classes in the source, so controls built by plain JS without a class count as home-made; styles set by JS at run time, colours inside JS strings, inline SVG and CSS-in-JS libraries are not seen; numbers count declarations, not visible places; a class name shared by the DS and the app can be counted as an override. Identical style blocks copied into several files (`multi` apps) count once.
+Limits of the static scan (state them in the report): native controls are judged by classes in the source (their own, or a DS wrapper class on the parent or an ancestor as the DS selector requires), so controls built by plain JS without a class count as home-made; styles set by JS at run time, colours inside JS strings, inline SVG and CSS-in-JS libraries are not seen; numbers count declarations, not visible places; a class name shared by the DS and the app can be counted as an override. Identical style blocks copied into several files (`multi` apps) count once.
 
 ## Step 3. Browser checks (when the user wants a full measure)
 
