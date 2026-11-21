@@ -3,13 +3,16 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nnminh-prototype-kit</title>
+<title>Prototype Kit: Claude Code skills from idea to design handoff</title>
 <meta name="description" content="14 Claude Code skills that take a design from idea to developer handoff with any design system: plan, prototype in HTML, React or Vue, spec, Figma flows and one handoff package.">
-<meta property="og:title" content="nnminh-prototype-kit">
+<meta property="og:title" content="Prototype Kit">
+<meta name="application-name" content="Prototype Kit">
 <meta property="og:description" content="From idea to developer handoff, with your design system. 14 Claude Code skills.">
 <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#020203" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23020203'/%3E%3Crect x='7' y='9' width='8' height='14' rx='1.5' fill='none' stroke='%23d4a72c' stroke-width='2'/%3E%3Crect x='19' y='9' width='6' height='14' rx='1.5' fill='%23d4a72c'/%3E%3C/svg%3E">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="48x48" href="assets/favicon-48.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
 <script>
 (function () {
   var t = null;
@@ -133,8 +136,8 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 /* nav */
 .nav { position: sticky; top: 1rem; z-index: 20; display: flex; justify-content: center; padding: 1rem var(--gutter) 0; margin-top: -1rem; }
 .nav__bar { width: 100%; max-width: 56rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.45rem 0.45rem 1.5rem; border: 1px solid var(--glass-edge); border-radius: 999px; background: var(--glass-bg); box-shadow: inset 0 1px 0 var(--glass-line), var(--glass-shadow); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%); }
-.logo { display: inline-flex; align-items: center; gap: 0.6rem; font: 500 0.9375rem/1 var(--mono); margin-right: auto; white-space: nowrap; }
-.logo b { color: var(--accent-soft); font-weight: 500; }
+.logo { display: inline-flex; align-items: center; gap: 0.55rem; font: 700 1rem/1 var(--display); letter-spacing: -0.02em; margin-right: auto; white-space: nowrap; }
+.logo img { width: 2rem; height: 2rem; flex: none; filter: drop-shadow(0 2px 6px rgba(212, 140, 30, 0.35)); }
 .nav__links { display: flex; gap: 0.25rem; }
 .nav__links a { font-size: 0.875rem; color: var(--muted); padding: 0.5rem 0.8rem; border-radius: 999px; }
 .nav__links a:hover { color: var(--fg); }
@@ -299,7 +302,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
 
 <header class="nav">
   <div class="nav__bar">
-    <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
+    <a class="logo" href="#" aria-label="Prototype Kit, back to top"><img src="assets/logo.webp" width="32" height="32" alt=""><span>Prototype Kit</span></a>
     <nav class="nav__links" aria-label="Main">
       <a href="#features">Features</a>
       <a href="#process">Process</a>
@@ -318,7 +321,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     <div class="glow glow--b" aria-hidden="true"></div>
     <div class="wrap">
       <h1>From idea to developer handoff, <span>with your design system.</span></h1>
-      <p class="lede">nnminh-prototype-kit is a free set of 14 Claude Code skills. It plans the work, builds HTML, React or Vue prototypes with your design system, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers.</p>
+      <p class="lede">Prototype Kit is a free set of 14 Claude Code skills. It plans the work, builds HTML, React or Vue prototypes with your design system, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers.</p>
       <div class="actions">
         <a class="btn btn--grad" href="#install"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-download"/></svg>Install the kit</a>
         <a class="btn" href="#skills"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-book"/></svg>Browse the skills</a>
@@ -464,7 +467,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
         <h2 id="faq-h">Frequently asked questions</h2>
       </div>
       <div class="faq">
-        <details><summary>What is nnminh-prototype-kit?</summary><div class="a">A Claude Code plugin with 14 skills that take a design from idea to developer handoff: requirement analysis, prototypes built with your design system, specs, Figma flow boards and one handoff package.</div></details>
+        <details><summary>What is Prototype Kit?</summary><div class="a">A Claude Code plugin (<code>kit@nnminh-prototype-kit</code>) with 14 skills that take a design from idea to developer handoff: requirement analysis, prototypes built with your design system, specs, Figma flow boards and one handoff package.</div></details>
         <details><summary>Is it free?</summary><div class="a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.</div></details>
         <details><summary>Do I need a design system first?</summary><div class="a">No. Without one, run <code>adopt</code>: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
         <details><summary>Which stacks does it support?</summary><div class="a">HTML (the default, one file that opens anywhere), React and Vue. Each app can use its own stack, so they can live side by side in one repository.</div></details>
@@ -481,9 +484,9 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <div class="foot">
     <div class="foot__grid">
       <div class="foot__about">
-        <a class="logo" href="#"><b>[ ]</b>prototype-kit</a>
+        <a class="logo" href="#" aria-label="Prototype Kit, back to top"><img src="assets/logo.webp" width="32" height="32" alt=""><span>Prototype Kit</span></a>
         <p>Claude Code skills for prototypes and design handoff, with any design system.</p>
-        <small>© 2026 nnminh-prototype-kit. MIT licence.</small>
+        <small>© 2026 Prototype Kit by nnminh. MIT licence.</small>
       </div>
       <div>
         <h3>Kit</h3>
