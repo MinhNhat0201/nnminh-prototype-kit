@@ -90,6 +90,7 @@ def main():
     ap.add_argument("--name", required=True, help='display name (e.g. "Acme Web")')
     ap.add_argument("--type", choices=("single", "multi", "spa"), help="html: single (default) or multi; react/vue: spa")
     ap.add_argument("--path", help="app folder relative to the project root (default: kit.config.json > apps[].path or apps/<app>)")
+    ap.add_argument("--stack", choices=STACKS, help="stack of this app (default: apps[].stack, else kit.config.json > stack)")
     ap.add_argument("--dry-run", action="store_true", help="list what would be written, write nothing")
     a = ap.parse_args()
 
@@ -100,14 +101,14 @@ def main():
 
     cfg = load()
     root = Path(cfg["_root"])
-    stack = cfg["stack"]
+    declared = next((x for x in cfg["apps"] if x.get("id") == a.app), None)
+    stack = a.stack or (declared or {}).get("stack") or cfg["stack"]  # apps[].stack overrides the project stack
     if stack not in STACKS:
         die("kit.config.json > stack must be one of %s (found '%s')" % (", ".join(STACKS), stack))
     ds = cfg["_ds"]
     if not ds:
         die("DS profile not found (kit.config.json > ds = %s). Run kickoff step 4, or adopt to create one." % cfg.get("ds"))
 
-    declared = next((x for x in cfg["apps"] if x.get("id") == a.app), None)
     app_type = a.type or (declared or {}).get("type") or ("single" if stack == "html" else "spa")
     allowed = ("single", "multi") if stack == "html" else ("spa",)
     if app_type not in allowed:
@@ -231,6 +232,8 @@ def main():
             entry["check"] = "python3 %s/_shell/build.py check" % rel
         if stack in ("react", "vue"):
             entry["build"] = "npm --prefix %s run build" % rel
+        if stack != cfg["stack"]:
+            entry["stack"] = stack
         print("NOTE: app '%s' is not in kit.config.json > apps. Add:\n  %s" % (a.app, json.dumps(entry, ensure_ascii=False)))
     print("Next:")
     if stack == "html":
