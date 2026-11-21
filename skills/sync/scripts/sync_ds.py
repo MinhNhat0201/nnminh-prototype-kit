@@ -14,17 +14,26 @@ Commands:
                           append a localized entry to kit.config.json > paths.changelog
 Options: --date YYYY-MM-DD (note; default today)
 
+Project commands (extension point): when kit.config.json > sync.command (or ds.json > sync.command) is set, `apply`
+runs that command in the project root instead of replacing blocks; when sync.check is set, `status` runs it instead
+of reading versions, and `apply --dry-run` runs it and prints the command it would run. {app} in a command becomes the
+--app value (empty when none). The command's output and exit code are reported as they are. --builtin forces the
+kit's own status/apply.
+  sync_ds.py --selftest   checks of the project-command switch (no app files touched)
+
 What this script does not do (the sync skill does it, with the user): package bumps in react/vue apps,
 control inventory, local components, hard-coded values, tests, commits.
 """
 import argparse
 import datetime
 import re
+import shlex
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from kitconf import load as load_cfg, ds_path, t, app as get_app  # noqa: E402
+from kitconf import load as load_cfg, ds_path, t, app as get_app, project_command  # noqa: E402
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".git", ".vite", "coverage"}
 EXT = {".html", ".htm", ".css"}
@@ -102,7 +111,25 @@ def bundle_text(cfg, override):
     return (m.group(2) if m else s).strip("\n")
 
 
+def run_project(cfg, a, key):
+    """Run the project command sync.<key> when set (and not --builtin). Returns its exit code, or None."""
+    cmd = None if getattr(a, "builtin", False) else project_command(cfg, "sync." + key)
+    if not cmd:
+        return None
+    line = cmd.replace("{app}", shlex.quote(a.app) if a.app else "")
+    print("Project %s (sync.%s): %s" % ("check" if key == "check" else "sync", key, line))
+    r = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).rstrip()
+    if out:
+        print(out)
+    print("sync.%s exit code %d" % (key, r.returncode))
+    return 1 if r.returncode else 0
+
+
 def cmd_status(cfg, a):
+    rc = run_project(cfg, a, "check")
+    if rc is not None:
+        return rc
     ds = need_ds(cfg)
     rx = block_rx(ds)
     print("DS %s, latest version %s" % (ds["label"], ds["version"]))
@@ -149,6 +176,12 @@ def cmd_changes(cfg, a):
 
 
 def cmd_apply(cfg, a):
+    if not a.builtin and project_command(cfg, "sync.command"):
+        if a.dry_run:
+            print("Dry run: would run sync.command: %s" % project_command(cfg, "sync.command").replace("{app}", a.app or ""))
+            rc = run_project(cfg, a, "check")
+            return 0 if rc is None else rc
+        return run_project(cfg, a, "command")
     ds = need_ds(cfg)
     apps = [get_app(cfg, a.app)] if a.app else cfg["apps"]
     if not apps:
@@ -200,7 +233,30 @@ def cmd_note(cfg, a):
     return 0
 
 
+def selftest():
+    import json
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="sync-selftest-"))
+    (d / "ds" / "acme").mkdir(parents=True)
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps({"name": "acme", "version": "1.0.0"}))
+    py = shlex.quote(sys.executable)
+    (d / "kit.config.json").write_text(json.dumps({"ds": "ds/acme", "apps": [{"id": "acme-web", "path": "apps/acme-web"}],
+        "sync": {"command": py + " -c \"open('ran.txt','w').write('{app}')\"",
+                 "check": py + " -c \"import sys; print('2 apps behind'); sys.exit(3)\""}}))
+    cfg = load_cfg(d)
+    A = lambda **k: argparse.Namespace(**dict({"app": None, "dry_run": False, "builtin": False}, **k))
+    assert cmd_status(cfg, A()) == 1, "status runs sync.check and reports failure"
+    assert cmd_apply(cfg, A(app="acme-web", dry_run=True)) == 1 and not (d / "ran.txt").exists(), "dry run never syncs"
+    assert cmd_apply(cfg, A(app="acme-web")) == 0 and (d / "ran.txt").read_text() == "acme-web", "apply runs sync.command"
+    cfg["sync"] = {"command": None, "check": None}
+    assert run_project(cfg, A(), "check") is None, "no command: built-in behaviour"
+    print("sync_ds.py selftest OK")
+
+
 def main():
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["status", "changes", "apply", "note"])
     ap.add_argument("--app")
@@ -209,6 +265,7 @@ def main():
     ap.add_argument("--bundle")
     ap.add_argument("--summary")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--builtin", action="store_true", help="ignore sync.command / sync.check and use the kit's own status/apply")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args()
     cfg = load_cfg()

@@ -1,8 +1,42 @@
 # Changelog
 
-## 0.7.0 · 2026-11-21
+## 0.8.0 · 2026-11-21
 - New preset `atelier` for `adopt` (`--preset atelier`): dark-first, warm neutral surfaces that lighten step by step, the brand colour kept for the main action and the selected state (text, stroke and tint plus a check mark), inset sheen on dark surfaces and soft drop shadows in light mode, a brand glow on the primary button, Manrope for headings and labels on Geist body text, Geist Mono for metadata, dashed list separators. Light mode included. Same class names and shadcn alias layer as the shadcn preset, so prototypes, stack templates and audits work unchanged. Taken from the author's own design system under MIT; no code, images or personal content.
 - `adopt`: radius, font and the new display font (`--font-display`) default to the preset's values; `preset.json > defaults.mode` sets the default mode in `ds.json` and the library page (atelier: dark); shadows may name semantic tokens (`{bg-brand}`); a preset may replace a contrast pair with another check (`contrast_skip`, recorded in `ds.json > contrast.skip` and `rules.md`); the bundle header names the preset's licence. Every profile now defines `font-family-display` (the sans family unless the preset sets one). shadcn profiles are otherwise unchanged.
+
+## 0.7.0 · 2026-11-21
+Fixes from a real handoff run, and extension points so a project can keep its own scripts. Every new key has a default that keeps the 0.6 behaviour; the fixes change behaviour only where 0.6 was wrong.
+
+Handoff (`pkg.py`, `scope-lock.js`, `scope-hide.js`)
+- One DS label per package, from one source: `handoff.dsLabel` (`auto` = `pkg.json > ds_label`, then `ds` in the frontmatter of `spec/index.md`, then `ds.json`; or `pkg`, `spec`, `ds`, `prototype`). `finalize` compares it with the `<meta name="<version_label.meta>">` of the package pages and with `spec/index.md`; `handoff.dsLabelCheck` = `warn` (default), `error` or `off`. `init` writes `ds_label`.
+- `finalize` prints every WARN and ERROR line of the spec check, not only the last line.
+- `finalize` checks file references (`spec/…`, `screens/…`, `requirements/…`, `prototype/…`, `assets/…`, `attachments/…`) in README, AGENTS and `spec/*.md` (ERROR) and in the changelog (WARN). Sentences that point at screen images (`screens/<id>.webp`) become the locale sentence `handoff.spec.imagesOnBoard`; table cells with `screens/Sxx.webp` become the Figma link in every spec file.
+- Names of the special spec files are configurable: `handoff.specFiles` (`archive`, `crossPage`, `legacy` names still read as special files); `annotate`'s `spec_md.py` no longer counts them as units.
+- `handoff.itemLabel` (text before the work-item code in AGENTS, the lock toast and the meta), `handoff.grepLabels` (extra grep labels in AGENTS). The `x-handover` meta text comes from the locale (`handoff.layer.lock`, `handoff.layer.hide`).
+- Lock layer: pages compared on resolved paths relative to the package root, whole path (a relative `window.open` of a page in the package opens; `notes/index.html` no longer matches `index.html`); `open_allow` tested on the written and the resolved URL; `allow_when` (per-route allow rules: selector + hash/path regex); `page_keys` (navigation keys mapped to files); `toast.args` (extra arguments of the app's toast function, dotted names allowed), `toast.icon`, `toast.close_html` (default close button: `aria-label` + outline icon, no bare "×"), defaults from `ds.json > toast`; `dragover`/`dragenter` stopped; `seed` (storage keys set on load when absent; also for the hide layer).
+- `pkg.py capture --only` really passes `--only` to `capture.js`; changed images are compared only for those screens.
+- `handoff.pre` / `handoff.post`: project commands around `finalize` (`{pkg}`, `{config}`, `{zip}`, `{root}`).
+- CSV headers configurable: `handoff.csv.feature|qc` (comma string, list, or `{role: header}`); `init` writes them, `finalize` warns when the package header differs; `share` finds the feature columns by role.
+- `references/package-layout.md`: serve the package folder (images are in `assets/` next to `prototype/`), not `prototype/`.
+
+Capture and validate
+- `capture.js`: `--only` runs only the asked screens and the screens they continue from; an iframe named by a selector (`F|…`) or `in` that is not in `manifest.frames` is an ERROR before the browser starts; frame-prefixed legacy steps (`fclick`, `ehover`, `ffill`, `ewait: sel`…) are read as `click` + `in`, and `screens.json` records the current form. `--selftest`.
+- `validation.py init --from-manifest <manifest> --base <URL>`: plan screens from a capture manifest (steps inlined, frames kept, plan `url`). Screens can carry `steps` and `viewports`; `validate.js` runs the manifest step vocabulary (hover, type, eval, waitFor, waitEval, waitUrl, files, reset, `in` frames) for screens and flows.
+- Touch targets per platform: `apps[].platform` + `validate.touchTarget` (`{"default": 44, "desktop": 24}`), `ds.json > touchTarget`, `--touch-min`.
+
+Wireflow
+- `demo_links.py`: a relative page path keeps its page folder; `--page-root` drops the served copy's root folder. `--selftest`.
+
+Extension points (docs/config.md "Project commands")
+- `sync.command` / `sync.check` (also `ds.json > sync`): `sync_ds.py apply`/`status` run the project's commands and report their output; `--builtin` forces the kit's own. `--selftest`.
+- `local.command.update|check` and `local.fields` ({kit field: project field}); the registry keeps unknown fields, also under `apps`. `--builtin`. `--selftest`.
+- `review.extraChecks` ([{name, command, parse?, level?}]): rows in the audit report, per app with `{app}`; `--no-extra`. `--selftest`.
+- `email.demoLinks` (default `true`; `false` = no demo, prototype or flow link; also `--no-demo`) and `email.maxItems` (default 12).
+- `ds.json > components.vue` ({package, propsMap}): vue apps use the DS's own Vue component layer: `kickoff` picks the plain Vue template with the `@ds-vue` alias (or the npm dependency), `prototype` builds only with those components, `review` reports local `.vue` files named like a DS component and shadcn-vue imports. `ds.json > tailwind: false`: plain templates for react and vue (`templates/react-plain`, `templates/vue-plain`, overlays on the stack templates), no Tailwind row in `review`. `scaffold.py --selftest`.
+- `skills.<name>.model|effort` hints in `kit.config.json`; every skill reads its own, `brief` passes them on; `kitconf.py skills` lists them; `kitconf.py check` validates them. `kitconf.py --selftest`.
+
+Tests
+- `tests/e2e.py`: runs every `--selftest`, then a throw-away project (adopt, kickoff html multi + plain vue, registry, review, sync, validate from a manifest, capture, lock layer in Chromium, finalize, zip, email, demo links). 49 checks.
 
 ## 0.6.0 · 2026-11-21
 - New skill `verify`: compares a developer build with the approved prototype after handoff. `verify.js` (Playwright) opens each screen pair at each viewport on both sides and collects masked full-page screenshots, the colours, font sizes and radii in use, DS component classes, visible labels and headings, console errors and, on the build, axe-core results; then runs each flow on both sides. Token values are resolved in the prototype, which embeds the DS.

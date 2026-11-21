@@ -1,6 +1,6 @@
 # Landing page content: Prototype Kit
 
-The copy of the live landing page (`site/index.html`, version 0.7.0), section by section, in English and Vietnamese.
+The copy of the live landing page (`site/index.html`, version 0.8.0), section by section, in English and Vietnamese.
 English is the HTML source; Vietnamese comes from the page's language dictionary and shows when a visitor picks **VI** (or the browser language is Vietnamese).
 
 Rules for the copy: every claim comes from the repository or from a real test run of the kit. No invented statistics, star counts, logos or testimonials.
@@ -367,8 +367,8 @@ Notes in *[brackets and italics]* describe layout, not page text.
 *[Centred card with a soft gold glow. Command box with a Copy button, then a gold GitHub button.]*
 
 - **Version pill**
-  - EN: Version 0.7.0 · MIT licence
-  - VI: Phiên bản 0.7.0 · Giấy phép MIT
+  - EN: Version 0.8.0 · MIT licence
+  - VI: Phiên bản 0.8.0 · Giấy phép MIT
 - **Heading**
   - EN: Ready to prototype with your design system?
   - VI: Sẵn sàng dựng prototype với design system của bạn?
@@ -492,4 +492,4 @@ Notes in *[brackets and italics]* describe layout, not page text.
 - **Base line**
   - EN: Released under the MIT licence. Contributions welcome.
   - VI: Phát hành theo giấy phép MIT. Hoan nghênh đóng góp.
-- **Version:** v0.7.0
+- **Version:** v0.8.0

@@ -10,8 +10,9 @@ Folder layout (see skills/annotate/references/spec-format.md):
                        "Not matched", "Out of scope", "Deviations from spec" (headings in the project language)
   spec/flows.md        wireflow as text, plus a Mermaid diagram for Markdown viewers
   spec/<unit id>.md    one file per spec unit (FR-01.md ...); each screen is a "### S01 · <name>" section
-  spec/cross-page.md   multi-page prototypes only
-  spec/archive.md      optional: replaced or dropped units
+  spec/cross-page.md   multi-page prototypes only   } names from kit.config.json > handoff.specFiles
+  spec/archive.md      optional: replaced or dropped units  } (crossPage, archive); handoff.specFiles.legacy lists
+                       older names that are still read as special files, not as units
   screens/screens.json written by capture.js: route, steps, pins (with computed style), exits, Figma link
   requirements/flows.json, requirements/spec-map.json
 
@@ -37,7 +38,11 @@ import kitconf  # noqa: E402
 from kitconf import t  # noqa: E402
 
 E = lambda s: html.escape(str(s), quote=True)
-SPECIAL = ("index", "flows", "cross-page", "archive")
+
+
+def special(cfg):
+    """Stems of the spec files that are not units (index, flows, cross-page, archive and their configured names)."""
+    return kitconf.spec_files(cfg)["special"]
 
 
 def fail(msg):
@@ -182,7 +187,7 @@ def read_folder(root):
     screens = {s["id"]: s for s in json.loads(scr.read_text(encoding="utf-8"))} if scr.exists() else {}
     fl = root / "requirements" / "flows.json"
     flows = json.loads(fl.read_text(encoding="utf-8")) if fl.exists() else {"flows": []}
-    units = sorted([p for p in spec.glob("*.md") if p.stem not in SPECIAL], key=natural)
+    units = sorted([p for p in spec.glob("*.md") if p.stem not in special(config(root))], key=natural)
     return root, spec, screens, flows, units
 
 
@@ -207,7 +212,7 @@ def check(a):
         if meta["ds"] != cur:
             warn.append(f'spec/index.md states DS "{meta["ds"]}" but the project uses "{cur}". Re-check styles or note the mismatch.')
     used = set()
-    for p in [spec / f"{n}.md" for n in SPECIAL] + units:
+    for p in [spec / f"{n}.md" for n in sorted(special(cfg))] + units:
         if not p.exists():
             continue
         s = p.read_text(encoding="utf-8")
@@ -419,8 +424,9 @@ def render(a):
         parts.append('<section id="wireflow"><h2>%s</h2>%s<h3>%s</h3>%s</section>' % (
             E(v.tr("html.wireflow")), v.wireflow(flows, screens), E(v.tr("html.textVersion")),
             md_to_html(re.sub(r"^#\s.*\n", "", fl), shift=2, ids=False)))
-    if (spec / "cross-page.md").exists():
-        parts.append('<section id="cross-page">%s</section>' % md_to_html((spec / "cross-page.md").read_text(encoding="utf-8")))
+    cross = spec / kitconf.spec_files(cfg)["crossPage"]
+    if cross.exists():
+        parts.append('<section id="cross-page">%s</section>' % md_to_html(cross.read_text(encoding="utf-8")))
     parts.append(md_to_html(index[len(head):]))
     parts.append("<h2>%s</h2>" % E(v.tr("html.units")))
     parts += [v.unit_block(p, screens) for p in units]

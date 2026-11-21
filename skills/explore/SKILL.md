@@ -6,6 +6,7 @@ description: "Explore two to four meaningfully different design directions for o
 # Explore: directions before decisions
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.explore` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 

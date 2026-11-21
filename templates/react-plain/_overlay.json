@@ -1,0 +1,5 @@
+{
+ "_note": "Overlay on templates/react for ds.json > tailwind: false (scaffold.py). Files here replace the base files; drop lists base files and folders left out.",
+ "base": "react",
+ "drop": ["components.json", "src/components/ui", "src/lib/utils.ts"]
+}

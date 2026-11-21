@@ -4,7 +4,7 @@ The kit reads two files. Skills and scripts never hard-code a design system (DS)
 
 | File | One per | Holds |
 |---|---|---|
-| `kit.config.json` | project (repository root) | language, stack, apps, local-component registry, handoff, deploy |
+| `kit.config.json` | project (repository root) | language, stack, apps, local-component registry, handoff, email, deploy, project commands, skill hints |
 | `ds/<name>/ds.json` | design system profile | token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries |
 
 Scripts find `kit.config.json` by walking up from the current directory. `scripts/kitconf.py` and `scripts/kitconf.js` load both files and fill defaults; use them instead of parsing the files by hand.
@@ -24,28 +24,45 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
       "entry": "index.html",
       "type": "single",
       "build": null,
-      "check": null
+      "check": null,
+      "platform": null
     }
   ],
   "local": {
     "prefix": "x-",
     "marker": "LOCAL",
-    "registry": "docs/local-components.json"
+    "registry": "docs/local-components.json",
+    "command": { "update": null, "check": null },
+    "fields": {}
   },
   "handoff": {
     "dir": "docs/handover",
     "zipName": "Design - {pbi}",
     "maxZipMB": 3,
-    "figmaRequired": true
+    "figmaRequired": true,
+    "itemLabel": "",
+    "grepLabels": [],
+    "dsLabel": "auto",
+    "dsLabelCheck": "warn",
+    "specFiles": { "archive": "archive.md", "crossPage": "cross-page.md", "legacy": [] },
+    "csv": { "feature": null, "qc": null },
+    "pre": null,
+    "post": null
   },
   "email": {
     "subject": "[{app}] Design - {feature} - {version}",
-    "attachLimitMB": 3
+    "attachLimitMB": 3,
+    "demoLinks": true,
+    "maxItems": 12
   },
   "deploy": {
     "type": "none",
     "site": null
   },
+  "sync": { "command": null, "check": null },
+  "review": { "extraChecks": [] },
+  "validate": { "touchTarget": { "default": 44, "desktop": 24 } },
+  "skills": {},
   "paths": {
     "changelog": "CHANGELOG.md",
     "plans": "docs/plans",
@@ -67,19 +84,44 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `apps[].stack` | `html`, `react`, `vue` | the top-level `stack` | Per-app override, so one repository can keep old `html` apps and add `vue` apps. Skills use the app's stack when they work on one app. |
 | `apps[].type` | `single` (one HTML file), `multi` (one file per feature, shared shell), `spa` (React/Vue app with a router) | `single` | `prototype`, `handoff` |
 | `apps[].build`, `apps[].check` | shell commands, or `null` | `null` | Run after editing a shared shell (`multi`) or before a handoff (`spa`) |
+| `apps[].platform` | free word, e.g. `desktop`, `web`, `mobile`, `tablet` | `null` | `validate`: picks the touch-target size from `validate.touchTarget` |
 | `local.prefix` | CSS class prefix of local (not-yet-in-DS) components | `x-` | `prototype`, `contribute`, `review` |
 | `local.marker` | Comment marker that opens a local block: `/* LOCAL: <name> */` | `LOCAL` | same |
 | `local.registry` | JSON registry of local components | `docs/local-components.json` | same |
 | `handoff.zipName` | zip and root folder name; `{pbi}` is the work-item code | `Design - {pbi}` | `handoff`, `share` |
 | `handoff.figmaRequired` | the handoff stops when a screen has no Figma node | `true` | `handoff`, `wireflow` |
+| `handoff.itemLabel` | text before the work-item code in AGENTS.md, the lock toast and the `x-handover` meta, e.g. `"PBI "` | `""` | `handoff` |
+| `handoff.grepLabels` | extra labels listed in AGENTS.md "Find with grep" (the project's own status words) | `[]` | `handoff` |
+| `handoff.dsLabel` | where the DS label of the package comes from: `auto` (`pkg.json > ds_label`, then `ds` in the frontmatter of `spec/index.md`, then `ds.json`), `pkg`, `spec`, `ds`, `prototype` (version in the `<meta>` of the package pages) | `auto` | `handoff` |
+| `handoff.dsLabelCheck` | label differs from the pages' `<meta name="<version_label.meta>">` or from `spec/index.md`: `warn`, `error` (finalize stops), `off` | `warn` | `handoff` |
+| `handoff.specFiles` | names of the special spec files: `archive`, `crossPage`; `legacy` lists older names still read as special files (not counted as units) | `archive.md`, `cross-page.md`, `[]` | `handoff`, `annotate` |
+| `handoff.csv.feature`, `handoff.csv.qc` | CSV headers: `null` (locale), a comma string or list in the standard column order, or an object `{role: header}` (roles: feature `code, feature, group, screen, behaviour, inputs, expected, status, dependencies`; qc `id, unit, preconditions, steps, expected, result, notes`). `init` writes them; `finalize` warns when the package header differs | `null` | `handoff`, `share` |
+| `handoff.pre`, `handoff.post` | project commands run before and after `pkg.py finalize` (after the zip). `{pkg}`, `{config}`, `{zip}`, `{root}` are replaced (shell-quoted); also in the environment as `KIT_PKG`, `KIT_CONFIG`, `KIT_ZIP`. A failing command stops finalize | `null` | `handoff` |
 | `email.subject` | subject template | as above | `share` |
 | `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
+| `email.demoLinks` | `false`: the email has no demo, prototype or flow link at all | `true` | `share` |
+| `email.maxItems` | items kept in the feature or changelog section; the rest points to the file in the package | `12` | `share` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 | `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
 | `paths.validation` | validation plans, runs (report, screenshots, diffs) and the accepted baseline, one sub-folder per app | `docs/validation` | `validate`, `handoff` |
 | `paths.verify` | implementation checks: pairs, runs (report, screenshots, side-by-side images) and accepted deviations | `docs/verify` | `verify` |
 | `paths.explorations` | folder of design explorations, one sub-folder per question | `docs/explorations` | `explore`, `prototype` |
+| `validate.touchTarget` | smallest touch target in px on phone widths, per `apps[].platform`; `default` for apps without a platform (or with one not listed). `ds.json > touchTarget` may add platforms | `{"default": 44, "desktop": 24}` (24 px = WCAG 2.2 target size minimum) | `validate` |
+| `skills.<skill>.model`, `skills.<skill>.effort` | model and effort hints per skill, e.g. `{"handoff": {"model": "sonnet", "effort": "medium"}}`; `effort` is `low`, `medium`, `high`, `xhigh` or `max`. Skills read their own entry; `brief` passes it on when it hands work to a skill or a sub-agent. `python3 scripts/kitconf.py skills` lists them | `{}` (no hint: the session's model and effort) | every skill |
+
+## Project commands (extension points)
+
+A project that already has its own scripts for a step keeps them; the kit runs them and reports their output and exit code instead of doing the step itself. Every key is off by default, so the kit's own behaviour stays.
+
+| Key | Replaces | Notes |
+|---|---|---|
+| `sync.command` | `sync_ds.py apply` | Runs in the project root. `{app}` becomes the `--app` value. `apply --dry-run` prints the command and runs `sync.check` instead. May also be set in `ds.json > sync` (the kit config wins). |
+| `sync.check` | `sync_ds.py status` | Exit code other than 0 = apps are behind or out of step. |
+| `local.command.update`, `local.command.check` | `registry.py update`, `registry.py check` | The project owns the registry (for example it also builds pages from it). `--builtin` runs the kit's own command. |
+| `local.fields` | field names of the registry | `{kit field: project field}`, e.g. `{"vs_ds": "compare", "removed_on": "dropped"}`. The kit reads and writes the project's names. Fields the kit does not know (demo, notes…) are always kept as they are. |
+| `review.extraChecks` | adds rows to the `review` report | `[{"name": "Flag ledger", "command": "python3 scripts/flags.py", "parse": "^flags:", "level": "deviation"}]`. Runs after `audit_app.py` in the project root; `{app}` = one run and one row per audited app, else one row in "Project checks". Result: exit code + the lines matching `parse` (else the last line). Exit 0 = Pass, else `level` (`deviation` by default, or `note`). `--no-extra` skips them. |
+| `handoff.pre`, `handoff.post` | runs around `pkg.py finalize` | See the table above. |
 
 ## `ds/<name>/ds.json`
 
@@ -144,8 +186,13 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `tokens.scale.spacing` | Primitive spacing scale. Used to match hard-coded `margin`, `padding`, `gap`. |
 | `css.bundle` | One CSS file with the whole DS. Prototypes in the `html` stack embed it; the spec viewer and the audit read it. Path is relative to the profile folder, or a URL. |
 | `css.marker` | Comments that wrap the embedded DS CSS inside an app, so `sync` can replace it and `review` can tell DS CSS from app CSS. |
-| `css.styleBlocks` | Optional id prefix (for example `lib`): every `<style id="<prefix>…">` block in an app is DS CSS. For DS that embed their library blocks by id instead of marker comments. A file in the app named like the bundle (for example `mds.css`) and a `<link href>` to it also count as DS CSS. |
-| `version_label` | Footer text and `<meta>` name that state which DS version a prototype uses. |
+| `css.styleBlocks` | Optional id prefix (for example `lib`): every `<style id="<prefix>…">` block in an app is DS CSS. For DS that embed their library blocks by id instead of marker comments. A file in the app named like the bundle (for example `acme.css`) and a `<link href>` to it also count as DS CSS. |
+| `version_label` | Footer text and `<meta>` name that state which DS version a prototype uses. `handoff` compares the `<meta>` of the package pages with the package's DS label. |
+| `toast` | Optional: the DS toast pattern for the handoff lock layer: `container`, `class`, `close_class`, `icon` (HTML of the icon), `close_html` (inner HTML of the close button). `pkg.json > lock.toast` overrides each key. |
+| `touchTarget` | Optional: `{platform: px}` touch-target sizes of the DS, used by `validate` when `kit.config.json > validate.touchTarget` has no entry for the app's platform. |
+| `tailwind` | Optional, `react` and `vue` stacks: `false` = the DS is used without Tailwind; `kickoff` uses the plain templates (`templates/<stack>-plain`: no Tailwind, no shadcn) and `review` drops the Tailwind row. Default: Tailwind (absent or `true`). |
+| `components.vue` | Optional: the DS's own Vue component layer, `{"package": "<folder in the project, or npm name@version>", "propsMap": "<CSV, first column = component name>", "version": "<npm version when package has none>"}`. `map` is read as `propsMap`; the path is relative to the project root, else to the profile folder. Without `package` the layer is off. Vue apps then use these components instead of shadcn-vue: `kickoff` uses the plain Vue template with the alias `@ds-vue` (folder) or the npm dependency, `prototype` builds only with them (props per the props map), `review` reports local `.vue` files named like a DS component and shadcn-vue imports. |
+| `sync` | Optional: `{"command", "check"}` project commands for `sync` (see "Project commands"); `kit.config.json > sync` wins. |
 | `theming` | Attributes the DS reads on `<html>`. Skills set them only through these keys; they never invent new attributes. |
 | `catalog` | Component catalogue for agents: class, variants, states, tokens, and the `components.map` table (HTML class ↔ React ↔ Vue component). |
 | `catalog_json` | Machine-readable catalogue (default `catalog.json`), built from `catalog` by `document/scripts/catalog.py build`. Adds fields people maintain: `figma` (component, key, node), `status` (`active`, `experimental`, `deprecated` with `replacedBy` and `reason`), `usage` (`use`, `avoid`) and `a11y`. Rebuilding keeps them. Read by `prototype`, `review`, `mockup`. |

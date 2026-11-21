@@ -6,6 +6,7 @@ description: "Entry point of the kit: the designer says in plain words what they
 # Brief: find the job, route to a skill
 
 Reply in the project language (`kit.config.json > language`; no config yet → the user's language). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.brief` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -16,7 +17,7 @@ Reply in the project language (`kit.config.json > language`; no config yet → t
    - Found, but `ds` missing or `ds.json` not found → route to `adopt` (or `kickoff` if the user has a DS profile somewhere to link).
 2. **Read the request** and any files the user attached. Match it to the table below.
 3. **Ask only if needed:** at most 1–2 questions in one AskUserQuestion round, only when two skills fit equally or a required input is missing (target app, source document). Never ask what the config already says.
-4. **State a one-line plan**, for example: "`define` on the PRD for `acme-web`, then `prototype` for wave 1." Then invoke the first skill and pass it what you learned (app, files, goal).
+4. **State a one-line plan**, for example: "`define` on the PRD for `acme-web`, then `prototype` for wave 1." Then invoke the first skill and pass it what you learned (app, files, goal). The skill has a model or effort hint (`python3 <kit>/scripts/kitconf.py skills`)? Name it in the plan, and start a sub-agent with that model and effort when you hand the work over.
 
 ## Routing
 

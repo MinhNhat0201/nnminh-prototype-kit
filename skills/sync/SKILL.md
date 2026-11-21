@@ -6,6 +6,7 @@ description: "Bring the latest DS version into one or more prototype apps: read 
 # Sync apps with the latest DS
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.sync` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -14,6 +15,8 @@ Goal: every app in scope runs the latest DS version, keeps its own content, data
 Read first: `kit.config.json`, `ds.json`, the DS `rules` file, the DS `catalog`, the DS `CHANGELOG.md`. Never fill a token value, class name or version from memory. If a source cannot be read, stop and say so.
 
 Script: `python3 <kit>/skills/sync/scripts/sync_ds.py` (`status`, `changes`, `apply`, `note`; `--help` lists options).
+
+**Project sync commands.** Some projects already sync their apps with their own script (several DS blocks per app, shared shells rebuilt, versions per platform). When `kit.config.json > sync.command` (or `ds.json > sync.command`) is set, `apply` runs that command instead of replacing blocks, and `status` runs `sync.check` instead of reading versions; `apply --dry-run` runs `sync.check` and prints the command. Report their output and exit code as they are, never rewrite blocks by hand around them. Every other step of this workflow (changelog, control inventory, local components, hard-coded values, tests, record) still applies. `--builtin` forces the kit's own status/apply; use it only when the user asks.
 
 ## Scope
 - Default: every app in `kit.config.json > apps`. The user names apps: only those.

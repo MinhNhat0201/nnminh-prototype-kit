@@ -21,6 +21,15 @@ Commands:
   list        list entries (--app, --status filters)
   report      write a Markdown summary (--out FILE, default stdout), in the project language
 Options: --date YYYY-MM-DD (default today)
+
+Project extension points (kit.config.json > local):
+  command.update, command.check   project commands that own the registry: update and check run them in the
+                                  project root instead (output and exit code reported as they are); --builtin forces
+                                  the kit's own update/check.
+  fields                          {kit field: project field}, e.g. {"vs_ds": "compare", "removed_on": "dropped"}: the
+                                  registry is read and written with the project's field names.
+The registry keeps every field it does not know (demo, notes, anything a project adds) exactly as it is.
+  registry.py --selftest          checks of the field mapping and of unknown-field preservation
 """
 import argparse
 import collections
@@ -28,6 +37,7 @@ import datetime
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import unicodedata
 from pathlib import Path
@@ -167,16 +177,50 @@ def scan(ctx, app):
             "dups": [k for k, n in count.items() if n > 1]}
 
 
+MAPPABLE = ("title", "kind", "status", "summary", "where", "vs_ds", "decision", "decided_on", "removed_on", "proposal",
+            "history", "anchor", "file", "line", "size", "classes", "uses", "fp")
+
+
+def field_map(ctx):
+    m = {k: v for k, v in ((ctx.cfg.get("local") or {}).get("fields") or {}).items() if k in MAPPABLE and v and v != k}
+    return m, {v: k for k, v in m.items()}
+
+
+def rename(entry, m):
+    """Same entry with keys renamed by m; key order is kept, unknown keys stay as they are."""
+    return {m.get(k, k): v for k, v in entry.items()}
+
+
 def load_reg(ctx):
     if ctx.reg_path.is_file():
-        return json.loads(ctx.reg_path.read_text(encoding="utf-8"))
+        reg = json.loads(ctx.reg_path.read_text(encoding="utf-8"))
+        _to_proj, to_kit = field_map(ctx)
+        if to_kit:
+            reg["components"] = [rename(e, to_kit) for e in reg.get("components", [])]
+        return reg
     return {"updated": "", "apps": {}, "unassigned": {}, "components": []}
 
 
 def save_reg(ctx, reg, date):
     reg["updated"] = date
+    to_proj, _to_kit = field_map(ctx)
+    out = dict(reg, components=[rename(e, to_proj) for e in reg.get("components", [])]) if to_proj else reg
     ctx.reg_path.parent.mkdir(parents=True, exist_ok=True)
-    ctx.reg_path.write_text(json.dumps(reg, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    ctx.reg_path.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def run_project(ctx, a, cmd_name):
+    """kit.config.json > local.command.<update|check>: run it instead of the kit's own command. None when not set."""
+    cmd = None if a.builtin else ((ctx.cfg.get("local") or {}).get("command") or {}).get(cmd_name)
+    if not cmd:
+        return None
+    print("Project %s (local.command.%s): %s" % (cmd_name, cmd_name, cmd))
+    r = subprocess.run(cmd, shell=True, cwd=ctx.root, capture_output=True, text=True)
+    out = (r.stdout + r.stderr).rstrip()
+    if out:
+        print(out)
+    print("local.command.%s exit code %d" % (cmd_name, r.returncode))
+    return 1 if r.returncode else 0
 
 
 def diff_classes(old, new):
@@ -335,7 +379,7 @@ def cmd_update(ctx, a):
         # loose classes found on the first run are recorded as existing debt; the list only shrinks afterwards
         old = reg.setdefault("unassigned", {}).get(aid)
         reg["unassigned"][aid] = sc["loose"] if old is None else [x for x in old if x in sc["loose"]]
-        reg.setdefault("apps", {})[aid] = {"name": app.get("name", aid), "path": app["path"], "ds": sc["ds"]}
+        reg.setdefault("apps", {}).setdefault(aid, {}).update({"name": app.get("name", aid), "path": app["path"], "ds": sc["ds"]})
     save_reg(ctx, reg, date)
     for kind, aid, x, note in out:
         if kind == "loose" and aid in first:
@@ -352,10 +396,47 @@ def cmd_update(ctx, a):
         print("Nothing to record.")
     pend = [e for e in reg["components"] if e.get("status") == "pending"]
     if pend:
-        print("\nFill in status, summary, where, vs_ds, decision, decided_on for %d pending entries:" % len(pend))
+        names = ", ".join(field_map(ctx)[0].get(k, k) for k in ("status", "summary", "where", "vs_ds", "decision", "decided_on"))
+        print("\nFill in %s for %d pending entries:" % (names, len(pend)))
         for e in pend:
             print("  - %s (%s)" % (e["id"], e["title"]))
     return 0
+
+
+def selftest():
+    import shutil
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="registry-selftest-"))
+    (d / "ds" / "acme").mkdir(parents=True)
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps({"name": "acme"}))
+    (d / "apps" / "acme-web").mkdir(parents=True)
+    (d / "apps" / "acme-web" / "index.html").write_text(
+        "<style>/* LOCAL: Drop zone */ .x-drop{display:grid}\n/* LOCAL: Chip */ .x-chip{display:flex}</style>"
+        '<div class="x-drop"></div><span class="x-chip"></span>')
+    (d / "docs").mkdir()
+    reg = {"updated": "", "apps": {"acme-web": {"name": "Acme Web", "path": "apps/acme-web", "ds": "", "owner": "team"}},
+           "unassigned": {"acme-web": []}, "custom": {"keep": True},
+           "components": [{"id": "acme-web-drop-zone", "app": "acme-web", "anchor": "Drop zone", "title": "Drop zone",
+                           "kind": "component", "status": "keep", "summary": "", "where": "", "compare": "near Upload",
+                           "decision": "keep", "decided_on": "2026-01-01", "demo": {"steps": [1]}, "fp": "old",
+                           "classes": ["x-drop"], "history": []}]}
+    (d / "docs" / "local-components.json").write_text(json.dumps(reg))
+    (d / "kit.config.json").write_text(json.dumps({"ds": "ds/acme", "apps": [{"id": "acme-web", "path": "apps/acme-web"}],
+                                                   "local": {"fields": {"vs_ds": "compare"}}}))
+    ctx = Ctx(load_cfg(d))
+    A = argparse.Namespace(date="2026-02-02", builtin=False, target=None)
+    assert load_reg(ctx)["components"][0]["vs_ds"] == "near Upload", "project field read as vs_ds"
+    cmd_update(ctx, A)
+    out = json.loads((d / "docs" / "local-components.json").read_text())
+    old = next(e for e in out["components"] if e["id"] == "acme-web-drop-zone")
+    new = next(e for e in out["components"] if e["anchor"] == "Chip")
+    assert old["compare"] == "near Upload" and "vs_ds" not in old and old["demo"] == {"steps": [1]}, old
+    assert "compare" in new and "vs_ds" not in new, new
+    assert out["custom"] == {"keep": True} and out["apps"]["acme-web"]["owner"] == "team", "unknown fields kept"
+    ctx.cfg["local"]["command"] = {"check": sys.executable + " -c \"print('project registry OK')\"", "update": None}
+    assert run_project(ctx, A, "check") == 0 and run_project(ctx, A, "update") is None
+    shutil.rmtree(d, ignore_errors=True)
+    print("registry.py selftest OK")
 
 
 def cmd_ack(ctx, a):
@@ -437,6 +518,9 @@ def cmd_report(ctx, a):
 
 
 def main():
+    if "--selftest" in sys.argv:
+        selftest()
+        return 0
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("cmd", choices=["scan", "update", "check", "ack", "list", "report"])
     ap.add_argument("target", nargs="?", help="entry id (ack)")
@@ -445,8 +529,13 @@ def main():
     ap.add_argument("--status", help="list/report: comma-separated statuses")
     ap.add_argument("--all", action="store_true", help="list/report: include replaced and removed entries")
     ap.add_argument("--out", help="report: output Markdown file")
+    ap.add_argument("--builtin", action="store_true", help="update/check: ignore local.command and use the kit's own")
     a = ap.parse_args()
     ctx = Ctx(load_cfg())
+    if a.cmd in ("update", "check"):
+        rc = run_project(ctx, a, a.cmd)
+        if rc is not None:
+            sys.exit(rc)
     sys.exit({"scan": cmd_scan, "update": cmd_update, "check": cmd_check, "ack": cmd_ack,
               "list": cmd_list, "report": cmd_report}[a.cmd](ctx, a))
 

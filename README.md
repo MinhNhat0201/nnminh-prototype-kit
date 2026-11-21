@@ -178,10 +178,11 @@ Every folder is configurable in `kit.config.json > paths`.
 
 Two files, no hard-coded design system:
 
-- `kit.config.json` in the project: language of replies and documents, stack, apps, local-component prefix, handoff and email settings. See [docs/config.md](docs/config.md).
+- `kit.config.json` in the project: language of replies and documents, stack, apps, local-component prefix, handoff and email settings, model and effort hints per skill. See [docs/config.md](docs/config.md).
+- Project commands: a project that already has its own scripts keeps them. `sync.command` / `sync.check` replace the kit's DS sync, `local.command` and `local.fields` let the project own its local-component registry, `review.extraChecks` adds the project's checks as rows of the audit, `handoff.pre` / `handoff.post` run around packaging. All are off by default.
 - `ds/<name>/ds.json` in the DS profile: token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries. Made by `adopt`, or written by hand for an existing DS. Next to it, `catalog.md` (for people) and `catalog.json` (for agents: variants, states, tokens, code and Figma mapping, deprecated components and their replacement, usage rules).
 
-Stacks are described in [docs/stacks.md](docs/stacks.md). Each app can override the project stack, so old HTML apps and new Vue apps can live side by side.
+Stacks are described in [docs/stacks.md](docs/stacks.md). Each app can override the project stack, so old HTML apps and new Vue apps can live side by side. A DS with its own Vue component layer (`ds.json > components.vue`) or without Tailwind (`ds.json > tailwind: false`) gets templates without Tailwind and shadcn.
 
 ## Languages
 
@@ -189,7 +190,7 @@ The kit is written in English. Replies and generated documents follow `kit.confi
 
 ## Contributing
 
-Read [docs/authoring.md](docs/authoring.md) before adding or changing a skill.
+Read [docs/authoring.md](docs/authoring.md) before adding or changing a skill. Before a release, run `python3 tests/e2e.py`: every script's `--selftest`, then a throw-away project from `adopt` to a handoff zip and an email draft (needs Node, Playwright and an installed Chromium).
 
 ## Licence
 

@@ -6,6 +6,7 @@ description: "Build new screens, flows or a whole prototype with the project's D
 # Prototype: build screens with the DS
 
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.prototype` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -123,10 +124,12 @@ Per stack (see `<kit>/docs/stacks.md`):
 |---|---|---|---|
 | Where | `apps/<app>/index.html` (or the page file chosen in 4b) | `apps/<app>/src/pages/<Page>.tsx` + route | `apps/<app>/src/pages/<Page>.vue` + route |
 | DS CSS | Embedded bundle between `/* @ds:begin */` and `/* @ds:end */` (`css.marker`); never edit inside it | Imported once in `src/index.css`; do not re-import | Same as React |
-| Components | DS classes from `catalog.md` | React column of `components.map` | Vue column of `components.map` |
+| Components | DS classes from `catalog.md` | React column of `components.map` | Vue column of `components.map`; with `ds.json > components.vue`, only the DS Vue components (props from its props map) |
 | Styling | Tokens via `var(...)` in the app's CSS | Tailwind classes mapped to tokens; no arbitrary values (`bg-[#fff]`, `p-[13px]`), no inline `style={{…}}` for colour or spacing | Same as React; no `:style` for colour or spacing |
 | Local blocks | `/* LOCAL: <name> */` block in the app CSS | `src/components/local/<Name>.tsx` with the header comment; classes keep `x-` | `src/components/local/<Name>.vue`, same |
 | After editing | `multi`: run the app's `build` then `check` | `npm run build` (or `apps[].build`) must pass | Same as React |
+
+DS with its own Vue component layer (`ds.json > components.vue`): import the components from the alias `@ds-vue` (or the npm package `components.vue.package`), set props as the props map names them, never copy or rewrite a DS component into the app, never add shadcn-vue. A component the layer lacks goes through the component gate. No Tailwind (`ds.json > tailwind: false`): style only with DS classes and tokens in the app CSS.
 
 ## Step 6. Test
 

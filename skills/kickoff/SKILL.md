@@ -6,6 +6,7 @@ description: "Set up a project for the kit: ask for language, stack, DS and the 
 # Kickoff: set up a project
 
 Reply in the project language (`kit.config.json > language`; before it exists, the user's language). Generated documents use the same language.
+Model and effort: `kit.config.json > skills.kickoff` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
@@ -53,6 +54,7 @@ Run `python3 <kit>/skills/kickoff/scripts/scaffold.py --app <id> --name "<name>"
 | `html`, type `multi` | `<kit>/templates/html-multi/` | One file per feature; shared shell in `_shell/` (`shell.json` lists pages); after editing the shell run `python3 _shell/build.py build`, and `check` before a handoff. Set `apps[].build`/`check` to those commands |
 | `react` | `<kit>/templates/react/` | `npm install`; import the DS CSS once in `src/index.css`; map Tailwind theme to DS tokens; version label in `index.html` and footer |
 | `vue` | `<kit>/templates/vue/` | Same as React |
+| `react`, `vue` with `ds.json > tailwind: false`; `vue` with `ds.json > components.vue` | `<kit>/templates/<stack>-plain/` (overlay on the stack template) | No Tailwind, no shadcn: DS bundle + neutral `app-*` skeleton CSS. With `components.vue`: alias `@ds-vue` to the DS Vue package folder (or the npm package added to `package.json`), README names the props map. `scaffold.py` picks it by itself |
 
 - `apps/<id>` exists and is not empty → ask before writing anything into it.
 - Follow the template's own README if it has one.
