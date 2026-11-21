@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nnminh-prototype-kit</title>
+<meta name="description" content="14 Claude Code skills that take a design from idea to developer handoff with any design system: plan, prototype in HTML, React or Vue, spec, Figma flows and one handoff package.">
+<meta property="og:title" content="nnminh-prototype-kit">
+<meta property="og:description" content="From idea to developer handoff, with your design system. 14 Claude Code skills.">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23000'/%3E%3Crect x='7' y='9' width='8' height='14' rx='1.5' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Crect x='19' y='9' width='6' height='14' rx='1.5' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700;12..96,800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #000;
+  --paper: #fff;
+  --muted: #595959;
+  --line: #d9d9d9;
+  --well: #f4f4f4;
+  --sans: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --measure: 38rem;
+  --page: 72rem;
+  --gutter: clamp(1rem, 4vw, 2.5rem);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #fff;
+    --paper: #000;
+    --muted: #a6a6a6;
+    --line: #333;
+    --well: #141414;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--sans);
+  font-optical-sizing: auto;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 2px; }
+code, pre, .mono { font-family: var(--mono); font-size: 0.875em; }
+p code, li code, dd code { background: var(--well); padding: 0.1em 0.35em; border-radius: 4px; }
+h1, h2, h3 { font-weight: 700; line-height: 1.08; margin: 0; letter-spacing: -0.02em; }
+p { margin: 0; }
+.skip { position: absolute; left: -999px; top: 0; }
+.skip:focus { left: var(--gutter); top: 0.75rem; background: var(--paper); padding: 0.5rem 0.75rem; z-index: 10; }
+
+.wrap { max-width: var(--page); margin-inline: auto; padding-inline: var(--gutter); }
+
+/* header */
+.top { border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; gap: 1.5rem; min-height: 4rem; }
+.brand { font-weight: 700; text-decoration: none; letter-spacing: -0.01em; display: inline-flex; align-items: center; gap: 0.6rem; margin-right: auto; }
+.brand svg { width: 1.5rem; height: 1.5rem; }
+.top nav { display: flex; gap: 1.5rem; font-size: 0.9375rem; }
+.top nav a { text-decoration: none; }
+.top nav a:hover { text-decoration: underline; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  min-height: 2.75rem; padding: 0 1.1rem;
+  border: 1.5px solid var(--ink); border-radius: 999px;
+  font: 500 0.9375rem/1 var(--sans); text-decoration: none; cursor: pointer;
+  background: transparent; color: var(--ink);
+}
+.btn:hover { background: var(--ink); color: var(--paper); text-decoration: none; }
+.btn--solid { background: var(--ink); color: var(--paper); }
+.btn--solid:hover { background: transparent; color: var(--ink); }
+.btn svg { width: 1.1rem; height: 1.1rem; }
+@media (max-width: 719.98px) { .top nav { display: none; } }
+
+/* hero */
+.hero { padding-block: clamp(3rem, 9vw, 6.5rem) clamp(2.5rem, 6vw, 4rem); }
+.hero h1 { font-size: clamp(2.6rem, 7.2vw, 5.6rem); font-weight: 800; letter-spacing: -0.035em; max-width: 14ch; }
+.hero .lede { margin-top: 1.5rem; font-size: clamp(1.125rem, 2vw, 1.3125rem); line-height: 1.5; color: var(--muted); max-width: var(--measure); }
+.hero .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 2rem; }
+.facts { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 1.5rem 0 0; padding: 0; list-style: none; font-size: 0.9375rem; color: var(--muted); }
+
+/* command block */
+.cmd {
+  position: relative; margin-top: 2.25rem; max-width: 44rem;
+  border: 1.5px solid var(--ink); border-radius: 12px; background: var(--paper);
+}
+.cmd pre { margin: 0; padding: 1.1rem 4.5rem 1.1rem 1.25rem; overflow-x: auto; line-height: 1.75; font-size: 0.9375rem; }
+.cmd pre span::before { content: "> "; color: var(--muted); }
+.cmd--quiet { border-width: 1px; border-color: var(--line); background: var(--well); }
+.copy {
+  position: absolute; top: 0.6rem; right: 0.6rem;
+  min-height: 2.25rem; padding: 0 0.75rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+  font: 500 0.8125rem/1 var(--sans); cursor: pointer;
+}
+.copy:hover { border-color: var(--ink); }
+@media (max-width: 599.98px) {
+  .cmd { display: flex; flex-direction: column; }
+  .cmd pre { padding-right: 1.25rem; }
+  .copy { position: static; align-self: flex-end; margin: 0 0.6rem 0.6rem; }
+}
+
+/* flow board: the one bold element */
+.board {
+  margin-top: clamp(3rem, 7vw, 5rem);
+  border: 1.5px solid var(--ink); border-radius: 16px;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  background-image: radial-gradient(var(--line) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.board__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 0.5rem 1rem; margin-bottom: 1.5rem; }
+.board__head h2 { font-size: 1.375rem; }
+.board__head p { color: var(--muted); font-size: 0.9375rem; }
+.flow { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 2.25rem; counter-reset: step; }
+.frame {
+  position: relative; counter-increment: step;
+  background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px;
+  padding: 0.9rem 0.9rem 1rem; display: flex; flex-direction: column; gap: 0.6rem;
+}
+.frame::before {
+  content: counter(step);
+  position: absolute; top: -0.85rem; left: 0.75rem;
+  width: 1.7rem; height: 1.7rem; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--ink); color: var(--paper); font: 700 0.8125rem/1 var(--sans);
+}
+.frame h3 { font-size: 1.125rem; margin-top: 0.4rem; }
+.frame p { font-size: 0.875rem; line-height: 1.45; color: var(--muted); }
+.frame .skills { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: auto; padding-top: 0.25rem; }
+.frame .skills code { font-size: 0.75rem; border: 1px solid var(--line); border-radius: 999px; padding: 0.15rem 0.5rem; background: var(--paper); }
+/* arrows between frames */
+.frame:not(:last-child)::after {
+  content: ""; position: absolute; top: 50%; right: -2.25rem; width: 2.25rem; height: 1.5px;
+  background: var(--ink);
+}
+.frame:not(:last-child) .arrow {
+  position: absolute; top: 50%; right: -0.85rem; width: 0.55rem; height: 0.55rem;
+  border-top: 1.5px solid var(--ink); border-right: 1.5px solid var(--ink);
+  transform: translateY(-50%) rotate(45deg); margin-top: 0.03rem;
+}
+@media (max-width: 959.98px) {
+  .flow { grid-template-columns: minmax(0, 1fr); gap: 2.25rem; max-width: 32rem; }
+  .frame:not(:last-child)::after { top: auto; bottom: -2.25rem; right: auto; left: 1.6rem; width: 1.5px; height: 2.25rem; }
+  .frame:not(:last-child) .arrow { top: auto; bottom: -0.95rem; right: auto; left: 1.33rem; transform: rotate(135deg); }
+}
+
+/* sections */
+section.block { padding-block: clamp(3.5rem, 8vw, 6rem); border-top: 1px solid var(--line); }
+.block__intro { max-width: var(--measure); }
+.block h2 { font-size: clamp(1.9rem, 4.2vw, 3rem); letter-spacing: -0.03em; }
+.block .sub { margin-top: 1rem; color: var(--muted); font-size: 1.125rem; }
+.split { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(2rem, 6vw, 5rem); align-items: start; }
+@media (max-width: 859.98px) { .split { grid-template-columns: minmax(0, 1fr); } }
+
+/* skills */
+.groups { margin-top: 3rem; display: grid; gap: 2.75rem; }
+.group { display: grid; grid-template-columns: minmax(0, 14rem) minmax(0, 1fr); gap: 1rem 2rem; }
+.group h3 { font-size: 1.125rem; padding-top: 0.9rem; }
+.group dl { margin: 0; }
+.group dl > div { display: grid; grid-template-columns: 9rem minmax(0, 1fr); gap: 0.25rem 1.5rem; padding: 0.9rem 0; border-top: 1px solid var(--line); }
+.group dl > div:last-child { border-bottom: 1px solid var(--line); }
+.group dt a { font-family: var(--mono); font-weight: 500; font-size: 0.9375rem; text-decoration: none; }
+.group dt a:hover { text-decoration: underline; }
+.group dd { margin: 0; color: var(--muted); max-width: 40rem; }
+@media (max-width: 719.98px) {
+  .group { grid-template-columns: minmax(0, 1fr); }
+  .group h3 { padding-top: 0; }
+  .group dl > div { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* plain lists */
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { padding: 1rem 0; border-top: 1px solid var(--line); }
+.list li:last-child { border-bottom: 1px solid var(--line); }
+.list strong { display: block; font-weight: 700; margin-bottom: 0.2rem; }
+.list span { color: var(--muted); }
+.note { margin-top: 1.5rem; font-size: 0.9375rem; color: var(--muted); max-width: var(--measure); }
+
+/* config files */
+.files { display: grid; gap: 1.25rem; }
+.file { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.file__name { display: flex; justify-content: space-between; gap: 1rem; padding: 0.75rem 1rem; border-bottom: 1px solid var(--line); font-size: 0.9375rem; }
+.file__name code { font-weight: 500; }
+.file__name span { color: var(--muted); }
+.file pre { margin: 0; padding: 1rem; background: var(--well); overflow-x: auto; font-size: 0.8125rem; line-height: 1.65; }
+.file p { padding: 0.9rem 1rem 1rem; color: var(--muted); font-size: 0.9375rem; }
+
+/* stacks */
+.stacks { margin-top: 2.5rem; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1.5px solid var(--ink); }
+.stacks > div { padding: 1.25rem 1.5rem 0 0; }
+.stacks > div + div { padding-left: 1.5rem; border-left: 1px solid var(--line); }
+.stacks h3 { font-family: var(--mono); font-weight: 500; font-size: 1.125rem; letter-spacing: 0; }
+.stacks p { margin-top: 0.5rem; color: var(--muted); }
+@media (max-width: 719.98px) {
+  .stacks { grid-template-columns: minmax(0, 1fr); }
+  .stacks > div, .stacks > div + div { padding: 1.1rem 0; border-left: 0; border-bottom: 1px solid var(--line); }
+}
+
+/* real run */
+.term { margin-top: 2.5rem; border-radius: 12px; background: var(--ink); color: var(--paper); overflow: hidden; }
+.term__bar { padding: 0.7rem 1rem; font-size: 0.8125rem; border-bottom: 1px solid color-mix(in srgb, var(--paper) 25%, transparent); opacity: 0.8; }
+.term pre { margin: 0; padding: 1.25rem; overflow-x: auto; font-size: 0.875rem; line-height: 1.8; }
+.term .dim { opacity: 0.65; }
+
+/* install */
+.req { margin-top: 2rem; }
+.req h3 { font-size: 1.125rem; margin-bottom: 0.75rem; }
+
+/* footer */
+footer { border-top: 1.5px solid var(--ink); padding-block: 2.5rem 3rem; font-size: 0.9375rem; }
+footer .wrap { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1.5rem 3rem; }
+footer .tag { font-weight: 500; max-width: 30rem; }
+footer .credit { color: var(--muted); margin-top: 0.75rem; max-width: 34rem; }
+footer ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.4rem; }
+@media (max-width: 599.98px) { footer .wrap { grid-template-columns: minmax(0, 1fr); } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="6" fill="currentColor"/><rect x="7" y="9" width="8" height="14" rx="1.5" fill="none" stroke="var(--paper)" stroke-width="2"/><rect x="19" y="9" width="6" height="14" rx="1.5" fill="var(--paper)"/></svg>
+      nnminh-prototype-kit
+    </a>
+    <nav aria-label="Main">
+      <a href="#skills">Skills</a>
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/tree/main/docs">Docs</a>
+    </nav>
+    <a class="btn" href="https://github.com/MinhNhat0201/nnminh-prototype-kit">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.69 5.39-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5Z"/></svg>
+      GitHub
+    </a>
+  </div>
+</header>
+
+<main id="main">
+  <div class="wrap hero">
+    <h1>From idea to developer handoff, with your design system.</h1>
+    <p class="lede">14 Claude Code skills that plan the work, build HTML, React or Vue prototypes with your design system, write the spec, put the flows on Figma and package everything for BA, QC and developers.</p>
+
+    <div class="cmd">
+      <pre><code><span>/plugin marketplace add MinhNhat0201/nnminh-prototype-kit</span>
+<span>/plugin install kit@nnminh-prototype-kit</span></code></pre>
+      <button class="copy" type="button" data-copy="/plugin marketplace add MinhNhat0201/nnminh-prototype-kit&#10;/plugin install kit@nnminh-prototype-kit">Copy</button>
+    </div>
+
+    <div class="actions">
+      <a class="btn btn--solid" href="#install">Get started</a>
+      <a class="btn" href="https://github.com/MinhNhat0201/nnminh-prototype-kit">View on GitHub</a>
+    </div>
+    <ul class="facts">
+      <li>MIT licence</li>
+      <li>Works with any design system</li>
+      <li>No design system yet? Start from shadcn.</li>
+    </ul>
+
+    <div class="board" id="how">
+      <div class="board__head">
+        <h2>One path from requirement to handoff</h2>
+        <p>Each step is a skill you can also run on its own.</p>
+      </div>
+      <ol class="flow">
+        <li class="frame">
+          <span class="arrow" aria-hidden="true"></span>
+          <h3>Set up</h3>
+          <p>Build a base design system if you have none, then pick the language, stack and design system. The first app is created for you.</p>
+          <div class="skills"><code>adopt</code><code>kickoff</code></div>
+        </li>
+        <li class="frame">
+          <span class="arrow" aria-hidden="true"></span>
+          <h3>Define</h3>
+          <p>Turn PM and BA requirements into open questions, delivery waves and a traceability matrix.</p>
+          <div class="skills"><code>define</code></div>
+        </li>
+        <li class="frame">
+          <span class="arrow" aria-hidden="true"></span>
+          <h3>Prototype</h3>
+          <p>Build screens with design-system components only. It asks before it creates a new component or page.</p>
+          <div class="skills"><code>prototype</code></div>
+        </li>
+        <li class="frame">
+          <span class="arrow" aria-hidden="true"></span>
+          <h3>Specify</h3>
+          <p>Write the spec with screen captures, pins and token-level style notes. Put the flows and screens on Figma.</p>
+          <div class="skills"><code>annotate</code><code>wireflow</code><code>mockup</code></div>
+        </li>
+        <li class="frame">
+          <h3>Hand off</h3>
+          <p>Pack one zip for BA, QC and developers, and draft the email. It never sends it.</p>
+          <div class="skills"><code>handoff</code><code>share</code></div>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <section class="block" aria-labelledby="brief-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="brief-h">Say what you want. The kit picks the skill.</h2>
+      </div>
+      <div>
+        <p class="sub" style="margin-top:0">Start with <code>brief</code> and describe the job in plain words. It asks one or two questions, then routes the job to the right skill with a one-line plan.</p>
+        <div class="cmd cmd--quiet">
+          <pre><code><span>/kit:brief  I want to prototype a task manager for our team</span></code></pre>
+          <button class="copy" type="button" data-copy="/kit:brief  I want to prototype a task manager for our team">Copy</button>
+        </div>
+        <p class="note">You can also call a skill by name (<code>/kit:prototype</code>), or just ask: “build the settings screen”, “package feature 1234 for QC”.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="skills" aria-labelledby="skills-h">
+    <div class="wrap">
+      <div class="block__intro">
+        <h2 id="skills-h">14 skills, one job each.</h2>
+        <p class="sub">Each name links to the skill’s instructions on GitHub.</p>
+      </div>
+      <div class="groups">
+        <div class="group">
+          <h3>Start</h3>
+          <dl>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/brief/SKILL.md">brief</a></dt><dd>Understands a plain-language request and routes it to the right skill.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/kickoff/SKILL.md">kickoff</a></dt><dd>Sets up a project: config, design-system link, stack, first app and a smoke test.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/adopt/SKILL.md">adopt</a></dt><dd>Builds a base design system from the shadcn preset and your brand colour, with Material 3 structure for mobile and tablet.</dd></div>
+          </dl>
+        </div>
+        <div class="group">
+          <h3>Plan and build</h3>
+          <dl>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/define/SKILL.md">define</a></dt><dd>Splits requirements into units, writes questions for PM and BA, plans delivery waves with acceptance criteria.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/prototype/SKILL.md">prototype</a></dt><dd>Builds screens and flows from a request, a plan wave or a screenshot, using design-system components first.</dd></div>
+          </dl>
+        </div>
+        <div class="group">
+          <h3>Specify</h3>
+          <dl>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/annotate/SKILL.md">annotate</a></dt><dd>Writes a Markdown spec per unit, with screen captures, pinned elements and styles mapped to token names.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/wireflow/SKILL.md">wireflow</a></dt><dd>Builds a flow board on Figma from screen captures and updates it in place, so shared links keep working.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/mockup/SKILL.md">mockup</a></dt><dd>Rebuilds screens on Figma with auto layout, library components and variables, then checks the result automatically.</dd></div>
+          </dl>
+        </div>
+        <div class="group">
+          <h3>Deliver</h3>
+          <dl>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/handoff/SKILL.md">handoff</a></dt><dd>One zip for BA, QC and developers: spec, QC checklist, changelog, AGENTS.md and a scoped prototype.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/share/SKILL.md">share</a></dt><dd>Drafts the handoff email with Figma and demo links. Draft only; you send it.</dd></div>
+          </dl>
+        </div>
+        <div class="group">
+          <h3>Keep the design system in step</h3>
+          <dl>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/review/SKILL.md">review</a></dt><dd>Read-only audit of an app against the design system, with options to fix what it finds.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/sync/SKILL.md">sync</a></dt><dd>Brings a new design-system version into your apps.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/contribute/SKILL.md">contribute</a></dt><dd>Reviews local components and proposes the good ones to the design system, with two approval gates.</dd></div>
+            <div><dt><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/document/SKILL.md">document</a></dt><dd>Writes and maintains design-system docs and tokens.</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="any-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="any-h">No design system is hard-coded.</h2>
+        <p class="sub">The kit reads two files, so the same skills work for any team. Write the profile by hand for the design system you already have, or let <code>adopt</code> make one.</p>
+      </div>
+      <div class="files">
+        <div class="file">
+          <div class="file__name"><code>kit.config.json</code><span>in your project</span></div>
+          <pre><code>{
+  "language": "en",
+  "stack": "html",
+  "ds": "ds/acme",
+  "apps": [{ "id": "acme-web", "type": "single" }]
+}</code></pre>
+          <p>Language, stack, apps, local-component prefix, handoff and email settings.</p>
+        </div>
+        <div class="file">
+          <div class="file__name"><code>ds/&lt;name&gt;/ds.json</code><span>in a design-system profile</span></div>
+          <p>Token prefix and roles, CSS bundle, theming attributes, version label and Figma libraries.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="adopt-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="adopt-h">No design system yet? Start from shadcn. Make it yours.</h2>
+        <p class="sub"><code>adopt</code> asks for a brand colour, a name, a radius and a font. It takes the look from shadcn and the structure from Material Design 3, so one profile covers web, mobile and tablet.</p>
+      </div>
+      <div>
+        <ul class="list">
+          <li><strong>Contrast checked in light and dark</strong><span>Every colour pair: 4.5:1 for text, 3:1 for icons and borders.</span></li>
+          <li><strong>Layouts that fit the screen</strong><span>A side rail on tablet and desktop becomes a bottom tab bar on phones. Touch targets are 48 px.</span></li>
+          <li><strong>About 30 components</strong><span>A <code>library.html</code> demo page, with tokens in CSS and in the W3C design-token format.</span></li>
+          <li><strong>Ready for shadcn/ui and shadcn-vue</strong><span>Their components pick up your design system’s colours and radius.</span></li>
+          <li><strong>Figma and Flutter, if you want them</strong><span>Push variables and text styles to Figma. A Flutter theme is generated too.</span></li>
+        </ul>
+        <p class="note">You pick the brand colour and the prefix. The kit never picks them for you, and never lowers the contrast thresholds.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="stack-h">
+    <div class="wrap">
+      <div class="block__intro">
+        <h2 id="stack-h">HTML, React or Vue.</h2>
+        <p class="sub">Each app can use its own stack, so older HTML apps and new Vue apps can live in one repository. React and Vue builds come out as a single HTML file that opens from any folder.</p>
+      </div>
+      <div class="stacks">
+        <div><h3>html</h3><p>The default. One file that opens anywhere, and light handoff packages.</p></div>
+        <div><h3>react</h3><p>Vite, TypeScript, Tailwind and shadcn/ui, themed by your design system.</p></div>
+        <div><h3>vue</h3><p>Vite, TypeScript, Tailwind and shadcn-vue, themed by your design system.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="team-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="team-h">One package. Every role knows where to read.</h2>
+        <p class="sub">No loose <code>.js</code> files in the zip, so mail filters let it through.</p>
+      </div>
+      <ul class="list">
+        <li><strong>BA</strong><span>Feature list and a Markdown spec per unit.</span></li>
+        <li><strong>QC</strong><span>A checklist per feature.</span></li>
+        <li><strong>Developers</strong><span><code>AGENTS.md</code> with reading paths per role, styles mapped to token names, and the prototype itself.</span></li>
+        <li><strong>Everyone</strong><span>A Figma flow board, the changelog and a drafted email.</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="run-h">
+    <div class="wrap">
+      <div class="block__intro">
+        <h2 id="run-h">A real run.</h2>
+        <p class="sub">What <code>adopt</code> and <code>kickoff</code> printed when we set up a React project with a blue brand colour. Output trimmed, numbers unchanged.</p>
+      </div>
+      <div class="term" role="region" aria-label="Terminal output">
+        <div class="term__bar mono">adopt, then kickoff</div>
+        <pre><code><span class="dim">$ adopt.py --name nnminh --seed "#2563eb" --out ds/nnminh</span>
+Contrast: 148 pairs · 137 pass · 11 pass after tone adjustment · 0 fail
+Profile OK
+<span class="dim">$ scaffold.py --app nnminh-web --type spa</span>
+Created apps/nnminh-web (react, spa) from templates/react: 23 file(s).
+<span class="dim">$ npm run build</span>
+dist/index.html  423.97 kB │ gzip: 123.30 kB
+<span class="dim">$ kitconf.py check</span>
+kit.config.json OK</code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" aria-labelledby="lang-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="lang-h">Your team’s language.</h2>
+      </div>
+      <p class="sub" style="margin-top:0">Replies and generated documents follow <code>kit.config.json &gt; language</code>. English and Vietnamese ship with the kit. To add a language, copy <code>locales/en/</code> and translate the values.</p>
+    </div>
+  </section>
+
+  <section class="block" id="install" aria-labelledby="install-h">
+    <div class="wrap split">
+      <div class="block__intro">
+        <h2 id="install-h">Install</h2>
+        <p class="sub">Run these in Claude Code. Skills are then available as <code>/kit:&lt;skill&gt;</code>.</p>
+      </div>
+      <div>
+        <div class="cmd" style="margin-top:0">
+          <pre><code><span>/plugin marketplace add MinhNhat0201/nnminh-prototype-kit</span>
+<span>/plugin install kit@nnminh-prototype-kit</span></code></pre>
+          <button class="copy" type="button" data-copy="/plugin marketplace add MinhNhat0201/nnminh-prototype-kit&#10;/plugin install kit@nnminh-prototype-kit">Copy</button>
+        </div>
+        <div class="req">
+          <h3>Requirements</h3>
+          <ul class="list">
+            <li><span>Claude Code, Python 3.9+ and Node 18+</span></li>
+            <li><span>Playwright with Chromium, for screen capture and browser checks</span></li>
+            <li><span>Pillow, for image optimisation</span></li>
+            <li><span>The Figma connector, for <code>wireflow</code>, <code>mockup</code> and the Figma step of <code>adopt</code></span></li>
+            <li><span>A mail connector, for <code>share</code></span></li>
+          </ul>
+        </div>
+        <div class="req">
+          <h3>Then</h3>
+          <div class="cmd cmd--quiet" style="margin-top:0">
+            <pre><code><span>/kit:brief  I want to prototype a task manager for our team</span></code></pre>
+            <button class="copy" type="button" data-copy="/kit:brief  I want to prototype a task manager for our team">Copy</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>
+      <p class="tag">Claude Code skills for prototypes and design handoff, with any design system.</p>
+      <p class="credit">The shadcn preset is derived from shadcn/ui and shadcn-vue (MIT). Version 0.1.1.</p>
+    </div>
+    <ul>
+      <li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit">GitHub</a></li>
+      <li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/tree/main/docs">Docs</a></li>
+      <li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/CHANGELOG.md">Changelog</a></li>
+      <li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/LICENSE">Licence (MIT)</a></li>
+    </ul>
+  </div>
+</footer>
+
+<script>
+document.querySelectorAll(".copy").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var text = b.getAttribute("data-copy");
+    var done = function (ok) {
+      b.textContent = ok ? "Copied" : "Copy failed";
+      setTimeout(function () { b.textContent = "Copy"; }, 1600);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, function () { done(false); });
+    } else { done(false); }
+  });
+});
+</script>
+</body>
+</html>
