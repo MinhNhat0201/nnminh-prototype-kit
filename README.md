@@ -33,6 +33,68 @@ Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture
 
 ## Skills
 
+### Skill map
+
+```mermaid
+flowchart LR
+    brief(["brief<br/>entry point"])
+
+    subgraph setup["1 · Set up"]
+        adopt["adopt<br/>base DS from preset"]
+        kickoff["kickoff<br/>config + first app"]
+    end
+
+    subgraph plan["2 · Plan"]
+        define["define<br/>requirements → waves"]
+    end
+
+    subgraph build["3 · Build"]
+        prototype["prototype<br/>screens with DS"]
+    end
+
+    subgraph spec["4 · Spec & Figma"]
+        annotate["annotate<br/>Markdown spec"]
+        wireflow["wireflow<br/>Figma flow board"]
+        mockup["mockup<br/>Figma specs board"]
+    end
+
+    subgraph deliver["5 · Deliver"]
+        handoff["handoff<br/>zip package"]
+        share["share<br/>email draft"]
+    end
+
+    subgraph ds["DS maintenance loop"]
+        review["review<br/>read-only audit"]
+        contribute["contribute<br/>local → DS"]
+        document["document<br/>DS source + docs"]
+        sync["sync<br/>new DS into apps"]
+    end
+
+    brief -.routes.-> kickoff & define & prototype & annotate & handoff & review
+
+    adopt -->|DS profile| kickoff
+    kickoff -.no DS.-> adopt
+    kickoff --> define
+    define -->|waves| prototype
+    prototype --> annotate
+    annotate -->|captures + flows| wireflow
+    wireflow --> mockup
+    annotate --> handoff
+    wireflow -->|Figma links| handoff
+    handoff --> mockup
+    handoff --> share
+    mockup -.Figma link.-> share
+
+    prototype -->|local components| contribute
+    review -->|undecided locals| contribute
+    review -->|fix| sync
+    contribute -->|approved proposal| document
+    document -->|new version| sync
+    sync -->|updated apps| prototype
+```
+
+Solid arrows are the usual order of work; dotted arrows are routing or optional links. The DS loop runs whenever the DS or the local components change, alongside the main flow.
+
 | Skill | What it does |
 |---|---|
 | `brief` | Entry point: understands the request and routes to the right skill |
