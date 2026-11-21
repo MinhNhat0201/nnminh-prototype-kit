@@ -26,7 +26,7 @@ Reason: an agent that builds the first idea turns a guess into a design decision
 ## Step 1. Frame the question
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`.
-- Read the DS profile (`ds.json`, `rules.md`, `catalog.md`) and the input: the `define` plan wave (R-ids, S-ids, assumptions) or the written request. Read product context if the project has it (`product-context/`).
+- Read the DS profile (`ds.json`, `rules.md`, `catalog.md`) and the input: the `define` plan wave (R-ids, S-ids, assumptions) or the written request. Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`, then read the overview, personas, UX principles, business rules and constraints. Every direction must respect the business rules and approved decisions; a direction that would change an approved decision says so in `risks`.
 - Write the design question in one sentence ("How should a team see and triage today's tasks?").
 - `python3 $E init <slug> --title "..." --question "..." --directions 3 --app <app>`. Slug: lowercase, hyphens.
 - Fill `brief.md`: what must stay true (requirements, business rules, DS rules), what may vary, how the user will judge, what is out of scope.
@@ -61,7 +61,7 @@ Present the directions and ask the user to choose (AskUserQuestion, one round): 
 - Combine: record the base direction and each part kept from another as `--merge "<id>: <part>"`.
 - None fits: ask what is missing; write new directions in the same exploration (keep the rejected ones and their reasons).
 
-Record the answer: `python3 $E choose <slug> <id> --reason "<the user's reason, in their words>" --by "<name>" [--merge ...]`. It sets statuses, writes `decision.md` and refreshes `compare.html`.
+Record the answer: `python3 $E choose <slug> <id> --reason "<the user's reason, in their words>" --by "<name>" [--merge ...]`. It sets statuses, writes `decision.md` and refreshes `compare.html`. When the project keeps a decision log, it also records the choice as an `approved` decision (rejected directions under alternatives); `--by` is then required.
 
 ## Step 6. Hand over to `prototype`
 

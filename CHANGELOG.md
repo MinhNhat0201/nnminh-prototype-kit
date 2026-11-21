@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 · 2026-11-21
+- New skill `context`: product memory every skill reads, in `paths.context` (default `product-context`): product overview, personas, UX principles, business rules, constraints, in the project language (`context.py init`, `check`, `summary`).
+- Decision log (`decisions.py add`, `set`, `list`, `show`, `index`, `check`): one Markdown file per decision with a status lifecycle observed → proposed → approved → implemented → verified, plus rejected and superseded. Moves outside the lifecycle are refused; approved and rejected need the name of who decided; observed needs a source; superseding is recorded on both decisions; `check` also validates the history lines against the status.
+- `explore choose` records the user's choice as an approved decision when the project keeps a log. `define` reads the context and logs the business decisions it proposes; `prototype` reads principles, rules and approved decisions, and moves built decisions to implemented; `handoff` adds `spec/decisions.md` (approved, implemented, verified decisions in scope); `kickoff` offers to create the folder; `brief` routes memory requests.
+- Locales `context` (en, vi).
+
 ## 0.2.0 · 2026-11-21
 - New skill `explore`: two to four design directions for one design question, built with the DS as light HTML pages, before any prototype. `explore.py` creates the exploration (`init`), validates it (`check`: DS markers, version meta, no raw colours, every direction described with strengths, weaknesses, risks, DS fit and effort), writes `compare.html` (directions side by side or one at a time, phone/tablet/desktop frames) and records the human decision (`choose`: chosen, rejected and merged parts, reason, `decision.md`). The skill never chooses for the user.
 - `define` marks waves with a real design question and suggests `explore`; `prototype` builds only from a chosen direction and stops when no decision is recorded; `brief` routes "show me options" requests.

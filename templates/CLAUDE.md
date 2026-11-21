@@ -19,6 +19,7 @@ Which skill does what:
 | Set up the project, add an app, change the stack | `kickoff` |
 | No DS yet: build a profile from a public preset | `adopt` |
 | Analyse a PRD, user story or ticket; plan waves | `define` |
+| Record product facts and decisions; answer "why did we decide X" | `context` |
 | Compare 2–4 design directions and let the team choose before building | `explore` |
 | Build screens, flows or a prototype | `prototype` |
 | Markdown spec per unit with screen captures | `annotate` |

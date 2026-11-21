@@ -50,7 +50,8 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "changelog": "CHANGELOG.md",
     "plans": "docs/plans",
     "audits": "docs/audits",
-    "explorations": "docs/explorations"
+    "explorations": "docs/explorations",
+    "context": "product-context"
   }
 }
 ```
@@ -73,6 +74,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
+| `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
 | `paths.explorations` | folder of design explorations, one sub-folder per question | `docs/explorations` | `explore`, `prototype` |
 
 ## `ds/<name>/ds.json`

@@ -17,6 +17,7 @@ Reason: the DS is the single source of truth; every home-made component is maint
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
 - Read the DS profile: `ds.json`, `rules.md`, `catalog.md`. `rules.md` overrides everything else here.
+- Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`; read UX principles, business rules, constraints and the `approved` decisions in scope. Building against an approved decision → stop and ask; never silently override it.
 - Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
 - Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.
 - **Reference images give layout, order, behaviour and ideas only.** Never copy colours, fonts, radii, shadows or icons from them.
@@ -142,6 +143,7 @@ Playwright with the installed Chromium; never run `playwright install`.
 ## Step 7. Save and report
 
 - Save the files. Add an entry to `paths.changelog` (date, app, screens, DS version, tests). Open a PR only if the user asks; never merge.
+- Decision log (if the project has one): each `approved` decision you built → `decisions.py set <id> implemented --note "<app, screens>"`. Design choices you made that nobody approved → `decisions.py add --status proposed`, and list them in the report.
 - Short report:
   - element mapping table (element | DS component | match level), with differences from the reference image and why;
   - component decisions (A / B / C) and registry entries written;

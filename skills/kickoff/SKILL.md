@@ -66,6 +66,7 @@ Create each file only if it does not exist; otherwise ask (merge, skip or overwr
 | `local.registry` (default `docs/local-components.json`) | Created by `python3 <kit>/skills/contribute/scripts/registry.py update` (empty `components` list) |
 | `paths.changelog` (default `CHANGELOG.md`) | Title, then a first entry: date, "Project set up", stack, DS label and version, first app |
 | `paths.plans`, `paths.audits` | Empty folders (add `.gitkeep`) |
+| `paths.context` (default `product-context`) | Offer it; if the user agrees, `python3 <kit>/skills/context/scripts/context.py init`, then `context` fills it |
 
 ## Step 6b. Dress the skeleton with the DS
 The templates are DS-agnostic: their shell uses neutral `app-*` classes styled only with the shadcn alias variables. Before handing over, swap the shell parts for DS components from `catalog.md` (top bar, navigation rail / bottom tab bar, icon button, list, card), keeping the router and IDs. In `react`/`vue`, use the components named in `components.map`. Then run `review`'s `audit_app.py`: no native control without a DS class, no hard-coded value.

@@ -363,6 +363,9 @@ def cmd_choose(cfg, a):
         die("unknown direction %r (have %s)" % (a.id, ", ".join(ids)))
     if not a.reason.strip():
         die("--reason is required: write why the user chose this direction")
+    ctx_dir = Path(cfg["_root"]) / cfg["paths"]["context"]
+    if ctx_dir.is_dir() and not (a.by or "").strip():
+        die("--by is required: the project keeps a decision log (%s) and an approved decision names who decided" % cfg["paths"]["context"])
     errs, _ = check_errors(cfg, d, data)
     errs = [e for e in errs if "decision" not in e and "chosen" not in e]
     if errs:
@@ -387,6 +390,18 @@ def cmd_choose(cfg, a):
     (d / "decision.md").write_text("\n".join(lines), encoding="utf-8")
     (d / "compare.html").write_text(compare_page(cfg, data), encoding="utf-8")
     print("Recorded: %s chose %s (%s). Wrote decision.md and compare.html." % (a.by or "user", a.id.upper(), chosen.get("name") or ""))
+    if ctx_dir.is_dir():
+        sys.path.insert(0, str(KIT / "skills" / "context" / "scripts"))
+        import decisions  # noqa: E402
+        others = ["%s · %s: %s" % (x["id"].upper(), x.get("name") or "", x["status"]) for x in data["directions"] if x["id"] != a.id]
+        did, path = decisions.add_decision(
+            cfg, "%s: %s" % (data.get("title") or a.slug, chosen.get("name") or a.id.upper()), status="approved",
+            scope=",".join(v for v in [data.get("app") or "", "exploration:" + a.slug] if v),
+            source=str((d / "decision.md").relative_to(cfg["_root"])), context=data.get("question") or "",
+            decision=(chosen.get("summary") or "") + "\n\n" + a.reason.strip()
+                     + ("".join("\n- " + m for m in a.merge) if a.merge else ""),
+            alternatives="\n".join("- " + o for o in others), by=a.by.strip())
+        print("Decision log: %s (approved) %s" % (did, path.relative_to(cfg["_root"])))
     print("Next: prototype, with %s/%s/index.html as the approved direction." % (d.relative_to(cfg["_root"]), a.id))
 
 

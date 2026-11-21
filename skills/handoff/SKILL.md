@@ -86,6 +86,8 @@ Run `annotate` on the package prototype. The spec is Markdown in `spec/`; `desig
 2. **Changelog** (`requirements/changelog.md`, one `## <version> · <date>` section per version): added, changed, removed since the last package; the first one says the first-release text of the locale. With style notes, a "UI style changes" part grouped by screen. Multi-page: name the files that changed. `pkg.py finalize` keeps the last `changelog_keep` (2) versions.
 3. **QC checklist** (`requirements/checklist-qc.csv`): one happy-path case per feature; one end-to-end case per wireflow flow plus each branch; edge and error cases for forms; (b) a toast case; (c) hidden-element, Tab, direct-route and shortcut cases; style cases for each "Style change". Multi-page adds cross-page cases: full flow across pages, reload mid-flow, **open the target page directly**, Back/Forward, unknown hash, shared data (theme, samples) in sync, opening over HTTP as README says. Each case names the start page and route. Derive only from spec and UI; never invent.
 
+4. **Decisions** (project with a decision log, see `context`): `decisions.py list` filtered to the feature scope (screens, R-ids, app). Copy the `approved`, `implemented` and `verified` ones into `spec/decisions.md` (id, title, status, who decided, why) so developers see the reason behind the design. Never include `proposed`, `rejected` or `observed` ones as decisions; list open `proposed` ones under open questions.
+
 CSV files are UTF-8 with BOM (Excel).
 
 ## Step 8. Wireflow on Figma (required with a spec, before zipping)

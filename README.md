@@ -46,6 +46,7 @@ flowchart LR
     end
 
     subgraph plan["2 · Plan"]
+        context["context<br/>product memory + decisions"]
         define["define<br/>requirements → waves"]
     end
 
@@ -79,6 +80,8 @@ flowchart LR
     kickoff --> define
     define -->|waves| prototype
     define -.design question.-> explore
+    context -.read by.-> define & explore & prototype
+    explore -.approved decision.-> context
     explore -->|chosen direction| prototype
     prototype --> annotate
     annotate -->|captures + flows| wireflow
@@ -105,6 +108,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `kickoff` | Sets up a project: config, DS link, stack, first app |
 | `adopt` | Builds a base DS from a preset (shadcn) plus Material 3 structure for mobile and tablet |
 | `define` | Requirement analysis, questions for PM/BA, delivery waves, traceability |
+| `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, and a decision log with statuses (observed → proposed → approved → implemented → verified) |
 | `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
 | `prototype` | Builds screens and flows with the DS; component and new-page gates |
 | `annotate` | Markdown spec per unit with screen captures, pins, token-level style notes and flows |
