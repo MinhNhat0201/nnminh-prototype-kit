@@ -174,6 +174,37 @@ def app_files(ctx, app):
 
 # ---------- DS facts ----------
 
+WRAP = re.compile(r"\.([\w-]+)(?![\w-])(?:[.:\[(][^\s>]*)?(?:\s*(>)\s*|\s+)(button|input|select|textarea|table)\b(?![\w-])")
+TAG = re.compile(r"<(/?)([A-Za-z][\w.-]*)((?:[^>\"'{]|\"[^\"]*\"|'[^']*'|\{[^}]*\})*)>")
+VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+
+def class_tokens(attrs):
+    cl = re.search(r"""class(?:Name)?=\\?["'{]([^"'}]*)""", attrs)
+    return [x.strip("\\`") for x in cl.group(1).split()] if cl else []
+
+
+def wrapped(txt, pos, wrap):
+    """True when an open element around position `pos` carries a DS wrapper class for this control:
+    the parent for a child rule (`.w > select`), any ancestor for a descendant rule (`.w select`)."""
+    stack = []
+    for m in TAG.finditer(txt, 0, pos):
+        closing, name, attrs = m.group(1), m.group(2), m.group(3)
+        if attrs.rstrip().endswith("/") or name.lower() in VOID:
+            continue
+        if closing:
+            while stack and stack[-1][0] != name:
+                stack.pop()
+            if stack:
+                stack.pop()
+        else:
+            stack.append((name, attrs))
+    for depth, (_, attrs) in enumerate(reversed(stack)):
+        for c in class_tokens(attrs):
+            if c in wrap and (depth == 0 or not wrap[c]):
+                return True
+    return False
+
 def ds_facts(ctx, min_rules=3):
     bundle = read(ctx.bundle_path)
     css = strip(bundle)
@@ -197,7 +228,14 @@ def ds_facts(ctx, min_rules=3):
              and not r.startswith(("is-", ctx.local_prefix))}
     classes |= roots  # root classes count even when short (btn, tag)
     rules = {(norm(m.group(1)), norm(m.group(2))) for m in RULE.finditer(css)}
-    return {"rules": rules, "sel": {k for k, _ in rules}, "roots": roots, "mods": {r: mods[r] for r in roots},
+    # wrapper classes that style a native control inside them, e.g. `.acme-select > select` (child) or `.acme-x select` (descendant)
+    wrappers = collections.defaultdict(dict)
+    for m in RULE.finditer(css):
+        for sel in m.group(1).split(","):
+            for w in WRAP.finditer(sel):
+                child = w.group(2) == ">"
+                wrappers[w.group(3)][w.group(1)] = wrappers[w.group(3)].get(w.group(1), True) and child
+    return {"rules": rules, "wrappers": {t: dict(v) for t, v in wrappers.items()}, "sel": {k for k, _ in rules}, "roots": roots, "mods": {r: mods[r] for r in roots},
             "all_classes": set(rootn) | allm | set(cnt), "defs": defs, "names": {k for k, _ in defs},
             "classes": classes, "version": ctx.ds["version"]}
 
@@ -461,13 +499,20 @@ def audit_app(ctx, app, lib):
                             and not re.match(r"^[\w-]+:|.*\[", u):
                         unknown[(tk, u)] += 1
     native = {}
+    files_markup = [txt for f, txt in texts.items() if f.suffix.lower() in EXT_HTML | EXT_SCRIPT | EXT_VUE]
     for tag, extra in (("button", ""), ("input", r"(?![^>]*type=[\"']?(?:checkbox|radio|hidden|file|range|color))"),
                        ("select", ""), ("textarea", ""), ("table", "")):
         n = {"ds": 0, "local": 0, "none": 0}
-        for m in re.finditer(r"<%s\b%s([^>]*)>" % (tag, extra), markup):
-            cl = re.search(r"""class(?:Name)?=\\?["'{]([^"'}]*)""", m.group(1))
-            toks = [x.strip("\\") for x in cl.group(1).split()] if cl else []
-            n["ds" if any(x in roots or x in allc for x in toks) else "local" if any(x.startswith(ctx.local_prefix) for x in toks) else "none"] += 1
+        wrap = lib["wrappers"].get(tag, {})
+        for txt in files_markup:
+            for m in re.finditer(r"<%s\b%s([^>]*)>" % (tag, extra), txt):
+                toks = class_tokens(m.group(1))
+                if any(x in roots or x in allc for x in toks) or (wrap and wrapped(txt, m.start(), wrap)):
+                    n["ds"] += 1
+                elif any(x.startswith(ctx.local_prefix) for x in toks):
+                    n["local"] += 1
+                else:
+                    n["none"] += 1
         native[tag] = n
     res["components"] = {"used": top_n(used_c), "roots": len(roots),
                          "unknown_modifiers": [("%s.%s" % k, v) for k, v in top_n(unknown, 10)], "native": native}
