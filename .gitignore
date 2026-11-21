@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+.vite/
+*.log
+# Python
+__pycache__/
+*.pyc
+.venv/
+# Kit outputs and scratch
+out/
+shots/
+shots.prev/
+.kit-cache/
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+# Secrets
+.env
+.env.*
+*.pem
