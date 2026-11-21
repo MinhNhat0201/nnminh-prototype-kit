@@ -235,7 +235,6 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 
 /* sections */
 .sec { position: relative; padding: 7rem 0; }
-.sec + .sec::before { content: ""; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: min(var(--wide), calc(100% - 2 * var(--gutter))); height: 1px; background: var(--line); }
 .head { text-align: center; max-width: 40rem; margin: 0 auto 4rem; }
 .eyebrow { display: block; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-soft); margin-bottom: 1rem; }
 .head h2 { font: 800 clamp(2rem, 4.4vw, 2.5rem)/1.15 var(--display); padding-bottom: 0.12em; margin-bottom: -0.12em; letter-spacing: -0.03em; background: linear-gradient(180deg, var(--title-a) 30%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -310,8 +309,16 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .docs__body .more:hover { color: var(--fg); }
 @media (max-width: 799.98px) {
   .docs { grid-template-columns: minmax(0, 1fr); }
-  .docs__index { border-right: 0; border-bottom: 1px solid var(--line); padding: 1.25rem; }
-  .docs__index ol { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .docs__index { border-right: 0; border-bottom: 1px solid var(--line); padding: 1rem 0 0.9rem; }
+  .docs__index .eyebrow { padding-left: 1.25rem; margin-bottom: 0.7rem; }
+  .docs__index ol { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0 1.25rem 0.15rem; scroll-snap-type: x proximity; scrollbar-width: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 1.25rem, #000 calc(100% - 2.5rem), transparent);
+            mask-image: linear-gradient(90deg, transparent 0, #000 1.25rem, #000 calc(100% - 2.5rem), transparent); }
+  .docs__index ol::-webkit-scrollbar { display: none; }
+  .docs__index li { flex: none; scroll-snap-align: center; }
+  .docs__index button { width: auto; white-space: nowrap; gap: 0.4rem; padding: 0.5rem 0.8rem; border: 1px solid var(--line-2); border-radius: 999px; font-size: 0.8125rem; }
+  .docs__index button[aria-selected="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+  .docs__index button svg { width: 1rem; height: 1rem; }
   .docs__body { padding: 2rem 1.5rem; }
 }
 
@@ -719,9 +726,10 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     b.innerHTML = '<svg aria-hidden="true"><use href="#p-' + SKILL_EXTRA[s[0]][0] + '"/></svg><span>' + (i + 1) + ". " + s[0] + "</span>";
     b.addEventListener("click", function () { showSkill(i); });
     b.addEventListener("keydown", function (e) {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "ArrowRight" || e.key === "ArrowLeft") {
         e.preventDefault();
-        showSkill((i + (e.key === "ArrowDown" ? 1 : SKILLS.length - 1)) % SKILLS.length, true);
+        var fwd = e.key === "ArrowDown" || e.key === "ArrowRight";
+        showSkill((i + (fwd ? 1 : SKILLS.length - 1)) % SKILLS.length, true);
       }
     });
     li.appendChild(b); list.appendChild(li); btns.push(b);
@@ -731,7 +739,12 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
     var s = SKILLS[i];
     curSkill = i;
     btns.forEach(function (b, k) { b.setAttribute("aria-selected", k === i ? "true" : "false"); b.tabIndex = k === i ? 0 : -1; });
-    if (focus) btns[i].focus();
+    if (focus) btns[i].focus({ preventScroll: true });
+    if (list.scrollWidth > list.clientWidth + 1) {
+      var b = btns[i], lr = list.getBoundingClientRect(), br = b.getBoundingClientRect();
+      var left = list.scrollLeft + (br.left - lr.left) - (lr.width - br.width) / 2;
+      list.scrollTo({ left: Math.max(0, left), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    }
     panel.setAttribute("aria-labelledby", btns[i].id);
     document.getElementById("sGroup").textContent = lang === "vi" ? (GROUP_VI[s[1]] || s[1]) : s[1];
     document.getElementById("sIcon").innerHTML = '<svg><use href="#p-' + SKILL_EXTRA[s[0]][0] + '"/></svg>';
