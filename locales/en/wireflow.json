@@ -1,0 +1,14 @@
+{
+  "wireflow.page": "[{pbi}] {feature}",
+  "wireflow.title": "Wireflow · {feature} v{version}",
+  "wireflow.meta": "{pbi} · {feature} · {app} · {ds}",
+  "wireflow.openPrototype": "Open prototype",
+  "wireflow.openFlow": "Open flow demo",
+  "wireflow.demoNote": "\"Open flow demo\" opens the demo site at the first screen of each flow. The site may need an account that can view this app. The site is the live build and can be newer than the captures on this board.",
+  "wireflow.legend": "Orange ring on a screen: where the user clicks to go on · Numbered dot: pin (rule code) · Dashed arrow: to confirm · \"Page change\" tag: goes to another file · Grey dashed box: out of scope",
+  "wireflow.toConfirm": "to confirm",
+  "wireflow.pageChange": "Page change",
+  "wireflow.outOfScope": "Out of scope",
+  "wireflow.offflow": "Screens outside the flows",
+  "wireflow.start": "Start: {start}"
+}

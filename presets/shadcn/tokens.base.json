@@ -1,0 +1,166 @@
+{
+  "$description": "Base token values of the shadcn preset. adopt.py reads this file; the brand palette comes from the designer's seed colour, everything else from here. Refs: '<palette>.<step>', '<palette>.seed' (step that holds the seed), '<palette>.<step>/<alpha %>', 'on:<bg token>' (white or neutral-950, whichever passes contrast), 'hover:<bg token>' (one step away from its on-colour).",
+  "palettes": {
+    "neutral": {
+      "0": "oklch(1 0 0)",
+      "50": "oklch(0.985 0 0)",
+      "100": "oklch(0.97 0 0)",
+      "200": "oklch(0.922 0 0)",
+      "300": "oklch(0.87 0 0)",
+      "400": "oklch(0.708 0 0)",
+      "500": "oklch(0.556 0 0)",
+      "600": "oklch(0.439 0 0)",
+      "700": "oklch(0.371 0 0)",
+      "800": "oklch(0.269 0 0)",
+      "900": "oklch(0.205 0 0)",
+      "950": "oklch(0.145 0 0)",
+      "1000": "oklch(0 0 0)"
+    },
+    "chart": {
+      "2": "oklch(0.6 0.118 184.704)",
+      "3": "oklch(0.398 0.07 227.392)",
+      "4": "oklch(0.828 0.189 84.429)",
+      "5": "oklch(0.769 0.188 70.08)"
+    },
+    "chart-dark": {
+      "2": "oklch(0.696 0.17 162.48)",
+      "3": "oklch(0.769 0.188 70.08)",
+      "4": "oklch(0.627 0.265 303.9)",
+      "5": "oklch(0.645 0.246 16.439)"
+    }
+  },
+  "generated_palettes": {
+    "$description": "Tonal scales 50-950 generated from a seed, like the brand palette.",
+    "danger": { "seed": "oklch(0.577 0.245 27.325)", "origin": "preset --destructive" },
+    "warning": { "seed": "oklch(0.84 0.16 84)", "origin": "preset docs example --warning" },
+    "success": { "seed": "oklch(0.627 0.17 149)", "origin": "kit default (the preset has no success role)" },
+    "info": { "seed": "oklch(0.588 0.158 241)", "origin": "kit default (the preset has no info role)" }
+  },
+  "semantic": {
+    "bg-canvas":         { "light": "neutral.0",   "dark": "neutral.950", "alias": "--background" },
+    "bg-surface":        { "light": "neutral.0",   "dark": "neutral.900", "alias": "--card" },
+    "bg-raised":         { "light": "neutral.0",   "dark": "neutral.900", "alias": "--popover" },
+    "bg-sidebar":        { "light": "neutral.50",  "dark": "neutral.900", "alias": "--sidebar" },
+    "bg-subtle":         { "light": "neutral.100", "dark": "neutral.800", "alias": "--muted, --secondary" },
+    "bg-hover":          { "light": "neutral.100", "dark": "neutral.800", "alias": "--accent" },
+    "bg-pressed":        { "light": "neutral.200", "dark": "neutral.700" },
+    "bg-disabled":       { "light": "neutral.100", "dark": "neutral.800" },
+    "bg-inverse":        { "light": "neutral.900", "dark": "neutral.50" },
+    "bg-scrim":          { "light": "neutral.1000/50", "dark": "neutral.1000/70" },
+    "bg-brand":          { "light": "brand.seed",  "dark": "brand.seed", "alias": "--primary" },
+    "bg-brand-hover":    { "light": "hover:bg-brand", "dark": "hover:bg-brand" },
+    "bg-brand-subtle":   { "light": "brand.50",    "dark": "brand.950" },
+    "bg-selected":       { "light": "brand.50",    "dark": "brand.950" },
+    "bg-danger":         { "light": "danger.600",  "dark": "danger.600", "alias": "--destructive" },
+    "bg-danger-hover":   { "light": "hover:bg-danger", "dark": "hover:bg-danger" },
+    "bg-danger-subtle":  { "light": "danger.50",   "dark": "danger.950" },
+    "bg-success-subtle": { "light": "success.50",  "dark": "success.950" },
+    "bg-warning-subtle": { "light": "warning.50",  "dark": "warning.950" },
+    "bg-info-subtle":    { "light": "info.50",     "dark": "info.950" },
+
+    "stroke-default":    { "light": "neutral.200", "dark": "neutral.0/10", "alias": "--border" },
+    "stroke-strong":     { "light": "neutral.400", "dark": "neutral.600", "alias": "--input" },
+    "stroke-focus":      { "light": "brand.500",   "dark": "brand.400", "alias": "--ring" },
+    "stroke-brand":      { "light": "brand.seed",  "dark": "brand.400" },
+    "stroke-danger":     { "light": "danger.600",  "dark": "danger.400" },
+
+    "text-primary":      { "light": "neutral.950", "dark": "neutral.50", "alias": "--foreground" },
+    "text-secondary":    { "light": "neutral.500", "dark": "neutral.400", "alias": "--muted-foreground" },
+    "text-disabled":     { "light": "neutral.400", "dark": "neutral.600" },
+    "text-inverse":      { "light": "neutral.50",  "dark": "neutral.950" },
+    "text-on-brand":     { "light": "on:bg-brand", "dark": "on:bg-brand", "alias": "--primary-foreground" },
+    "text-brand":        { "light": "brand.700",   "dark": "brand.300" },
+    "text-link":         { "light": "brand.700",   "dark": "brand.300" },
+    "text-on-danger":    { "light": "on:bg-danger", "dark": "on:bg-danger" },
+    "text-danger":       { "light": "danger.700",  "dark": "danger.300" },
+    "text-success":      { "light": "success.700", "dark": "success.300" },
+    "text-warning":      { "light": "warning.800", "dark": "warning.300" },
+    "text-info":         { "light": "info.700",    "dark": "info.300" },
+
+    "icon-primary":      { "light": "neutral.950", "dark": "neutral.50" },
+    "icon-secondary":    { "light": "neutral.500", "dark": "neutral.400" },
+    "icon-disabled":     { "light": "neutral.400", "dark": "neutral.600" },
+    "icon-inverse":      { "light": "neutral.50",  "dark": "neutral.950" },
+    "icon-on-brand":     { "light": "on:bg-brand", "dark": "on:bg-brand" },
+    "icon-brand":        { "light": "brand.600",   "dark": "brand.400" },
+    "icon-danger":       { "light": "danger.600",  "dark": "danger.400" },
+    "icon-success":      { "light": "success.600", "dark": "success.400" },
+    "icon-warning":      { "light": "warning.600", "dark": "warning.400" },
+    "icon-info":         { "light": "info.600",    "dark": "info.400" },
+
+    "chart-1":           { "light": "brand.500",   "dark": "brand.400", "alias": "--chart-1" },
+    "chart-2":           { "light": "chart.2",     "dark": "chart-dark.2", "alias": "--chart-2" },
+    "chart-3":           { "light": "chart.3",     "dark": "chart-dark.3", "alias": "--chart-3" },
+    "chart-4":           { "light": "chart.4",     "dark": "chart-dark.4", "alias": "--chart-4" },
+    "chart-5":           { "light": "chart.5",     "dark": "chart-dark.5", "alias": "--chart-5" }
+  },
+  "radius": {
+    "$description": "Multipliers of the base radius (preset: --radius-sm = calc(var(--radius) * 0.6), ...). The designer sets the base in px.",
+    "default": 10,
+    "scale": { "sm": 0.6, "md": 0.8, "lg": 1, "xl": 1.4, "2xl": 1.8 }
+  },
+  "typography": {
+    "family": { "sans": "Inter", "mono": "ui-monospace" },
+    "fallback": { "sans": "system-ui, -apple-system, \"Segoe UI\", \"Helvetica Neue\", Arial, sans-serif", "mono": "SFMono-Regular, Menlo, Consolas, \"Liberation Mono\", monospace" },
+    "size": { "12": 12, "14": 14, "16": 16, "18": 18, "20": 20, "24": 24, "30": 30, "36": 36 },
+    "lineHeight": { "16": 16, "20": 20, "24": 24, "28": 28, "32": 32, "36": 36, "40": 40 },
+    "weight": { "regular": 400, "medium": 500, "semibold": 600, "bold": 700 },
+    "styles": {
+      "display":    { "size": "36", "lineHeight": "40", "weight": "bold" },
+      "headline":   { "size": "24", "lineHeight": "32", "weight": "semibold" },
+      "title":      { "size": "18", "lineHeight": "28", "weight": "semibold" },
+      "subtitle":   { "size": "16", "lineHeight": "24", "weight": "medium" },
+      "body-large": { "size": "16", "lineHeight": "24", "weight": "regular" },
+      "body":       { "size": "14", "lineHeight": "20", "weight": "regular" },
+      "label":      { "size": "14", "lineHeight": "20", "weight": "medium" },
+      "caption":    { "size": "12", "lineHeight": "16", "weight": "regular" }
+    }
+  },
+  "shadow": {
+    "light": {
+      "xs": "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+      "sm": "0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1)",
+      "md": "0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)",
+      "lg": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)"
+    },
+    "dark": {
+      "xs": "0 1px 2px 0 rgb(0 0 0 / 0.3)",
+      "sm": "0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.4)",
+      "md": "0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.4)",
+      "lg": "0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5)"
+    }
+  },
+  "spacing": {
+    "$description": "Primitive 4 px scale (Tailwind steps used by the preset). Key '0-5' is 2 px.",
+    "scale": { "0": 0, "0-5": 2, "1": 4, "1-5": 6, "2": 8, "2-5": 10, "3": 12, "4": 16, "5": 20, "6": 24, "7": 28, "8": 32, "9": 36, "10": 40, "12": 48, "14": 56, "16": 64, "20": 80 },
+    "fixed": { "2xs": "0-5", "xs": "1", "sm": "2", "md": "3", "lg": "4", "xl": "6", "2xl": "8", "3xl": "12" }
+  },
+  "density": {
+    "$description": "Material Design 3 density levels on top of the preset recipes. comfortable = 0 (touch), standard = -1 (preset default h-9), compact = -2.",
+    "modes": ["comfortable", "standard", "compact"],
+    "tokens": {
+      "control-h":    { "comfortable": "10", "standard": "9",   "compact": "8" },
+      "control-h-sm": { "comfortable": "9",  "standard": "8",   "compact": "7" },
+      "control-h-lg": { "comfortable": "12", "standard": "10",  "compact": "9" },
+      "control-px":   { "comfortable": "4",  "standard": "4",   "compact": "3" },
+      "control-gap":  { "comfortable": "2",  "standard": "2",   "compact": "1-5" },
+      "inset":        { "comfortable": "6",  "standard": "5",   "compact": "4" },
+      "stack":        { "comfortable": "4",  "standard": "3",   "compact": "2" },
+      "row-h":        { "comfortable": "14", "standard": "12",  "compact": "10" },
+      "cell-px":      { "comfortable": "4",  "standard": "3",   "compact": "2" },
+      "cell-py":      { "comfortable": "3",  "standard": "2",   "compact": "1-5" }
+    }
+  },
+  "size": {
+    "$description": "Fixed component sizes in px. Structure values follow Material Design 3; control visuals follow the preset.",
+    "touch-target": 48, "border": 1, "focus-ring": 2, "focus-offset": 2,
+    "icon-sm": 16, "icon-md": 20, "icon-lg": 24,
+    "check": 16, "switch-w": 36, "switch-h": 20, "chip-h": 32, "badge-h": 20, "dot": 8, "progress-h": 8, "spinner-stroke": 2,
+    "avatar-sm": 32, "avatar-md": 40, "avatar-lg": 56, "avatar-ring": 2,
+    "topbar-h": 64, "rail-w": 80, "tabbar-h": 64, "indicator-w": 56, "indicator-h": 32,
+    "fab": 56, "fab-sm": 40, "sheet-handle-w": 32, "sheet-handle-h": 4,
+    "dialog-w": 512, "container": 1200, "sheet-w": 640, "toast-w": 400, "menu-w": 192, "tooltip-w": 280
+  },
+  "motion": { "fast": "120ms", "normal": "200ms", "easing": "cubic-bezier(0.2, 0, 0, 1)" },
+  "z": { "sticky": 10, "overlay": 40, "toast": 50, "tooltip": 60 }
+}

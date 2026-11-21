@@ -9,7 +9,7 @@ const DEFAULTS = {
   language: 'en', stack: 'html', ds: null, apps: [],
   local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json' },
   handoff: { dir: 'docs/handover', zipName: 'Design - {pbi}', maxZipMB: 3, figmaRequired: true },
-  email: { subject: '[{app}] Design - {feature} - {version}' },
+  email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3 },
   deploy: { type: 'none', site: null },
   paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits' },
 };

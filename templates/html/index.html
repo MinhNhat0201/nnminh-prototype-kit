@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="{{LANGUAGE}}"{{HTML_ATTRS}}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="{{VERSION_META}}" content="{{VERSION}}">
+<title>{{APP_NAME}}</title>
+<style>/* @ds:begin */
+{{DS_CSS}}
+/* @ds:end */</style>
+<style>
+/* ==== App CSS ====
+   Everything below belongs to this app, not to the DS.
+   - Use DS tokens only ({{TOKEN_PREFIX}}* and the alias variables --background, --foreground, --primary, --border, --radius, ...).
+     No hex, rgb(), named colours, or px for colour, spacing, radius or font size when a token exists.
+   - Never restyle a DS class here. A missing variant or component goes through the component gate of the prototype skill.
+   - Local components (not yet in the DS): one block per component. Open it with a comment whose text is
+     "{{LOCAL_MARKER}}: <name>" (for example "{{LOCAL_MARKER}}: Upload drop zone"), use only classes that start with
+     "{{LOCAL_PREFIX}}" inside it, and register it in {{LOCAL_REGISTRY}} (contribute/scripts/registry.py update).
+     The block ends at the next marker or at the next section comment like the one that opens this section.
+*/
+
+/* ==== App: shell ====
+   Skeleton layout from the kit template: top bar, navigation rail (wide screens) and bottom tab bar
+   (below {{BP_MEDIUM}}px, ds.json > breakpoints.medium). Colours come from the DS alias variables only.
+   Sizes in rem are layout defaults of the skeleton. When catalog.md lists an app shell, top bar,
+   navigation rail, tab bar, button or card component, replace the matching app-* element with it. */
+html, body { margin: 0; }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+.app {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "top top" "nav main" "nav foot";
+}
+.app-top {
+  grid-area: top;
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 0.75rem;
+  min-height: 3.5rem; padding: 0 1rem;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.app-brand { font-weight: 600; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--background); color: var(--foreground); cursor: pointer;
+}
+.app-icon-btn:hover { background: var(--accent); color: var(--accent-foreground); }
+.app-nav {
+  grid-area: nav;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--sidebar, var(--background));
+  color: var(--sidebar-foreground, var(--foreground));
+  border-right: 1px solid var(--sidebar-border, var(--border));
+}
+.app-nav a {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  min-width: 4.5rem; padding: 0.5rem 0.25rem;
+  border-radius: var(--radius);
+  color: inherit; text-decoration: none; font-size: 0.75rem;
+}
+.app-nav a:hover { background: var(--sidebar-accent, var(--accent)); color: var(--sidebar-accent-foreground, var(--accent-foreground)); }
+.app-nav a[aria-current="page"] { background: var(--sidebar-primary, var(--primary)); color: var(--sidebar-primary-foreground, var(--primary-foreground)); }
+.app-nav svg, .app-icon-btn svg { width: 1.25rem; height: 1.25rem; }
+.app-main { grid-area: main; min-width: 0; padding: 1.5rem; }
+.app-page { max-width: 64rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+.app-page h1 { margin: 0; }
+.app-page p { margin: 0; color: var(--muted-foreground); }
+.app-panel {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 1rem;
+  background: var(--card); color: var(--card-foreground);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.app-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.app-list a { display: block; padding: 0.75rem 0; color: inherit; text-decoration: none; border-top: 1px solid var(--border); }
+.app-list li:first-child a { border-top: 0; }
+.app-list a:hover { color: var(--primary); }
+.app-field { display: flex; flex-direction: column; gap: 0.25rem; max-width: 20rem; }
+.app-field select {
+  padding: 0.5rem; border: 1px solid var(--input); border-radius: var(--radius);
+  background: var(--background); color: var(--foreground); font: inherit;
+}
+.app-foot {
+  grid-area: foot;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground); font-size: 0.75rem;
+}
+.app a:focus-visible, .app button:focus-visible, .app select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (width < {{BP_MEDIUM}}px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main" "foot"; }
+  .app-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    flex-direction: row; justify-content: space-around;
+    padding: 0.25rem 0.5rem calc(0.25rem + env(safe-area-inset-bottom));
+    border-right: 0; border-top: 1px solid var(--sidebar-border, var(--border));
+  }
+  .app-nav a { flex: 1; min-width: 0; }
+  .app-main { padding: 1rem; }
+  .app-foot { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="app-top">
+    <span class="app-brand">{{APP_NAME}}</span>
+    <button class="app-icon-btn" id="modeBtn" type="button" aria-label="Switch light or dark mode" title="Light or dark mode">
+      <!-- Replace with the DS icon set (ds.json > icons) -->
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+    </button>
+  </header>
+
+  <nav class="app-nav" id="appNav" aria-label="Main">
+    <a href="#/" data-route="/">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg>
+      <span>Home</span>
+    </a>
+    <a href="#/settings" data-route="/settings">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+      <span>Settings</span>
+    </a>
+  </nav>
+
+  <main class="app-main" id="view" tabindex="-1"></main>
+
+  <footer class="app-foot">
+    <span>{{APP_NAME}} · prototype · <span data-mock="true">mock data</span></span>
+    <span class="app-version">{{VERSION_LABEL}}</span>
+  </footer>
+</div>
+
+<!-- Page templates: one per route. -->
+<template id="page-home">
+  <section class="app-page">
+    <h1>{{APP_NAME}}</h1>
+    <p>Start screen of the prototype. Replace this content with DS components from the catalogue.</p>
+    <div class="app-panel">
+      <strong>Recent items</strong>
+      <ul class="app-list" data-slot="items"></ul>
+    </div>
+  </section>
+</template>
+<template id="page-item">
+  <section class="app-page">
+    <p><a href="#/">Back to home</a></p>
+    <h1 data-slot="title"></h1>
+    <div class="app-panel"><span data-slot="body"></span></div>
+  </section>
+</template>
+<template id="page-settings">
+  <section class="app-page">
+    <h1>Settings</h1>
+    <p>Theming attributes from ds.json &gt; theming, saved in this browser only.</p>
+    <div class="app-panel" data-slot="theming"></div>
+  </section>
+</template>
+
+<!-- MOCK DATA: invented sample content for the prototype. No real records, no real API. -->
+<script type="application/json" id="mock-data" data-mock="true">
+{
+  "items": [
+    { "id": "1", "title": "Sample item one", "body": "Mock description for the first sample item." },
+    { "id": "2", "title": "Sample item two", "body": "Mock description for the second sample item." },
+    { "id": "3", "title": "Sample item three", "body": "Mock description for the third sample item." }
+  ]
+}
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var APP = '{{APP_ID}}';
+  var THEMING = {{THEMING_JSON}};          // ds.json > theming
+  var MOCK = JSON.parse(document.getElementById('mock-data').textContent);
+  var root = document.documentElement;
+
+  /* ---------- theming: only the attributes declared in ds.json > theming ---------- */
+  function store(key, value) { try { if (value == null) localStorage.removeItem(APP + ':' + key); else localStorage.setItem(APP + ':' + key, value); } catch (e) {} }
+  function stored(key) { try { return localStorage.getItem(APP + ':' + key); } catch (e) { return null; } }
+  function setTheming(key, value, save) {
+    var t = THEMING[key];
+    if (!t || !t.attr) return;
+    root.setAttribute(t.attr, value);
+    if (save !== false) store(key, value);
+  }
+  Object.keys(THEMING).forEach(function (key) {
+    var t = THEMING[key], v = stored(key);
+    if (t && t.attr && v && (!t.values || t.values.indexOf(v) >= 0)) setTheming(key, v, false);
+  });
+
+  var mode = THEMING.mode;
+  var modeBtn = document.getElementById('modeBtn');
+  if (!mode || !mode.attr || !mode.values || mode.values.length < 2) {
+    modeBtn.hidden = true;
+  } else {
+    modeBtn.addEventListener('click', function () {
+      var light = mode.default || mode.values[0];
+      var dark = mode.values.indexOf('dark') >= 0 ? 'dark' : mode.values.filter(function (v) { return v !== light; })[0];
+      setTheming('mode', root.getAttribute(mode.attr) === dark ? light : dark);
+    });
+  }
+
+  /* ---------- hash router: #/ is home, unknown hash goes home, Back and Forward work ---------- */
+  var ROUTES = [
+    { path: '/', title: 'Home', render: renderHome },
+    { path: '/items/:id', title: 'Item', nav: '/', render: renderItem },
+    { path: '/settings', title: 'Settings', render: renderSettings }
+  ];
+  var view = document.getElementById('view');
+
+  function match(path) {
+    for (var i = 0; i < ROUTES.length; i++) {
+      var names = [];
+      var rx = new RegExp('^' + ROUTES[i].path.replace(/:([\w]+)/g, function (_, n) { names.push(n); return '([^/]+)'; }) + '/?$');
+      var m = rx.exec(path);
+      if (m) {
+        var params = {};
+        names.forEach(function (n, j) { params[n] = decodeURIComponent(m[j + 1]); });
+        return { route: ROUTES[i], params: params };
+      }
+    }
+    return null;
+  }
+  function page(id) { return document.getElementById('page-' + id).content.cloneNode(true); }
+
+  function render() {
+    var path = location.hash.replace(/^#/, '') || '/';
+    var hit = match(path);
+    if (!hit) { location.replace('#/'); return; }
+    view.replaceChildren(hit.route.render(hit.params));
+    document.title = hit.route.title + ' · {{APP_NAME}}';
+    var navPath = hit.route.nav || hit.route.path;
+    document.querySelectorAll('#appNav a').forEach(function (a) {
+      if (a.dataset.route === navPath) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
+    window.scrollTo(0, 0);
+  }
+
+  function renderHome() {
+    var f = page('home'), list = f.querySelector('[data-slot="items"]');
+    MOCK.items.forEach(function (it) {
+      var li = document.createElement('li'), a = document.createElement('a');
+      a.href = '#/items/' + encodeURIComponent(it.id);
+      a.textContent = it.title;
+      li.appendChild(a); list.appendChild(li);
+    });
+    return f;
+  }
+  function renderItem(params) {
+    var it = MOCK.items.filter(function (x) { return x.id === params.id; })[0];
+    var f = page('item');
+    f.querySelector('[data-slot="title"]').textContent = it ? it.title : 'Item not found';
+    f.querySelector('[data-slot="body"]').textContent = it ? it.body : 'This sample item does not exist.';
+    return f;
+  }
+  function renderSettings() {
+    var f = page('settings'), box = f.querySelector('[data-slot="theming"]');
+    Object.keys(THEMING).forEach(function (key) {
+      var t = THEMING[key];
+      if (!t || !t.attr || !t.values || t.values.length < 2) return;
+      var label = document.createElement('label'), span = document.createElement('span'), sel = document.createElement('select');
+      label.className = 'app-field';
+      span.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+      t.values.forEach(function (v) { var o = document.createElement('option'); o.value = o.textContent = v; sel.appendChild(o); });
+      sel.value = root.getAttribute(t.attr) || t.default || t.values[0];
+      sel.addEventListener('change', function () { setTheming(key, sel.value); });
+      label.appendChild(span); label.appendChild(sel); box.appendChild(label);
+    });
+    return f;
+  }
+
+  window.addEventListener('hashchange', render);
+  render();
+})();
+</script>
+</body>
+</html>

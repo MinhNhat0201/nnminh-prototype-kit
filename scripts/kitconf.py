@@ -27,7 +27,7 @@ DEFAULTS = {
     "apps": [],
     "local": {"prefix": "x-", "marker": "LOCAL", "registry": "docs/local-components.json"},
     "handoff": {"dir": "docs/handover", "zipName": "Design - {pbi}", "maxZipMB": 3, "figmaRequired": True},
-    "email": {"subject": "[{app}] Design - {feature} - {version}"},
+    "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3},
     "deploy": {"type": "none", "site": None},
     "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits"},
 }
@@ -108,7 +108,7 @@ def version_label(cfg):
 def app(cfg, app_id):
     for a in cfg["apps"]:
         if a.get("id") == app_id:
-            return _merge({"type": "single", "entry": "index.html", "build": None, "check": None}, a)
+            return _merge({"type": "single", "entry": "index.html", "build": None, "check": None, "stack": cfg["stack"]}, a)
     sys.exit(f"ERROR: app '{app_id}' is not declared in kit.config.json > apps.")
 
 
@@ -146,6 +146,8 @@ def check(cfg):
         if a.get("id") in ids:
             errs.append(f"duplicate app id '{a.get('id')}'")
         ids.add(a.get("id"))
+        if a.get("stack", cfg["stack"]) not in STACKS:
+            errs.append(f"app '{a.get('id')}': stack must be one of {', '.join(STACKS)}")
         if a.get("type", "single") not in APP_TYPES:
             errs.append(f"app '{a.get('id')}': type must be one of {', '.join(APP_TYPES)}")
     ds = cfg["_ds"]

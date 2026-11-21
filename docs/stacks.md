@@ -1,13 +1,13 @@
 # Stacks
 
-`kit.config.json > stack` tells every skill how prototypes are built. It is a setting, not a skill: `kickoff` asks for it once; change it later by editing the file or running `kickoff` again.
+`kit.config.json > stack` tells every skill how prototypes are built. It is a setting, not a skill: `kickoff` asks for it once; change it later by editing the file or running `kickoff` again. An app can override it with `apps[].stack` (for example, keep existing `html` apps and build new ones in `vue`); skills always use the stack of the app they work on.
 
 | | `html` (default) | `react` | `vue` |
 |---|---|---|---|
 | App skeleton (`kickoff`) | `apps/<app>/index.html` with the DS bundle embedded between `/* @ds:begin */` and `/* @ds:end */` | Vite + React + TypeScript + Tailwind, components from shadcn/ui (or the DS profile's own package) | Vite + Vue 3 + TypeScript + Tailwind, components from shadcn-vue (or the DS profile's own package) |
 | Tokens | Custom properties from `ds.json > css.bundle` | Same custom properties, imported once in `src/index.css`; Tailwind theme maps to them | Same as React |
 | Components (`prototype`) | DS classes from `catalog.md` | Components named in `catalog.md > components.map` (React column) | Components named in `components.map` (Vue column) |
-| Routing | Hash router per page (`#/…`); `multi` apps have one file per feature | Framework router (hash history, so the static build works from a folder) | Same as React |
+| Routing | Hash router per page (`#/…`); `multi` apps have one file per feature | Framework router with hash history (the static build works from a folder); pages in `src/pages/<Name>.tsx` | Same; pages in `src/pages/<Name>.vue` |
 | Local components | Class prefix `x-` in a `/* LOCAL: <name> */` block in the app's CSS | Files under `src/components/local/<Name>.tsx` with a `/* LOCAL: <name> */` header comment; classes keep the `x-` prefix | Files under `src/components/local/<Name>.vue` with the same header comment |
 | Hard-coded values (`review`) | Hex, `rgb()`, px for colour, spacing, radius, font size in CSS and `style=""` | Same in CSS, plus Tailwind arbitrary values (`bg-[#fff]`, `p-[13px]`, `rounded-[6px]`) and inline `style={{…}}` | Same in CSS, plus Tailwind arbitrary values and `:style` bindings |
 | Version label | Footer text + `<meta name="ds-version">` | Same, in `index.html` and the app footer | Same |

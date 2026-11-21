@@ -1,0 +1,55 @@
+{
+  "name": "shadcn",
+  "label": "shadcn/ui",
+  "description": "Aesthetic layer from shadcn/ui: neutral palette, semantic colour roles (light and dark), radius scale, type scale, shadows and component recipes. shadcn-vue uses the same CSS variables, so one profile serves both.",
+  "upstream": {
+    "project": "shadcn/ui",
+    "url": "https://ui.shadcn.com",
+    "repository": "https://github.com/shadcn-ui/ui",
+    "licence": "MIT",
+    "copyright": "Copyright (c) 2023 shadcn",
+    "companion": {
+      "project": "shadcn-vue",
+      "url": "https://www.shadcn-vue.com",
+      "licence": "MIT",
+      "note": "Port of shadcn/ui for Vue; same CSS variable names."
+    }
+  },
+  "values": {
+    "source": "Default Theme CSS (neutral base colour) in apps/v4/content/docs/(root)/theming.mdx, branch main, as published on https://ui.shadcn.com/docs/theming",
+    "upstream_version": "shadcn 4.23.0 / shadcn-vue 2.9.0",
+    "fetched": "2026-11-21",
+    "from_memory": false,
+    "verify": "Neutral steps 300, 600 and 700 are not in the theming page; they are the matching Tailwind CSS v4 neutral steps (MIT). Shadow values are the Tailwind CSS v4 defaults that shadcn/ui components use."
+  },
+  "taken": [
+    "Neutral palette (OKLCH, achromatic) and the way semantic roles map onto it in light and dark",
+    "Destructive hue and chroma, chart colours",
+    "Radius scale derived from one base value (sm 0.6, md 0.8, lg 1, xl 1.4, 2xl 1.8)",
+    "Type scale and weights used by the components (text-xs to text-4xl)",
+    "Shadow scale (xs, sm, md, lg)",
+    "Component recipes: heights, paddings, borders, focus treatment, states (see components.json)",
+    "CSS variable names of the alias layer (--background, --primary, --sidebar-*, ...)"
+  ],
+  "not_taken": [
+    "No source code, no React or Vue components (the stack templates install them from the upstream registry)",
+    "No logos, no brand names in the generated profile",
+    "No web font files; the profile names a font family only"
+  ],
+  "structure": {
+    "source": "Material Design 3 guidelines (published layout and component guidance; no assets, icons or fonts)",
+    "taken": [
+      "Window size classes: compact < 600, medium 600-839, expanded >= 840",
+      "48 px minimum touch target",
+      "Bottom sheet, navigation bar (bottom tab bar), navigation rail, FAB, top app bar, segmented button, chips, snackbar placement, list row heights",
+      "Density levels 0, -1, -2 (comfortable, standard, compact)"
+    ]
+  },
+  "files": {
+    "tokens": "tokens.base.json",
+    "components": "components.json",
+    "templates": ["templates/base.css", "templates/components.css", "templates/responsive.css"],
+    "notice": "NOTICE"
+  },
+  "defaults": { "radius": 10, "font": "Inter", "icons": "tabler" }
+}

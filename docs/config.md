@@ -39,7 +39,8 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "figmaRequired": true
   },
   "email": {
-    "subject": "[{app}] Design - {feature} - {version}"
+    "subject": "[{app}] Design - {feature} - {version}",
+    "attachLimitMB": 3
   },
   "deploy": {
     "type": "none",
@@ -59,6 +60,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `stack` | `html`, `react`, `vue` | `html` | `kickoff`, `prototype`, `review`, `contribute`, `handoff`, `sync`. See [stacks.md](stacks.md). |
 | `ds` | path to a DS profile folder | required | Every skill |
 | `apps[]` | one entry per prototype app | `[]` | `prototype`, `review`, `contribute`, `sync`, `handoff` |
+| `apps[].stack` | `html`, `react`, `vue` | the top-level `stack` | Per-app override, so one repository can keep old `html` apps and add `vue` apps. Skills use the app's stack when they work on one app. |
 | `apps[].type` | `single` (one HTML file), `multi` (one file per feature, shared shell), `spa` (React/Vue app with a router) | `single` | `prototype`, `handoff` |
 | `apps[].build`, `apps[].check` | shell commands, or `null` | `null` | Run after editing a shared shell (`multi`) or before a handoff (`spa`) |
 | `local.prefix` | CSS class prefix of local (not-yet-in-DS) components | `x-` | `prototype`, `contribute`, `review` |
@@ -67,6 +69,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `handoff.zipName` | zip and root folder name; `{pbi}` is the work-item code | `Design - {pbi}` | `handoff`, `share` |
 | `handoff.figmaRequired` | the handoff stops when a screen has no Figma node | `true` | `handoff`, `wireflow` |
 | `email.subject` | subject template | as above | `share` |
+| `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 

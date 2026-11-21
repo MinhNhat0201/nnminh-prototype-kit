@@ -1,0 +1,80 @@
+/* App stylesheet. Order matters:
+   1. Tailwind (preflight in the base layer, utilities in the utilities layer).
+   2. The DS bundle, once, in the base layer, so Tailwind utilities can still win over DS defaults.
+      src/ds/{{DS_BUNDLE_FILE}} is a copy of ds.json > css.bundle made by the kit (scaffold, sync). Never edit it.
+   3. The Tailwind theme mapped to the DS alias variables. No colour values in this file. */
+@import "tailwindcss";
+@import "./ds/{{DS_BUNDLE_FILE}}" layer(base);
+
+/* Dark mode is the DS attribute on <html> (ds.json > theming.mode), not a class. */
+@custom-variant dark (&:where([{{MODE_ATTR}}="{{MODE_DARK}}"], [{{MODE_ATTR}}="{{MODE_DARK}}"] *));
+
+/* Only DS colours exist: Tailwind's default palette is removed, so default palette classes produce no CSS. */
+@theme {
+  --color-*: initial;
+  --shadow-*: initial;
+  /* Breakpoints from ds.json > breakpoints: use medium: and expanded: variants. */
+  --breakpoint-medium: {{BP_MEDIUM}}px;
+  --breakpoint-expanded: {{BP_EXPANDED}}px;
+}
+
+/* shadcn/ui names -> DS alias variables (defined by the DS bundle for light and dark). */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground, var(--primary-foreground));
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    margin: 0;
+  }
+}
+
+/* ==== App CSS ====
+   Prefer Tailwind classes mapped above. No Tailwind arbitrary values (square-bracket colours or sizes) and no inline style for colour or spacing.
+   Local components live in src/components/local/ (see the README there), not here. */
+
+@layer components {
+  /* Bottom tab bar clears the home indicator on phones; medium:p-2 (utilities layer) resets it on wider screens. */
+  .app-tabbar {
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+  }
+}

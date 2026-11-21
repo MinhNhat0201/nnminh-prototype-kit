@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="{{LANG}}" data-brand="default" data-mode="light" data-density="{{DENSITY_DEFAULT}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="{{META}}" content="{{VERSION_LABEL}}">
+<title>{{LABEL}} library</title>
+<style>
+{{CSS}}
+/* Library page layout only (not part of the DS). */
+.lib-section { display: grid; gap: var(--T-space-xl); padding-block: var(--T-space-xl); border-bottom: var(--T-size-border) solid var(--T-stroke-default); scroll-margin-top: var(--T-size-topbar-h); }
+.lib-section:last-of-type { border-bottom: 0; }
+.lib-block { display: grid; gap: var(--T-space-md); min-width: 0; }
+.lib-block > h3 { font-size: var(--T-font-size-subtitle); line-height: var(--T-line-height-subtitle); font-weight: var(--T-font-weight-subtitle); }
+.lib-block > h3 code { color: var(--T-text-secondary); font-weight: var(--T-font-weight-regular); }
+.lib-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--T-space-md); min-width: 0; }
+.lib-grid { display: grid; gap: var(--T-space-lg); grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.lib-stage { padding: var(--T-space-lg); border: var(--T-size-border) dashed var(--T-stroke-default); border-radius: var(--T-radius-lg); min-width: 0; }
+.lib-swatches { display: grid; gap: var(--T-space-sm); grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); }
+.lib-swatch { display: flex; align-items: center; gap: var(--T-space-sm); min-width: 0; font-size: var(--T-font-size-caption); line-height: var(--T-line-height-caption); }
+.lib-swatch > i { flex: none; width: var(--T-size-avatar-sm); height: var(--T-size-avatar-sm); border-radius: var(--T-radius-md); border: var(--T-size-border) solid var(--T-stroke-default); }
+.lib-swatch > span { min-width: 0; overflow-wrap: anywhere; }
+.lib-ramp { display: grid; grid-template-columns: repeat(auto-fit, minmax(28px, 1fr)); border-radius: var(--T-radius-md); overflow: hidden; }
+.lib-ramp > i { height: var(--T-size-avatar-sm); }
+.lib-ramp-name { font-size: var(--T-font-size-caption); color: var(--T-text-secondary); }
+.lib-type { display: grid; gap: var(--T-space-sm); }
+.lib-type > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--T-space-md); }
+.lib-type code { color: var(--T-text-secondary); min-width: 9em; }
+.lib-box { width: var(--T-size-avatar-lg); height: var(--T-size-avatar-lg); background: var(--T-bg-surface); border: var(--T-size-border) solid var(--T-stroke-default); display: grid; place-content: center; font-size: var(--T-font-size-caption); color: var(--T-text-secondary); }
+.lib-controls { display: flex; flex-wrap: wrap; gap: var(--T-space-lg); align-items: end; }
+.lib-footer { padding-block: var(--T-space-xl); color: var(--T-text-secondary); font-size: var(--T-font-size-caption); }
+.lib-static-menu { position: static; }
+.lib-phone { max-width: 360px; border: var(--T-size-border) solid var(--T-stroke-default); border-radius: var(--T-radius-xl); overflow: hidden; }
+.lib-phone .ZZ-topbar { position: static; }
+</style>
+</head>
+<body>
+<div class="ZZ-app">
+  <header class="ZZ-topbar">
+    <span class="ZZ-avatar ZZ-avatar--sm" aria-hidden="true">{{INITIAL}}</span>
+    <h1 class="ZZ-topbar__title">{{LABEL}}</h1>
+    <div class="ZZ-topbar__actions">
+      <span class="ZZ-badge ZZ-badge--outline ZZ-hide-compact">{{VERSION}}</span>
+      <span class="ZZ-tooltip-host ZZ-tooltip-host--below ZZ-tooltip-host--end">
+        <button class="ZZ-icon-btn" id="modeBtn" type="button" aria-label="{{t:adopt.lib.toggleMode}}" {{DARK_HIDDEN}}>{{i:moon}}</button>
+        <span class="ZZ-tooltip" role="tooltip">{{t:adopt.lib.toggleMode}}</span>
+      </span>
+    </div>
+  </header>
+
+  <nav class="ZZ-rail" aria-label="{{t:adopt.lib.sections}}">
+    <div class="ZZ-rail__items">
+      <a class="ZZ-rail-item" href="#foundations" aria-current="page"><span class="ZZ-rail-item__icon">{{i:palette}}</span>{{t:adopt.lib.foundations}}</a>
+      <a class="ZZ-rail-item" href="#actions"><span class="ZZ-rail-item__icon">{{i:click}}</span>{{t:adopt.lib.actions}}</a>
+      <a class="ZZ-rail-item" href="#inputs"><span class="ZZ-rail-item__icon">{{i:forms}}</span>{{t:adopt.lib.inputs}}</a>
+      <a class="ZZ-rail-item" href="#navigation"><span class="ZZ-rail-item__icon">{{i:layout-navbar}}</span>{{t:adopt.lib.navigation}}</a>
+      <a class="ZZ-rail-item" href="#display"><span class="ZZ-rail-item__icon">{{i:table}}</span>{{t:adopt.lib.display}}</a>
+      <a class="ZZ-rail-item" href="#feedback"><span class="ZZ-rail-item__icon">{{i:bell}}</span>{{t:adopt.lib.feedback}}</a>
+    </div>
+  </nav>
+
+  <main class="ZZ-main">
+   <div class="ZZ-container">
+    <section class="lib-section" id="foundations" aria-labelledby="h-found">
+      <div class="lib-block">
+        <h2 class="ZZ-text-headline" id="h-found">{{t:adopt.lib.foundations}}</h2>
+        <p class="ZZ-text-secondary">{{t:adopt.lib.intro}}</p>
+        <div class="lib-controls">
+          <div class="ZZ-field">
+            <span class="ZZ-label" id="modeLabel">{{t:adopt.lib.mode}}</span>
+            <div class="ZZ-segmented" role="group" aria-labelledby="modeLabel" id="modeSeg">
+              <button type="button" data-mode-set="light" aria-pressed="true">{{t:adopt.lib.light}}</button>
+              <button type="button" data-mode-set="dark" aria-pressed="false" {{DARK_DISABLED}}>{{t:adopt.lib.dark}}</button>
+            </div>
+          </div>
+          <div class="ZZ-field">
+            <label class="ZZ-label" for="densitySel">{{t:adopt.lib.density}}</label>
+            <span class="ZZ-select"><select id="densitySel">
+              <option value="auto">auto</option><option value="comfortable">comfortable</option><option value="standard">standard</option><option value="compact">compact</option>
+            </select></span>
+          </div>
+        </div>
+      </div>
+      <div class="lib-block"><h3>{{t:adopt.lib.semanticColours}}</h3><div class="lib-swatches">{{SWATCHES_SEMANTIC}}</div></div>
+      <div class="lib-block"><h3>{{t:adopt.lib.palettes}}</h3>{{SWATCHES_PALETTES}}</div>
+      <div class="lib-block"><h3>{{t:adopt.lib.typography}} <code>{{FONT}}</code></h3><div class="lib-type">{{TYPE}}</div></div>
+      <div class="lib-block"><h3>{{t:adopt.lib.radiusShadow}}</h3><div class="lib-row">{{RADII}}</div></div>
+    </section>
+
+    <section class="lib-section" id="actions" aria-labelledby="h-actions">
+      <h2 class="ZZ-text-headline" id="h-actions">{{t:adopt.lib.actions}}</h2>
+      <div class="lib-block"><h3>Button <code>.ZZ-btn</code></h3>
+        <div class="lib-row">
+          <button class="ZZ-btn" type="button">{{i:plus}} Primary</button>
+          <button class="ZZ-btn ZZ-btn--secondary" type="button">Secondary</button>
+          <button class="ZZ-btn ZZ-btn--outline" type="button">Outline</button>
+          <button class="ZZ-btn ZZ-btn--ghost" type="button">Ghost</button>
+          <button class="ZZ-btn ZZ-btn--destructive" type="button">{{i:trash}} Delete</button>
+          <button class="ZZ-btn ZZ-btn--link" type="button">Link</button>
+        </div>
+        <div class="lib-row">
+          <button class="ZZ-btn ZZ-btn--sm" type="button">Small</button>
+          <button class="ZZ-btn" type="button">Medium</button>
+          <button class="ZZ-btn ZZ-btn--lg" type="button">Large</button>
+          <button class="ZZ-btn" type="button" disabled>Disabled</button>
+          <button class="ZZ-btn ZZ-btn--outline" type="button" aria-busy="true">Saving</button>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Icon button <code>.ZZ-icon-btn</code></h3>
+        <div class="lib-row">
+          <button class="ZZ-icon-btn" type="button" aria-label="Edit">{{i:pencil}}</button>
+          <button class="ZZ-icon-btn ZZ-icon-btn--outline" type="button" aria-label="Search">{{i:search}}</button>
+          <button class="ZZ-icon-btn ZZ-icon-btn--filled" type="button" aria-label="Add">{{i:plus}}</button>
+          <button class="ZZ-icon-btn ZZ-icon-btn--sm" type="button" aria-label="More">{{i:dots-vertical}}</button>
+          <button class="ZZ-icon-btn" type="button" aria-label="Disabled" disabled>{{i:trash}}</button>
+        </div>
+      </div>
+      <div class="lib-block"><h3>FAB <code>.ZZ-fab</code> <span class="ZZ-badge ZZ-badge--neutral">composed</span></h3>
+        <div class="lib-row">
+          <button class="ZZ-fab" type="button" aria-label="Create">{{i:plus}}</button>
+          <button class="ZZ-fab ZZ-fab--small" type="button" aria-label="Create">{{i:pencil}}</button>
+          <button class="ZZ-fab ZZ-fab--extended" type="button">{{i:plus}} New task</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="lib-section" id="inputs" aria-labelledby="h-inputs">
+      <h2 class="ZZ-text-headline" id="h-inputs">{{t:adopt.lib.inputs}}</h2>
+      <div class="lib-grid">
+        <div class="ZZ-field"><label class="ZZ-label" for="f1">Name</label><input class="ZZ-input" id="f1" placeholder="Jane Doe"><span class="ZZ-helper">As shown on your profile.</span></div>
+        <div class="ZZ-field ZZ-field--invalid"><label class="ZZ-label" for="f2">Email</label><input class="ZZ-input" id="f2" value="jane@" aria-invalid="true" aria-describedby="f2h"><span class="ZZ-helper" id="f2h">Enter a valid email address.</span></div>
+        <div class="ZZ-field"><label class="ZZ-label" for="f3">Disabled</label><input class="ZZ-input" id="f3" value="Read only value" disabled></div>
+        <div class="ZZ-field"><label class="ZZ-label" for="f4">Plan</label><span class="ZZ-select"><select id="f4"><option>Starter</option><option>Team</option><option>Enterprise</option></select></span></div>
+        <div class="ZZ-field"><label class="ZZ-label" for="f5">Notes</label><textarea class="ZZ-textarea" id="f5" placeholder="Add a note"></textarea></div>
+        <div class="lib-block">
+          <label class="ZZ-choice"><input class="ZZ-checkbox" type="checkbox" checked> Email updates</label>
+          <label class="ZZ-choice"><input class="ZZ-checkbox" type="checkbox" id="indet"> Select all</label>
+          <label class="ZZ-choice"><input class="ZZ-checkbox" type="checkbox" disabled> Disabled</label>
+        </div>
+        <div class="lib-block" role="radiogroup" aria-label="Frequency">
+          <label class="ZZ-choice"><input class="ZZ-radio" type="radio" name="freq" checked> Daily</label>
+          <label class="ZZ-choice"><input class="ZZ-radio" type="radio" name="freq"> Weekly</label>
+          <label class="ZZ-choice"><input class="ZZ-radio" type="radio" name="freq" disabled> Never</label>
+        </div>
+        <div class="lib-block">
+          <label class="ZZ-choice"><input class="ZZ-switch" type="checkbox" role="switch" checked> Notifications</label>
+          <label class="ZZ-choice"><input class="ZZ-switch" type="checkbox" role="switch"> Auto-archive</label>
+          <label class="ZZ-choice"><input class="ZZ-switch" type="checkbox" role="switch" disabled> Disabled</label>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Chip <code>.ZZ-chip</code> <span class="ZZ-badge ZZ-badge--neutral">composed</span></h3>
+        <div class="ZZ-chips">
+          <button class="ZZ-chip" type="button" aria-pressed="true" data-toggle>Open</button>
+          <button class="ZZ-chip" type="button" aria-pressed="false" data-toggle>Assigned to me</button>
+          <button class="ZZ-chip" type="button" aria-pressed="false" data-toggle>Due this week</button>
+          <span class="ZZ-chip ZZ-chip--input">Design<button class="ZZ-chip__remove" type="button" aria-label="Remove Design">{{i:x}}</button></span>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Segmented <code>.ZZ-segmented</code> <span class="ZZ-badge ZZ-badge--neutral">composed</span></h3>
+        <div class="ZZ-segmented" role="group" aria-label="View" data-single>
+          <button type="button" aria-pressed="true">Day</button><button type="button" aria-pressed="false">Week</button><button type="button" aria-pressed="false">Month</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="lib-section" id="navigation" aria-labelledby="h-nav">
+      <h2 class="ZZ-text-headline" id="h-nav">{{t:adopt.lib.navigation}}</h2>
+      <div class="lib-block"><h3>Tabs <code>.ZZ-tabs</code></h3>
+        <div>
+          <div class="ZZ-tabs" role="tablist" aria-label="Project">
+            <button class="ZZ-tab" role="tab" aria-selected="true" aria-controls="tp1" id="tb1">Overview</button>
+            <button class="ZZ-tab" role="tab" aria-selected="false" aria-controls="tp2" id="tb2" tabindex="-1">Activity</button>
+            <button class="ZZ-tab" role="tab" aria-selected="false" aria-controls="tp3" id="tb3" tabindex="-1">Settings</button>
+          </div>
+          <div class="ZZ-tab-panel" role="tabpanel" id="tp1" aria-labelledby="tb1">Overview content.</div>
+          <div class="ZZ-tab-panel" role="tabpanel" id="tp2" aria-labelledby="tb2" hidden>Activity content.</div>
+          <div class="ZZ-tab-panel" role="tabpanel" id="tp3" aria-labelledby="tb3" hidden>Settings content.</div>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Menu <code>.ZZ-menu</code></h3>
+        <div class="lib-row" style="align-items: start;">
+          <details class="ZZ-dropdown">
+            <summary class="ZZ-btn ZZ-btn--outline">Options {{i:chevron-down}}</summary>
+            <div class="ZZ-menu" role="menu">
+              <button class="ZZ-menu-item" role="menuitem" type="button">{{i:pencil}} Rename</button>
+              <button class="ZZ-menu-item" role="menuitem" type="button">{{i:user}} Share</button>
+              <hr class="ZZ-menu-sep">
+              <button class="ZZ-menu-item ZZ-menu-item--danger" role="menuitem" type="button">{{i:trash}} Delete</button>
+            </div>
+          </details>
+          <div class="ZZ-menu lib-static-menu" role="menu" aria-label="Static menu">
+            <div class="ZZ-menu-label">Account</div>
+            <button class="ZZ-menu-item" role="menuitem" type="button">{{i:user}} Profile</button>
+            <button class="ZZ-menu-item" role="menuitem" type="button">{{i:settings}} Settings</button>
+            <button class="ZZ-menu-item" role="menuitem" type="button" disabled>{{i:bell}} Disabled</button>
+          </div>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Top bar, navigation rail, bottom tab bar <span class="ZZ-badge ZZ-badge--neutral">composed</span></h3>
+        <p class="ZZ-text-secondary">{{t:adopt.lib.shellNote}}</p>
+        <div class="lib-phone">
+          <header class="ZZ-topbar">
+            <button class="ZZ-icon-btn" type="button" aria-label="Menu">{{i:menu-2}}</button>
+            <span class="ZZ-topbar__title">Inbox</span>
+            <div class="ZZ-topbar__actions"><button class="ZZ-icon-btn" type="button" aria-label="Search">{{i:search}}</button></div>
+          </header>
+          <div class="ZZ-empty"><div class="ZZ-empty__media">{{i:inbox}}</div><div class="ZZ-empty__desc">Phone frame</div></div>
+          <nav class="ZZ-tabbar" aria-label="Demo tab bar">
+            <a class="ZZ-tabbar-item" href="#navigation" aria-current="page"><span class="ZZ-tabbar-item__icon">{{i:home}}</span>Home</a>
+            <a class="ZZ-tabbar-item" href="#navigation"><span class="ZZ-tabbar-item__icon">{{i:search}}</span>Search</a>
+            <a class="ZZ-tabbar-item" href="#navigation"><span class="ZZ-tabbar-item__icon">{{i:bell}}</span>Alerts</a>
+            <a class="ZZ-tabbar-item" href="#navigation"><span class="ZZ-tabbar-item__icon">{{i:user}}</span>Profile</a>
+          </nav>
+        </div>
+      </div>
+    </section>
+
+    <section class="lib-section" id="display" aria-labelledby="h-display">
+      <h2 class="ZZ-text-headline" id="h-display">{{t:adopt.lib.display}}</h2>
+      <div class="lib-grid">
+        <article class="ZZ-card">
+          <div class="ZZ-card__header"><h3 class="ZZ-card__title">Scheduled tasks</h3><p class="ZZ-card__desc">Run a report every Monday at 9:00.</p></div>
+          <progress class="ZZ-progress" value="64" max="100" aria-label="Progress">64%</progress>
+          <div class="ZZ-card__footer"><button class="ZZ-btn ZZ-btn--sm" type="button">Open</button><button class="ZZ-btn ZZ-btn--sm ZZ-btn--ghost" type="button">Later</button></div>
+        </article>
+        <ul class="ZZ-list ZZ-list--inset ZZ-list--divided">
+          <li><a class="ZZ-list-item" href="#display"><span class="ZZ-avatar">JD</span><span class="ZZ-list-item__content"><span class="ZZ-list-item__title">Jane Doe</span><span class="ZZ-list-item__desc">Shared a file with you</span></span><span class="ZZ-list-item__meta">2m</span></a></li>
+          <li><a class="ZZ-list-item" href="#display" aria-selected="true"><span class="ZZ-list-item__media">{{i:bell}}</span><span class="ZZ-list-item__content"><span class="ZZ-list-item__title">Reminder</span><span class="ZZ-list-item__desc">Review the weekly plan</span></span><span class="ZZ-badge ZZ-badge--count">3</span></a></li>
+          <li><div class="ZZ-list-item"><span class="ZZ-list-item__media">{{i:settings}}</span><span class="ZZ-list-item__content"><span class="ZZ-list-item__title">Sync</span></span><input class="ZZ-switch" type="checkbox" role="switch" aria-label="Sync" checked></div></li>
+        </ul>
+      </div>
+      <div class="lib-block"><h3>Table <code>.ZZ-table</code></h3>
+        <div class="ZZ-table-wrap"><table class="ZZ-table">
+          <thead><tr><th>Task</th><th>Owner</th><th>Status</th><th class="ZZ-num">Runs</th></tr></thead>
+          <tbody>
+            <tr><td>Weekly report</td><td>Jane Doe</td><td><span class="ZZ-badge ZZ-badge--success">Active</span></td><td class="ZZ-num">128</td></tr>
+            <tr aria-selected="true"><td>Invoice export</td><td>Sam Lee</td><td><span class="ZZ-badge ZZ-badge--warning">Paused</span></td><td class="ZZ-num">42</td></tr>
+            <tr><td>Backup</td><td>Alex Kim</td><td><span class="ZZ-badge ZZ-badge--danger">Failed</span></td><td class="ZZ-num">7</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="lib-block"><h3>Badge <code>.ZZ-badge</code> · Avatar <code>.ZZ-avatar</code></h3>
+        <div class="lib-row">
+          <span class="ZZ-badge">Brand</span><span class="ZZ-badge ZZ-badge--neutral">Neutral</span><span class="ZZ-badge ZZ-badge--outline">Outline</span>
+          <span class="ZZ-badge ZZ-badge--success">Success</span><span class="ZZ-badge ZZ-badge--warning">Warning</span><span class="ZZ-badge ZZ-badge--danger">Danger</span><span class="ZZ-badge ZZ-badge--info">Info</span>
+          <span class="ZZ-badge-host"><button class="ZZ-icon-btn" type="button" aria-label="Notifications, 5 new">{{i:bell}}</button><span class="ZZ-badge ZZ-badge--count">5</span></span>
+          <span class="ZZ-badge-host"><button class="ZZ-icon-btn" type="button" aria-label="Messages, unread">{{i:inbox}}</button><span class="ZZ-badge ZZ-badge--dot"></span></span>
+        </div>
+        <div class="lib-row">
+          <span class="ZZ-avatar ZZ-avatar--sm">AK</span><span class="ZZ-avatar">JD</span><span class="ZZ-avatar ZZ-avatar--lg">{{i:user}}</span>
+          <span class="ZZ-avatar-group"><span class="ZZ-avatar ZZ-avatar--sm">A</span><span class="ZZ-avatar ZZ-avatar--sm">B</span><span class="ZZ-avatar ZZ-avatar--sm">+3</span></span>
+        </div>
+      </div>
+      <div class="lib-block"><h3>Empty state <code>.ZZ-empty</code></h3>
+        <div class="ZZ-empty ZZ-empty--bordered">
+          <div class="ZZ-empty__media">{{i:inbox}}</div>
+          <div class="ZZ-empty__title">No tasks yet</div>
+          <p class="ZZ-empty__desc">Create a task to run reports on a schedule.</p>
+          <div class="ZZ-empty__actions"><button class="ZZ-btn" type="button">{{i:plus}} New task</button></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="lib-section" id="feedback" aria-labelledby="h-feedback">
+      <h2 class="ZZ-text-headline" id="h-feedback">{{t:adopt.lib.feedback}}</h2>
+      <div class="lib-row">
+        <button class="ZZ-btn ZZ-btn--outline" type="button" id="openDialog">Open dialog</button>
+        <button class="ZZ-btn ZZ-btn--outline" type="button" id="openSheet">Open bottom sheet</button>
+        <button class="ZZ-btn ZZ-btn--outline" type="button" id="showToast">Show toast</button>
+        <span class="ZZ-tooltip-host"><button class="ZZ-btn ZZ-btn--ghost" type="button" aria-describedby="tt1">Hover me</button><span class="ZZ-tooltip" role="tooltip" id="tt1">Tooltip text</span></span>
+      </div>
+      <div class="lib-grid">
+        <div class="lib-block"><h3>Progress <code>.ZZ-progress</code></h3>
+          <progress class="ZZ-progress" value="40" max="100" aria-label="Upload">40%</progress>
+          <progress class="ZZ-progress" aria-label="Loading"></progress>
+          <div class="lib-row"><span class="ZZ-spinner" role="status" aria-label="Loading"></span><span class="ZZ-text-secondary">Loading</span></div>
+        </div>
+        <div class="lib-block"><h3>Skeleton <code>.ZZ-skeleton</code></h3>
+          <div class="lib-row" style="flex-wrap: nowrap;"><span class="ZZ-skeleton ZZ-skeleton--circle"></span><div style="flex: 1; display: grid; gap: var(--T-space-sm);"><span class="ZZ-skeleton ZZ-skeleton--text"></span><span class="ZZ-skeleton ZZ-skeleton--text" style="width: 60%;"></span></div></div>
+        </div>
+        <div class="lib-block"><h3>Toast <code>.ZZ-toast</code> <span class="ZZ-badge ZZ-badge--neutral">composed</span></h3>
+          <div class="ZZ-toast ZZ-toast--success" style="animation: none;">{{i:circle-check}}<span class="ZZ-toast__text">Task saved</span><button class="ZZ-btn ZZ-btn--sm ZZ-btn--ghost" type="button">Undo</button></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="lib-footer">{{VERSION_LABEL}} · {{t:adopt.lib.footer}}</footer>
+   </div>
+  </main>
+
+  <nav class="ZZ-tabbar" aria-label="{{t:adopt.lib.sections}}">
+    <a class="ZZ-tabbar-item" href="#foundations" aria-current="page"><span class="ZZ-tabbar-item__icon">{{i:palette}}</span>{{t:adopt.lib.foundationsShort}}</a>
+    <a class="ZZ-tabbar-item" href="#actions"><span class="ZZ-tabbar-item__icon">{{i:click}}</span>{{t:adopt.lib.actions}}</a>
+    <a class="ZZ-tabbar-item" href="#inputs"><span class="ZZ-tabbar-item__icon">{{i:forms}}</span>{{t:adopt.lib.inputs}}</a>
+    <a class="ZZ-tabbar-item" href="#display"><span class="ZZ-tabbar-item__icon">{{i:table}}</span>{{t:adopt.lib.display}}</a>
+    <a class="ZZ-tabbar-item" href="#feedback"><span class="ZZ-tabbar-item__icon">{{i:bell}}</span>{{t:adopt.lib.feedback}}</a>
+  </nav>
+</div>
+
+<dialog class="ZZ-dialog" id="dlg" aria-labelledby="dlgT">
+  <h2 class="ZZ-dialog__title" id="dlgT">Delete task?</h2>
+  <p class="ZZ-dialog__desc">This removes the task and its run history. You cannot undo this.</p>
+  <form method="dialog" class="ZZ-dialog__footer">
+    <button class="ZZ-btn ZZ-btn--outline" value="cancel">Cancel</button>
+    <button class="ZZ-btn ZZ-btn--destructive" value="ok">Delete</button>
+  </form>
+</dialog>
+
+<dialog class="ZZ-sheet" id="sheet" aria-labelledby="sheetT">
+  <span class="ZZ-sheet__handle" aria-hidden="true"></span>
+  <h2 class="ZZ-sheet__title" id="sheetT">Share task</h2>
+  <ul class="ZZ-list">
+    <li><button class="ZZ-list-item" type="button"><span class="ZZ-list-item__media">{{i:user}}</span><span class="ZZ-list-item__content"><span class="ZZ-list-item__title">Invite people</span></span></button></li>
+    <li><button class="ZZ-list-item" type="button"><span class="ZZ-list-item__media">{{i:inbox}}</span><span class="ZZ-list-item__content"><span class="ZZ-list-item__title">Send by email</span></span></button></li>
+  </ul>
+  <form method="dialog"><button class="ZZ-btn ZZ-btn--secondary ZZ-btn--block">Close</button></form>
+</dialog>
+
+<div class="ZZ-toast-region" aria-live="polite" id="toasts"></div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var store = { get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} } };
+  var hasDark = {{HAS_DARK}};
+  var icons = { sun: '{{i:sun}}', moon: '{{i:moon}}' };
+  function setMode(m) {
+    if (!hasDark) m = 'light';
+    root.setAttribute('data-mode', m);
+    document.getElementById('modeBtn').innerHTML = m === 'dark' ? icons.sun : icons.moon;
+    document.querySelectorAll('[data-mode-set]').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.modeSet === m)); });
+    store.set('ZZ-lib-mode', m);
+  }
+  function setDensity(d) { root.setAttribute('data-density', d); document.getElementById('densitySel').value = d; store.set('ZZ-lib-density', d); }
+  setMode(store.get('ZZ-lib-mode') || 'light');
+  setDensity(store.get('ZZ-lib-density') || '{{DENSITY_DEFAULT}}');
+  document.getElementById('modeBtn').addEventListener('click', function () { setMode(root.getAttribute('data-mode') === 'dark' ? 'light' : 'dark'); });
+  document.querySelectorAll('[data-mode-set]').forEach(function (b) { b.addEventListener('click', function () { setMode(b.dataset.modeSet); }); });
+  document.getElementById('densitySel').addEventListener('change', function (e) { setDensity(e.target.value); });
+
+  document.getElementById('indet').indeterminate = true;
+  document.querySelectorAll('[data-toggle]').forEach(function (c) { c.addEventListener('click', function () { c.setAttribute('aria-pressed', String(c.getAttribute('aria-pressed') !== 'true')); }); });
+  document.querySelectorAll('[data-single]').forEach(function (g) { g.addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    g.querySelectorAll('button').forEach(function (x) { x.setAttribute('aria-pressed', String(x === b)); });
+  }); });
+  document.querySelectorAll('[role=tablist]').forEach(function (list) {
+    var tabs = Array.prototype.slice.call(list.querySelectorAll('[role=tab]'));
+    function select(t) { tabs.forEach(function (x) { var on = x === t; x.setAttribute('aria-selected', String(on)); x.tabIndex = on ? 0 : -1; document.getElementById(x.getAttribute('aria-controls')).hidden = !on; }); t.focus(); }
+    list.addEventListener('click', function (e) { var t = e.target.closest('[role=tab]'); if (t) select(t); });
+    list.addEventListener('keydown', function (e) { var i = tabs.indexOf(document.activeElement); if (i < 0) return;
+      if (e.key === 'ArrowRight') select(tabs[(i + 1) % tabs.length]); if (e.key === 'ArrowLeft') select(tabs[(i - 1 + tabs.length) % tabs.length]); });
+  });
+  document.querySelectorAll('.ZZ-rail-item, .ZZ-app > .ZZ-tabbar .ZZ-tabbar-item').forEach(function (a) { a.addEventListener('click', function () {
+    document.querySelectorAll('.ZZ-rail-item, .ZZ-app > .ZZ-tabbar .ZZ-tabbar-item').forEach(function (x) { x.toggleAttribute('aria-current', x.getAttribute('href') === a.getAttribute('href')); if (x.hasAttribute('aria-current')) x.setAttribute('aria-current', 'page'); });
+  }); });
+  document.getElementById('openDialog').addEventListener('click', function () { document.getElementById('dlg').showModal(); });
+  document.getElementById('openSheet').addEventListener('click', function () { document.getElementById('sheet').showModal(); });
+  document.getElementById('sheet').addEventListener('click', function (e) { if (e.target === e.currentTarget) e.currentTarget.close(); });
+  document.getElementById('showToast').addEventListener('click', function () {
+    var region = document.getElementById('toasts');
+    region.innerHTML = '<div class="ZZ-toast ZZ-toast--success" role="status">{{i:circle-check}}<span class="ZZ-toast__text">Task saved</span><button class="ZZ-btn ZZ-btn--sm ZZ-btn--ghost" type="button">Undo</button></div>';
+    setTimeout(function () { region.innerHTML = ''; }, 4000);
+  });
+  document.addEventListener('click', function (e) { document.querySelectorAll('details.ZZ-dropdown[open]').forEach(function (d) { if (!d.contains(e.target)) d.open = false; }); });
+})();
+</script>
+</body>
+</html>

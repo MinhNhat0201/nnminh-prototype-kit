@@ -1,0 +1,102 @@
+/* ==== App CSS ====
+   Everything below belongs to this app, not to the DS.
+   - Use DS tokens only ({{TOKEN_PREFIX}}* and the alias variables --background, --foreground, --primary, --border, --radius, ...).
+     No hex, rgb(), named colours, or px for colour, spacing, radius or font size when a token exists.
+   - Never restyle a DS class here. A missing variant or component goes through the component gate of the prototype skill.
+   - Local components (not yet in the DS): one block per component. Open it with a comment whose text is
+     "{{LOCAL_MARKER}}: <name>" (for example "{{LOCAL_MARKER}}: Upload drop zone"), use only classes that start with
+     "{{LOCAL_PREFIX}}" inside it, and register it in {{LOCAL_REGISTRY}} (contribute/scripts/registry.py update).
+     The block ends at the next marker or at the next section comment like the one that opens this section.
+*/
+
+/* ==== App: shell ====
+   Skeleton layout from the kit template: top bar, navigation rail (wide screens) and bottom tab bar
+   (below {{BP_MEDIUM}}px, ds.json > breakpoints.medium). Colours come from the DS alias variables only.
+   Sizes in rem are layout defaults of the skeleton. When catalog.md lists an app shell, top bar,
+   navigation rail, tab bar, button or card component, replace the matching app-* element with it.
+   Source: _shell/shell.css. Edit it here, then run the app's build (python3 _shell/build.py build). */
+html, body { margin: 0; }
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+.app {
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "top top" "nav main" "nav foot";
+}
+.app-top {
+  grid-area: top;
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; gap: 0.75rem;
+  min-height: 3.5rem; padding: 0 1rem;
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+}
+.app-brand { font-weight: 600; margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; padding: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--background); color: var(--foreground); cursor: pointer;
+}
+.app-icon-btn:hover { background: var(--accent); color: var(--accent-foreground); }
+.app-nav {
+  grid-area: nav;
+  display: flex; flex-direction: column; gap: 0.25rem;
+  padding: 0.5rem;
+  background: var(--sidebar, var(--background));
+  color: var(--sidebar-foreground, var(--foreground));
+  border-right: 1px solid var(--sidebar-border, var(--border));
+}
+.app-nav a {
+  display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+  min-width: 4.5rem; padding: 0.5rem 0.25rem;
+  border-radius: var(--radius);
+  color: inherit; text-decoration: none; font-size: 0.75rem;
+}
+.app-nav a:hover { background: var(--sidebar-accent, var(--accent)); color: var(--sidebar-accent-foreground, var(--accent-foreground)); }
+.app-nav a[aria-current="page"] { background: var(--sidebar-primary, var(--primary)); color: var(--sidebar-primary-foreground, var(--primary-foreground)); }
+.app-nav svg, .app-icon-btn svg { width: 1.25rem; height: 1.25rem; }
+.app-main { grid-area: main; min-width: 0; padding: 1.5rem; }
+.app-page { max-width: 64rem; margin: 0 auto; display: flex; flex-direction: column; gap: 1rem; }
+.app-page h1 { margin: 0; }
+.app-page p { margin: 0; color: var(--muted-foreground); }
+.app-panel {
+  display: flex; flex-direction: column; gap: 0.75rem;
+  padding: 1rem;
+  background: var(--card); color: var(--card-foreground);
+  border: 1px solid var(--border); border-radius: var(--radius);
+}
+.app-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.app-list a { display: block; padding: 0.75rem 0; color: inherit; text-decoration: none; border-top: 1px solid var(--border); }
+.app-list li:first-child a { border-top: 0; }
+.app-list a:hover { color: var(--primary); }
+.app-field { display: flex; flex-direction: column; gap: 0.25rem; max-width: 20rem; }
+.app-field select {
+  padding: 0.5rem; border: 1px solid var(--input); border-radius: var(--radius);
+  background: var(--background); color: var(--foreground); font: inherit;
+}
+.app-foot {
+  grid-area: foot;
+  display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted-foreground); font-size: 0.75rem;
+}
+.app a:focus-visible, .app button:focus-visible, .app select:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+@media (width < {{BP_MEDIUM}}px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main" "foot"; }
+  .app-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    flex-direction: row; justify-content: space-around;
+    padding: 0.25rem 0.5rem calc(0.25rem + env(safe-area-inset-bottom));
+    border-right: 0; border-top: 1px solid var(--sidebar-border, var(--border));
+  }
+  .app-nav a { flex: 1; min-width: 0; }
+  .app-main { padding: 1rem; }
+  .app-foot { padding-bottom: calc(4.5rem + env(safe-area-inset-bottom)); }
+}
