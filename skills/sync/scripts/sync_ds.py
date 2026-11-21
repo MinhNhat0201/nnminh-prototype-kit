@@ -114,7 +114,7 @@ def cmd_status(cfg, a):
         v = found_version(cfg, app)
         state = "unknown" if not v else ("up to date" if vtuple(v) >= vtuple(ds["version"]) else "behind")
         print("== %s (%s, stack %s): version %s, %s; %d file(s) with the DS block" % (
-            app["id"], app.get("type", "single"), cfg["stack"], v or "not found", state, len(marked)))
+            app["id"], app.get("type", "single"), app.get("stack") or cfg["stack"], v or "not found", state, len(marked)))
         for f in marked:
             print("   " + f.relative_to(cfg["_root"]).as_posix())
     return 0
@@ -176,7 +176,7 @@ def cmd_apply(cfg, a):
             print("   " + f.relative_to(cfg["_root"]).as_posix())
         if not blocks:
             hint = ("embed the DS between /* %s */ and /* %s */ first" % (ds["css"]["marker"]["begin"], ds["css"]["marker"]["end"])
-                    if cfg["stack"] == "html" else "bump the DS package or re-import the tokens in src/index.css")
+                    if (app.get("stack") or cfg["stack"]) == "html" else "bump the DS package or re-import the tokens in src/index.css")
             print("   NOTE: no DS block found; %s." % hint)
         if app.get("build"):
             print("   NEXT: run the app build: %s" % app["build"])

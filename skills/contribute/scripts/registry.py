@@ -109,6 +109,7 @@ def scan(ctx, app):
     files = app_files(ctx, app)
     texts = [(f, f.read_text(encoding="utf-8", errors="replace")) for f in files]
     local_dir = (ctx.root / app["path"] / LOCAL_DIR).resolve()
+    app_stack = app.get("stack") or ctx.stack  # apps[].stack overrides the project stack
     spans, unmarked = [], []
     seen_fp, count = {}, collections.Counter()
 
@@ -122,7 +123,7 @@ def scan(ctx, app):
         spans.append({"anchor": anchor, "path": f, "text": s, "a": a, "b": b, "kind": kind, "fp": fp})
 
     for f, s in texts:
-        in_local = ctx.stack in ("react", "vue") and local_dir in f.resolve().parents
+        in_local = app_stack in ("react", "vue") and local_dir in f.resolve().parents
         if in_local and f.suffix in (".tsx", ".jsx", ".ts", ".js", ".vue"):
             m = ctx.header.search(s[:2000])
             if m:

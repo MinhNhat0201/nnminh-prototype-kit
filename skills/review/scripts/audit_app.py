@@ -616,9 +616,12 @@ def main():
         if k not in apps:
             die("app '%s' is not declared in kit.config.json > apps (declared: %s)" % (k, ", ".join(apps) or "none"))
     lib = ds_facts(ctx, a.min_rules)
-    out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ctx.label(), bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack), ""], []
+    out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ctx.label(), bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack + ("".join(sorted({", %s: %s" % (k, apps[k]["stack"]) for k in keys if apps[k].get("stack") and apps[k]["stack"] != ctx.stack})))), ""], []
+    project_stack = ctx.stack
     for k in keys:
+        ctx.stack = apps[k].get("stack") or project_stack  # apps[].stack overrides the project stack
         r = audit_app(ctx, apps[k], lib)
+        r["stack"] = ctx.stack
         js.append(r)
         out.append(report(ctx, r))
     print("\n".join(out))
