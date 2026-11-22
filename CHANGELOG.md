@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.0 · 2026-11-22
+Fixes from the second real trial (a Vue page inside a multi-page html app, ported with a parity check; K11-1…K11-13). New commands: `validation.py parity`, `kitconf.py add-page`. Every new key has a default that keeps the 0.11 behaviour.
+
+Validate
+- validate: `init --url` reads routes, names and selectors from the rendered page inside `validate.contentRoot` (new key, default `main, #app, [role=main]`), so pages built by JS bundles get real routes (K11-6).
+- validate: axe runs on every plan state (opt out with `"axe": false`) (K11-7); a global `plan.prepare` runs before every screen and flow, with optional reload (K11-10).
+- validate: new `parity` command compares one plan on two builds (text, roles and names, aria, errors, pixels, flow URLs, localStorage) into `parity.md` and `parity.json`, exit 1 on any difference. `--compare` matches axe findings by rule, view and element text instead of selector (K11-8).
+- validate: the run stops with one ERROR line when the server stops answering (K11-9).
+
+Define, catalog, config
+- `define`: `extract_rules.py` reads storage through the app's wrapper (`define.storageCalls`, `define.storagePrefix`; otherwise `.get/.put` calls with a string key are marked "via a wrapper?"), adds a row at each route built at run time, takes messages only from `define.messageCalls`, lists other script strings as "text in script", and drops `use strict`, HTML pieces and class lists (K11-1, K11-2, K11-3).
+- `catalog.py find` works without `catalog.json`: it reads `catalog.md` (components.map rows when there is no Components section) and the page patterns; components.map columns are found by header (K11-4).
+- `kitconf.py contract --app <page app>` also prints the contract of each host app (the app whose path holds a `usedBy` file) (K11-5).
+- New `kitconf.py add-page --like --id --host [--name] [--dry-run]`: copies a page app's skeleton, renames it, adds the `apps[]` entry and prints the host-side steps; optional `apps[].pageHook` runs a project command instead (K11-12).
+- `kitconf.py check` prints warnings; it warns when `local.vueCss` is set but every vue app is a page app (K11-13).
+
+Review
+- `review`: a `page` app (`type: "page"`) reads its DS version and DS CSS from its host apps (`usedBy`), so "DS version unknown" and "no DS region" are no longer reported for it. DS Vue component use is counted from imports of the package or its vite/tsconfig alias (also through a local re-export file); `App.vue` and the package's demo files no longer count as rebuilt components (K11-11).
+- `review.extraChecks` and rule `check` commands take `{page}`: each host page for a `page` app, one run per page; a `page` app skips a command whose URL holds `{app}`. New helpers `kitconf.page_hosts`, `kitconf.app_pages`.
+
 ## 0.11.1 · 2026-11-22
 Fixes
 - `catalog.py`: ids of components and page patterns fold diacritics (`Trang danh sách` -> `trang-danh-sach`) instead of dropping letters, as rule file names already do (K-R2). Found when a project profile listed page patterns with Vietnamese names.
