@@ -1,12 +1,10 @@
 # Prototype Kit
 
-A design workflow for Claude Code that works with **any design system**: 18 skills that take a design from requirement to developer handoff and back. Plan the work, explore directions, build HTML, React or Vue prototypes with the DS, check them in the browser, write the spec, put the flows on Figma, package everything for BA, QC and developers, then check the developers' build against what was approved.
+Prototype Kit is a Claude Code plugin with 18 skills for design work, from requirement to developer handoff. It plans the work, builds HTML, React or Vue prototypes with your design system (DS), checks them in the browser, writes the spec, puts the flows on Figma and packages everything for BA, QC and developers. After development, it compares the developers' build with the approved prototype.
 
-**People decide, the kit does the work and checks it.** Every design choice goes through a gate where a named person decides, and the decision log remembers who decided what and why across sessions.
+The kit works with any DS. Each project points the kit at its DS through `kit.config.json` and a profile in `ds/<name>/`. No DS yet? `adopt` builds a base one from a preset.
 
-**Rules live in a registry, not in long documents.** Each rule is one small file (kit, DS, project or app layer) with its severity, scope, exceptions, decision and an optional automated check. Skills load only the rules for the app and the step at hand (`rules.py list --app <app> --skill <skill>`); `review` and `validate` run the checks. See [docs/rules.md](docs/rules.md).
-
-No design system yet? `adopt` builds a base one from a preset (shadcn, light-first and neutral, or atelier, dark-first with a warm accent) with your brand colour, for web, mobile and tablet.
+A person makes every design decision. The kit does the work, runs the checks and records who decided what, and why.
 
 Website: [nnminh-prototype-kit.vercel.app](https://nnminh-prototype-kit.vercel.app) · Repository: `MinhNhat0201/nnminh-prototype-kit`
 
@@ -19,186 +17,120 @@ In Claude Code:
 /plugin install kit@nnminh-prototype-kit
 ```
 
-Skills are then available as `/kit:<skill>`, and Claude also picks them up from plain requests such as "build the settings screen" or "package feature 1234 for QC".
+Call a skill as `/kit:<skill>`. Claude also picks the right skill from a plain request, such as "build the settings screen" or "package feature 1234 for QC".
 
-Requirements: Python 3.9+, Node 18+, Playwright with Chromium for screen capture and browser checks, Pillow for image optimisation and screenshot comparison. Optional: `axe-core` in the project (`npm i -D axe-core`) for the accessibility checks of `validate`. The Figma skills need the Figma connector; `share` needs a mail connector.
+## Requirements
+
+| Need | For |
+|---|---|
+| Python 3.9+, Node 18+ | All scripts |
+| Playwright with Chromium | Screen capture, `validate`, `verify`, `pkg.py smoke` |
+| Pillow | Image optimisation, screenshot comparison |
+| axe-core (optional) | Accessibility checks in `validate`. Install it in the project (`npm i -D axe-core`). A project without `package.json` points to a copy with `--axe`, `KIT_AXE_PATH` or `validate.axePath`. |
+| Figma connector | `wireflow`, `mockup` |
+| Mail connector | `share` |
 
 ## Quick start
 
 ```
-/kit:brief      I want to prototype a task manager for our team
+/kit:brief  I want to prototype a task manager for our team
 ```
 
-`brief` asks one or two questions and sends you to the right skill. A new project usually goes:
+`brief` asks one or two questions and sends you to the right skill. A new project usually goes like this:
 
-1. `/kit:adopt`: only if you have no DS. Pick a brand colour, name and radius; get a DS profile in `ds/<name>/`.
-2. `/kit:kickoff`: choose language, stack (`html`, `react`, `vue`) and the DS. Creates `kit.config.json`, the first app and a project `CLAUDE.md`.
-3. `/kit:define`: turn PM/BA requirements into questions, waves and a traceability matrix.
-4. `/kit:explore`: when a wave has a real design question, build 2–3 directions with the DS, compare them side by side and let the team choose one.
-5. `/kit:prototype`: build screens with DS components only, from the chosen direction. It asks before creating new components or pages. `/kit:validate` checks it in the browser.
+1. `/kit:adopt`: only if you have no DS. Pick a brand colour, name and radius.
+2. `/kit:kickoff`: choose the language, stack (`html`, `react` or `vue`) and DS. It writes `kit.config.json`, the first app and a project `CLAUDE.md`.
+3. `/kit:define`: turn PM or BA requirements into questions, delivery waves and a traceability matrix.
+4. `/kit:explore`: when a wave has an open design question, compare two to four directions and choose one.
+5. `/kit:prototype`: build the screens with DS components. Then `/kit:validate` checks them in the browser.
 6. `/kit:annotate`, `/kit:wireflow`, `/kit:handoff`, `/kit:share`: spec, Figma flow board, zip package, email draft.
-7. `/kit:verify`: once developers have built it, compare their build with the approved prototype and close the decisions as verified.
+7. `/kit:verify`: compare the developers' build with the approved prototype.
 
 ## Skills
+
+| Skill | What it does |
+|---|---|
+| `brief` | Entry point. Finds out which job the request is and routes it. |
+| `adopt` | Builds a base DS from a preset (shadcn or atelier), with Material 3 structure for mobile and tablet. |
+| `kickoff` | Sets up a project: config, DS link, stack, first app. |
+| `context` | Keeps product memory: overview, personas, UX principles, business rules, decision log, rules registry. |
+| `define` | Splits requirements into units, questions for PM or BA, waves and a traceability matrix. To port an existing page, `extract_rules.py` drafts a parity checklist. |
+| `explore` | Builds two to four design directions with the DS and records the chosen one. |
+| `prototype` | Builds screens and flows with the DS. Asks before any new component or page. A ported page ends with a parity check. |
+| `validate` | Checks a prototype in the browser: errors, overflow, accessibility, focus, touch targets, states, flows, visual changes. Named states cover brand themes and 200% text. Known findings can be waived with a reason, and each finding is marked new or carried over. |
+| `annotate` | Writes a Markdown spec per unit, with captures, pins, token-level style notes and flows. |
+| `wireflow` | Puts a flow board on Figma and updates an existing board in place, so shared links keep working. |
+| `mockup` | Rebuilds screens on Figma with auto layout, DS components and variables, then audits them. |
+| `handoff` | Builds one zip for BA, QC and developers. `pkg.py relink` adds Figma links to a draft package; `pkg.py smoke` opens the unpacked package in Chromium. |
+| `share` | Drafts the handoff email. It never sends. |
+| `verify` | Compares the developers' build with the approved prototype. Each difference is a defect or an approved deviation. |
+| `review` | Audits an app against the DS (read-only) and proposes fixes. |
+| `sync` | Brings a new DS version into the apps. |
+| `contribute` | Scores local components and proposes them to the DS, with two approval gates. |
+| `document` | Maintains DS tokens, components and documentation. |
+
+Review checklists ship with the skills: accessibility for web and mobile ([validate/references](skills/validate/references)), states and edge data ([prototype/references](skills/prototype/references)), motion and a heuristics rubric ([review/references](skills/review/references)).
 
 ### Skill map
 
 ```mermaid
 flowchart LR
-    brief(["brief<br/>entry point"])
-
-    subgraph setup["1 · Set up"]
-        adopt["adopt<br/>base DS from preset"]
-        kickoff["kickoff<br/>config + first app"]
-    end
-
-    subgraph plan["2 · Plan"]
-        context["context<br/>product memory + decisions"]
-        define["define<br/>requirements → waves"]
-    end
-
-    subgraph build["3 · Explore, build & check"]
-        explore["explore<br/>directions → choice"]
-        prototype["prototype<br/>screens with DS"]
-        validate["validate<br/>browser checks + report"]
-    end
-
-    subgraph spec["4 · Spec & Figma"]
-        annotate["annotate<br/>Markdown spec"]
-        wireflow["wireflow<br/>Figma flow board"]
-        mockup["mockup<br/>Figma specs board"]
-    end
-
-    subgraph deliver["5 · Deliver"]
-        handoff["handoff<br/>zip package"]
-        share["share<br/>email draft"]
-    end
-
-    subgraph after["6 · After development"]
-        verify["verify<br/>build vs approved design"]
-    end
-
-    subgraph ds["DS maintenance loop"]
-        review["review<br/>read-only audit"]
-        contribute["contribute<br/>local → DS"]
-        document["document<br/>DS source + docs"]
-        sync["sync<br/>new DS into apps"]
-    end
-
-    brief -.routes.-> kickoff & context & define & explore & prototype & validate & annotate & handoff & verify & review
-
-    adopt -->|DS profile| kickoff
-    kickoff -.no DS.-> adopt
-    kickoff --> define
-    define -->|waves| prototype
-    define -.design question.-> explore
-    context -.read by.-> define & explore & prototype
-    explore -.approved decision.-> context
-    explore -->|chosen direction| prototype
-    prototype --> validate
-    validate -->|Fail 0| annotate
-    annotate -->|captures + flows| wireflow
+    brief([brief]) -.-> kickoff
+    adopt --> kickoff --> define
+    define --> prototype
+    define -.design question.-> explore --> prototype
+    prototype --> validate --> annotate
+    annotate --> wireflow --> handoff
+    annotate --> handoff --> share
     wireflow --> mockup
-    annotate --> handoff
-    wireflow -->|Figma links| handoff
-    handoff --> mockup
-    handoff --> share
     handoff -.developers build.-> verify
-    verify -.verified decisions.-> context
-    mockup -.Figma link.-> share
+    context -.read by.-> define & explore & prototype
+    explore & verify -.decisions.-> context
 
-    prototype -->|local components| contribute
-    review -->|undecided locals| contribute
-    review -->|fix| sync
-    contribute -->|approved proposal| document
-    document -->|new version| sync
-    sync -->|updated apps| prototype
+    subgraph ds["DS loop"]
+        review --> contribute --> document --> sync
+    end
+    prototype -.local components.-> contribute
+    sync -.updated apps.-> prototype
 ```
 
-Solid arrows are the usual order of work; dotted arrows are routing or optional links. The DS loop runs whenever the DS or the local components change, alongside the main flow.
-
-| Skill | What it does |
-|---|---|
-| `brief` | Entry point: understands the request and routes to the right skill |
-| `kickoff` | Sets up a project: config, DS link, stack, first app |
-| `adopt` | Builds a base DS from a preset (shadcn or atelier) plus Material 3 structure for mobile and tablet |
-| `define` | Requirement analysis, questions for PM/BA, delivery waves, traceability |
-| `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, a decision log with statuses (observed → proposed → approved → implemented → verified), and the rules registry (`scripts/rules.py`): one file per rule, layers, exceptions, automated checks |
-| `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
-| `prototype` | Builds screens and flows with the DS; component and new-page gates |
-| `validate` | Browser checks of a prototype in one report: errors, overflow, accessibility (axe-core), keyboard focus, touch targets, states, flows, visual changes against a baseline; failures separated from items a human must judge |
-| `annotate` | Markdown spec per unit with screen captures, pins, token-level style notes and flows |
-| `wireflow` | Flow board on Figma from captures; updates in place so shared links keep working |
-| `mockup` | Rebuilds screens on Figma with auto layout, DS components and variables, with an automatic audit |
-| `handoff` | One zip for BA, QC and developers: spec, checklists, changelog, AGENTS.md, scoped prototype |
-| `share` | Drafts the handoff email (never sends) |
-| `verify` | After development: compares the build with the approved prototype (side-by-side screenshots, values outside DS tokens, missing components, changed texts, flows, accessibility); differences become defects or deviations covered by an approved decision |
-| `review` | Read-only audit of an app against the DS, with remediation options |
-| `sync` | Brings a new DS version into apps |
-| `contribute` | Reviews local components and proposes them to the DS (two approval gates) |
-| `document` | Writes and maintains DS documentation and tokens |
+Solid arrows show the usual order of work. Dotted arrows show routing or optional links. The DS loop runs whenever the DS or the local components change. `brief` can route to any skill.
 
 ## People decide, the kit checks
 
-| Gate (a person decides) | Where |
+| A person decides | Where |
 |---|---|
-| Plan and waves approved before anything is built | `define` |
-| One design direction chosen out of two to four, with the reason | `explore` |
-| Every new component (compose, local block, or proposal to the DS) | `prototype` |
-| Every new page (own file or route, or a screen inside the current one) | `prototype` |
-| A local component proposed to the DS, then accepted into it | `contribute` (two gates) |
-| A difference between the build and the design accepted as intended | `verify` (needs an approved decision) |
-| Anything sent to people | `share` only drafts; nothing is sent, published or merged without you |
+| The plan and its waves, before anything is built | `define` |
+| One design direction, with the reason | `explore` |
+| Every new component and every new page | `prototype` |
+| A local component proposed to the DS, then accepted into it | `contribute` |
+| A difference between the build and the design, accepted as intended | `verify` |
+| Anything sent to people | `share` only drafts. Nothing is sent, published or merged without you. |
 
-| Check (the kit proves it) | Where |
+Decisions move through `observed → proposed → approved → implemented → verified` (or `rejected`, `superseded`). Skills read them before they plan or build.
+
+Rules live in a registry, one small file per rule, in kit, DS, project and app layers. Skills load only the rules for the current app and step (`rules.py list --app <app> --skill <skill>`). `review` and `validate` run the rules that have an automated check.
+
+## Configuration
+
+| Topic | Read |
 |---|---|
-| Project rules with an automated check (rules registry) | `review`, `validate` (`rules.py check`) |
-| Contrast of every colour pair, light and dark | `adopt`, `document` |
-| Catalogue matches the DS CSS; deprecated components not used | `document` (`catalog.py check`), `review` |
-| Prototype in the browser: errors, overflow, accessibility, focus, touch targets, states, flows, visual changes | `validate` |
-| App code against the DS: hard-coded values, overrides, home-made controls | `review` |
-| Developer build against the approved prototype | `verify` |
+| `kit.config.json`, the DS profile (`ds.json`), project commands, the folders the kit writes, languages | [docs/config.md](docs/config.md) |
+| The rules registry: layers, rule files, `rules.py` commands | [docs/rules.md](docs/rules.md) |
+| Stacks (`html`, `react`, `vue`), DS Vue layers, a Vue page inside a multi-page html app | [docs/stacks.md](docs/stacks.md) |
 
-Decisions move through `observed → proposed → approved → implemented → verified` (or `rejected`, `superseded`). Skills read them before they plan or build, and update them when they build or verify.
-
-## What the kit writes, and where
-
-| Folder (default) | Holds | Written by |
-|---|---|---|
-| `kit.config.json` | Language, stack, apps, paths | `kickoff` |
-| `ds/<name>/` | DS profile: tokens, CSS bundle, `catalog.md`, `catalog.json`, `rules.md`, `rules/` (DS layer of the rules registry) | `adopt`, `document` |
-| `rules/` | Project and app rules, one file per rule (`<category>/<ID>-<slug>.md`) | `kickoff`, `rules.py add`, `context` |
-| `product-context/` | Overview, personas, UX principles, business rules, constraints, `decisions/` | `context`, `explore`, `define`, `prototype`, `verify` |
-| `docs/plans/` | Requirement analysis, waves, traceability | `define` |
-| `docs/explorations/<slug>/` | Directions, comparison page, decision | `explore` |
-| `apps/<app>/` | Prototypes | `kickoff`, `prototype` |
-| `docs/validation/<app>/` | Validation plan, runs, baseline screenshots | `validate` |
-| `docs/handover/` | Handoff packages | `handoff` |
-| `docs/verify/<name>/` | Build-vs-design runs and accepted deviations | `verify` |
-
-Every folder is configurable in `kit.config.json > paths`.
-
-## How it adapts to your project
-
-Two files, no hard-coded design system:
-
-- `kit.config.json` in the project: language of replies and documents, stack, apps, local-component prefix, handoff and email settings, model and effort hints per skill. See [docs/config.md](docs/config.md).
-- Project commands: a project that already has its own scripts keeps them. `sync.command` / `sync.check` replace the kit's DS sync, `local.command` and `local.fields` let the project own its local-component registry, `review.extraChecks` adds the project's checks as rows of the audit, `handoff.pre` / `handoff.post` run around packaging. All are off by default.
-- Rules registry: kit rules every project inherits, DS rules in the profile, project and app rules in `rules/`; precedence kit < DS < project < app, overrides and app exceptions recorded with a reason. `scripts/rules.py` lists, explains, adds, supersedes, checks, exports (a "Project rules" page and a block for `CLAUDE.md`) and imports an existing rules document as drafts.
-- `ds/<name>/ds.json` in the DS profile: token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries. Made by `adopt`, or written by hand for an existing DS. Next to it, `catalog.md` (for people) and `catalog.json` (for agents: variants, states, tokens, code and Figma mapping, deprecated components and their replacement, usage rules).
-
-Each app can use its own DS profile (`apps[].ds`), for example a web profile and a mobile profile with separate version numbers; every script that reads the DS uses the app's profile. A project can keep its own short handoff email layout (`email.template`).
-
-Stacks are described in [docs/stacks.md](docs/stacks.md). Each app can override the project stack, so old HTML apps and new Vue apps can live side by side. A DS with its own Vue component layer (`ds.json > components.vue`) or without Tailwind (`ds.json > tailwind: false`) gets templates without Tailwind and shadcn.
-
-## Languages
-
-The kit is written in English. Replies and generated documents follow `kit.config.json > language`; English and Vietnamese templates ship in `locales/`. To add a language, copy `locales/en/` to `locales/<code>/` and translate the values.
+Each app can override the project stack and DS profile. HTML and Vue apps, or web and mobile profiles, can live side by side.
 
 ## Contributing
 
-Read [docs/authoring.md](docs/authoring.md) before adding or changing a skill. Before a release, run `python3 tests/e2e.py`: every script's `--selftest`, then a throw-away project from `adopt` to a handoff zip and an email draft (needs Node, Playwright and an installed Chromium).
+Read [docs/authoring.md](docs/authoring.md) before you add or change a skill. Before a release, run:
+
+```
+python3 tests/e2e.py
+```
+
+It runs every script's `--selftest`, then builds a throw-away project from `adopt` to a handoff zip and an email draft. It needs Node, Playwright and an installed Chromium.
 
 ## Licence
 
-MIT. The shadcn preset is derived from shadcn/ui and shadcn-vue (MIT); see `presets/shadcn/NOTICE`. The atelier preset comes from the author's own design system (MIT; fonts Geist and Manrope named, not bundled); see `presets/atelier/NOTICE`. Profiles made by `adopt` carry their own `NOTICE`.
+MIT. The shadcn preset is derived from shadcn/ui and shadcn-vue (MIT); see `presets/shadcn/NOTICE`. The atelier preset comes from the author's own design system (MIT; the fonts Geist and Manrope are named, not bundled); see `presets/atelier/NOTICE`. Profiles made by `adopt` carry their own `NOTICE`.

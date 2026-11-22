@@ -260,3 +260,22 @@ ds/<name>/
 ```
 
 A profile may live inside the project repository (recommended for a private DS) or in its own repository.
+
+## What the kit writes, and where
+
+| Folder (default) | Holds | Written by | Key |
+|---|---|---|---|
+| `kit.config.json` | Language, stack, apps, paths | `kickoff` | |
+| `ds/<name>/` | DS profile: tokens, CSS bundle, `catalog.md`, `catalog.json`, `rules.md`, `rules/` (DS layer of the rules registry) | `adopt`, `document` | top-level `ds`, `apps[].ds` |
+| `rules/` | Project and app rules, one file per rule (`<category>/<ID>-<slug>.md`) | `kickoff`, `rules.py add`, `context` | `paths.rules` |
+| `product-context/` | Overview, personas, UX principles, business rules, constraints, `decisions/` | `context`, `explore`, `define`, `prototype`, `verify` | `paths.context` |
+| `docs/plans/` | Requirement analysis, waves, traceability | `define` | `paths.plans` |
+| `docs/explorations/<slug>/` | Directions, comparison page, decision | `explore` | `paths.explorations` |
+| `apps/<app>/` | Prototypes | `kickoff`, `prototype` | `apps[].path` |
+| `docs/validation/<app>/` | Validation plan, runs, baseline screenshots | `validate` | `paths.validation` |
+| `docs/handover/` | Handoff packages | `handoff` | `handoff.dir` |
+| `docs/verify/<name>/` | Build-vs-design runs and accepted deviations | `verify` | `paths.verify` |
+
+## Languages
+
+The kit is written in English. Replies and generated documents follow `language`; English and Vietnamese templates ship in `locales/`. To add a language, copy `locales/en/` to `locales/<code>/` and translate the values. A missing key falls back to English.
