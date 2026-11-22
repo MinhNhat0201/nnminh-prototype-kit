@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 · 2026-11-22
+Fixes
+- `catalog.py`: ids of components and page patterns fold diacritics (`Trang danh sách` -> `trang-danh-sach`) instead of dropping letters, as rule file names already do (K-R2). Found when a project profile listed page patterns with Vietnamese names.
+
 ## 0.11.0 · 2026-11-22
 Fixes from a full trial run (one feature from requirement to handoff email, then one BA feedback round) and a side-by-side comparison with a project's own skills (K-F1…K-F20, K-B1…K-B10). Every new key has a default that keeps the 0.10 behaviour.
 
