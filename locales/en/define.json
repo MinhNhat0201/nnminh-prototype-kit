@@ -14,5 +14,6 @@
   "define.extract.kind.storage": "storage",
   "define.extract.note.dynamic": "(route built at run time: read the code)",
   "define.extract.note.wrapper": "(storage through a wrapper? check the code)",
-  "define.extract.counts": "Rows: {text} text, {message} messages, {string} text in scripts, {input} input constraints, {limit} limits, {route} routes, {storage} storage keys."
+  "define.extract.counts": "Rows: {text} text, {message} messages, {string} text in scripts, {input} input constraints, {limit} limits, {route} routes, {param} URL parameters, {storage} storage keys.",
+  "define.extract.kind.param": "URL parameter"
 }

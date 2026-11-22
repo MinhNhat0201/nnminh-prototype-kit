@@ -19,6 +19,11 @@
 //
 // plan.prepare (a JS string, or {js, reload: true}) runs once after every page load of a screen and a flow, before its
 // own steps and prepare (for example to dismiss a shell overlay); reload: true reloads the page after it.
+// Every prepare and eval step may use await at the top level (the code is then run as the body of an async function).
+// A prepare that throws marks the view or flow with prepareError (parity reports it as an error, never as a match).
+// --discover also clicks each other button of the content root in a fresh page and, when no hash changes but a dialog,
+// tab panel, menu, [data-view] or panel appears, reports it as a state; hidden dialogs and popup buttons outside the
+// content root are listed as hints.
 // Before each screen and flow an http(s) URL is checked first: when the server does not answer, the run stops with one
 // ERROR line and exit code 2 (results so far are written, with "aborted").
 //
@@ -33,7 +38,8 @@
 // plan.states are added to every screen. Theme values (and dark mode) are set with --set-theme when given (a JS body run
 // in the page with key and value), else by setting the theming attribute on <html>. axe runs on every state of the plan
 // (default, prepared, named), at the widest viewport; a state with "axe": false (or a screen with "axe": false) opts out;
-// plan.axe / screen.axe {include: [sel], exclude: [sel]} limit it.
+// plan.axe / screen.axe {include: [sel], exclude: [sel]} limit it; without include, the first plan.contentRoot selector
+// that matches is the include (the shell around the page is not judged).
 //
 // For every screen x state x viewport x mode: page errors and console errors, horizontal overflow,
 // accessibility (axe-core, when installed), keyboard focus visibility, touch targets on phones, clipped text,
@@ -93,6 +99,16 @@ else if (A.axe) {
 } else {
   for (const base of [A.project, path.resolve(__dirname, '../../..'), process.cwd()].filter(Boolean)) {
     try { axePath = require.resolve('axe-core/axe.min.js', { paths: [base] }); axeVersion = axeVer(axePath); break; } catch (e) { /* next */ }
+  }
+}
+
+// Run plan JS in the page: top-level await is allowed (the code becomes the body of an async function, awaited).
+const AWAIT = /(^|[^\w$.])await\b/;
+const runJs = (page, code) => page.evaluate(c => (0, eval)(c), AWAIT.test(code) ? '(async () => {\n' + code + '\n})()' : code);
+// A prepare script that throws: the error names the prepare, and the view or flow keeps it as prepareError.
+async function prepareJs(page, code, what) {
+  try { await runJs(page, code); } catch (e) {
+    const err = new Error(what + ' failed: ' + String(e.message || e).split('\n')[0].slice(0, 200)); err.prepare = true; throw err;
   }
 }
 
@@ -170,7 +186,7 @@ async function runStep(page, s) {
   else if (s.type) { if (Array.isArray(s.type)) { await loc(s.type[0]).click({ timeout: T }); await page.keyboard.type(s.type[1]); } else await page.keyboard.type(s.type); }
   else if (s.select) await loc(s.select[0]).selectOption(s.select[1], { timeout: T });
   else if (s.press) await page.keyboard.press(s.press);
-  else if (s.eval) await page.evaluate(code => (0, eval)(code), s.eval);
+  else if (s.eval) await runJs(page, s.eval);
   else if (s.wait) await page.waitForTimeout(Math.min(+s.wait, 5000));
   else if (s.waitFor) await loc(s.waitFor).waitFor({ timeout: T });
   else if (s.waitEval) await page.waitForFunction(s.waitEval, null, { timeout: T });
@@ -217,8 +233,13 @@ async function axeCheck(page, scope) {
   if (!axePath) return null;
   try {
     if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: axePath });
-    const res = await page.evaluate(async ({ scope, waive }) => {
-      const inc = (scope && scope.include) || [], exc = (scope && scope.exclude) || [];
+    const res = await page.evaluate(async ({ scope, waive, root }) => {
+      let inc = (scope && scope.include) || [];
+      const exc = (scope && scope.exclude) || [];
+      if (!inc.length && root) {   // plan.contentRoot: the first selector that matches limits axe to the page's own content
+        const r = String(root).split(',').map(x => x.trim()).filter(Boolean).find(x => { try { return !!document.querySelector(x); } catch (e) { return false; } });
+        if (r) inc = [r];
+      }
       const ctx = inc.length || exc.length ? Object.assign(inc.length ? { include: inc.map(s => [s]) } : {}, exc.length ? { exclude: exc.map(s => [s]) } : {}) : document;
       const r = await window.axe.run(ctx, { resultTypes: ['violations'] });
       const inside = t => { let el = null; try { el = t.length === 1 ? document.querySelector(t[0]) : null; } catch (e) { /* bad selector */ }
@@ -230,7 +251,7 @@ async function axeCheck(page, scope) {
           const o = { target: (n.target || []).join(' '), inside: inside(n.target || []), text: text(n.target || []) };
           if (d) Object.assign(o, { ratio: d.contrastRatio, expected: d.expectedContrastRatio, fg: d.fgColor, bg: d.bgColor });
           return o; }) }));
-    }, { scope: scope || null, waive: WAIVE });
+    }, { scope: scope || null, waive: WAIVE, root: plan.contentRoot || null });
     return res;
   } catch (e) { return [{ id: 'axe-error', impact: 'minor', help: String(e.message || e).slice(0, 160), nodes: 0, target: '' }]; }
 }
@@ -257,13 +278,13 @@ async function openPage(ctx, route, mode, prepare, errors) {
   page.on('console', m => { if (m.type() === 'error' && !IGNORE_CONSOLE.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); });
   await page.goto(urlFor(route), { waitUntil: 'load' });
   if (PREP && (PREP.js || PREP.script)) {   // plan.prepare: once per page load, before the screen's or flow's own steps
-    await page.evaluate(code => (0, eval)(code), PREP.js || PREP.script);
+    await prepareJs(page, PREP.js || PREP.script, 'plan.prepare');
     if (PREP.reload) await page.reload({ waitUntil: 'load' });
     await page.waitForTimeout(150);
   }
   await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; });
   if (mode) await setTheme(page, 'mode', mode);
-  if (prepare) await page.evaluate(code => (0, eval)(code), prepare);
+  if (prepare) await prepareJs(page, prepare, 'flow prepare');
   await page.waitForTimeout(250);
   return page;
 }
@@ -365,6 +386,7 @@ async function runFlow(browser, flow) {
     res.shot = shot;
   } catch (e) {
     res.ok = false; res.error = String(e.message || e).split('\n')[0].slice(0, 240);
+    if (e.prepare) res.prepareError = res.error;
   }
   await ctx.close();
   return res;
@@ -423,8 +445,15 @@ async function discover(browser) {
     const buttons = [...R.querySelectorAll('button, [role=button], a:not([href]), a[href="#"], [role=link]:not(a[href]), [onclick]')]
       .filter(el => vis(el) && !el.matches(TABS) && !el.disabled && !(el.type === 'submit' && el.form) && !RISKY.test(norm(el.getAttribute('aria-label') || el.innerText)))
       .slice(0, 12).map(desc);
+    // hints for states the plan may need (never clicked): hidden dialogs, and popup buttons outside the content root
+    const hints = [];
+    document.querySelectorAll('dialog, [role=dialog], [role=alertdialog], [aria-modal="true"]').forEach(el => {
+      if (!vis(el)) hints.push('hidden dialog ' + (stable(el) || el.tagName.toLowerCase()) + (el.getAttribute('aria-label') ? ' "' + norm(el.getAttribute('aria-label')).slice(0, 40) + '"' : '') + ': add a state that opens it'); });
+    document.querySelectorAll('[aria-haspopup]:not([aria-haspopup=false]), [aria-controls], [aria-expanded]').forEach(el => {
+      if (vis(el) && !R.contains(el) && el.matches('button, [role=button], a, [role=tab], [role=combobox]'))
+        hints.push('control outside the content root ' + desc(el).css + (desc(el).name ? ' "' + desc(el).name + '"' : '') + ' opens a popup: a state if the work covers it'); });
     return { title: norm(document.title), heading: h ? norm(h.innerText).slice(0, 80) : '', contentRoot: rootSel, routes, selectors: sels.slice(0, 40),
-      tabs, buttons, hash: location.hash };
+      tabs, buttons, hash: location.hash, hints: hints.slice(0, 12) };
   }, roots);
   // Buttons that change the hash (a router built in JS): click each tab-like control once (a DOM click, so a shell
   // overlay does not block it) and read the hash it sets.
@@ -436,21 +465,41 @@ async function discover(browser) {
       // flows click it by role and name (survives a rebuild in another stack), else by its CSS path
       const via = tb.name ? 'role=' + tb.role + '[name="' + tb.name.replace(/"/g, '\\"') + '"]' : tb.css;
       if (h.startsWith('#/') && !info.routes.some(x => x.route === h)) info.routes.push({ route: h, name: tb.name, via });
+      else if (!h.startsWith('#/') || h === info.hash) info.buttons.push(tb);   // no route: maybe a state (tab panel)
     } catch (e) { /* not clickable: skip */ }
   }
+  // what is open on the page: dialogs, panels, menus, tab panels, [data-view] (index in the list, description, selector)
+  const PANELS = 'dialog, [role=dialog], [role=alertdialog], [aria-modal="true"], [role=tabpanel], [role=menu], [role=listbox], ' +
+    '[data-view], [popover], aside, .modal, .drawer, .popover, .dropdown-menu';
+  const openPanels = p => p.evaluate(PANELS => [...document.querySelectorAll(PANELS)].map((el, i) => {
+    const s = getComputedStyle(el), b = el.getBoundingClientRect();
+    if (s.visibility === 'hidden' || s.display === 'none' || !b.width || !b.height) return null;
+    const hd = el.querySelector('h1, h2, h3, [role=heading]');
+    const name = String(el.getAttribute('aria-label') || (hd && hd.innerText) || el.getAttribute('data-view') || '').replace(/\s+/g, ' ').trim().slice(0, 50);
+    const sel = el.id && /^[A-Za-z][\w-]*$/.test(el.id) ? '#' + el.id : el.getAttribute('data-view') ? '[data-view="' + el.getAttribute('data-view').replace(/["\\]/g, '\\$&') + '"]' : null;
+    return { i, desc: (el.getAttribute('role') || el.tagName.toLowerCase()) + (name ? ' "' + name + '"' : ''), sel, view: el.getAttribute('data-view') || '' };
+  }).filter(Boolean), PANELS);
+  info.states = [];
   for (const tb of info.buttons) {
     const c2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
     try {
       const p2 = await c2.newPage();
       await p2.goto(A.url, { waitUntil: 'load' });
       await p2.waitForTimeout(400);
-      const start = p2.url().split('#')[0];
+      await p2.waitForSelector(tb.css, { state: 'attached', timeout: 2000 }).catch(() => {});   // content rendered late
+      const start = p2.url().split('#')[0], h0 = await p2.evaluate(() => location.hash);
+      const before = new Set((await openPanels(p2)).map(x => x.i + x.desc + x.view));
       if (!(await p2.evaluate(sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; }, tb.css))) continue;
-      await p2.waitForTimeout(200);
+      await p2.waitForTimeout(300);
       const h = await p2.evaluate(() => location.hash);
       if (p2.url().split('#')[0] !== start) continue;   // it left for another page: not a route of this one
-      if (h.startsWith('#/') && h !== info.hash && !info.routes.some(x => x.route === h))
-        info.routes.push({ route: h, name: tb.name, via: tb.name ? 'role=' + tb.role + '[name="' + tb.name.replace(/"/g, '\\"') + '"]' : tb.css });
+      const via = tb.name ? 'role=' + tb.role + '[name="' + tb.name.replace(/"/g, '\\"') + '"]' : tb.css;
+      if (h.startsWith('#/') && h !== info.hash && !info.routes.some(x => x.route === h)) info.routes.push({ route: h, name: tb.name, via });
+      else if (h === h0 && info.states.length < 8) {   // no new route: a dialog, panel or view that appeared is a state of the screen
+        const opened = (await openPanels(p2)).filter(x => !before.has(x.i + x.desc + x.view));
+        if (opened.length && !info.states.some(x => x.css === tb.css))
+          info.states.push({ name: tb.name || opened[0].desc, css: tb.css, via, opens: opened[0].desc, sel: opened[0].sel });
+      }
     } catch (e) { /* not clickable: skip */ } finally { await c2.close(); }
   }
   delete info.tabs;
@@ -469,7 +518,8 @@ async function discover(browser) {
     return;
   }
   const results = { url: A.url, started: new Date().toISOString(), viewports, modes, modeAttr, parity: PARITY,
-    axe: { available: !!axePath, version: axeVersion, path: axePath, scope: plan.axe || null }, items: [], flows: [] };
+    axe: { available: !!axePath, version: axeVersion, path: axePath, scope: plan.axe || (plan.contentRoot ? { contentRoot: plan.contentRoot } : null) },
+    items: [], flows: [] };
   const save = () => { results.finished = new Date().toISOString(); fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 2)); };
   const stopIfDown = async (u, what) => {
     const why = await answers(u);
@@ -501,7 +551,7 @@ async function discover(browser) {
             if (modes.length > 1 || mode !== 'light') await setTheme(page, 'mode', mode);
             for (const [k, v] of Object.entries(st.theme || {})) await setTheme(page, k, v);
             if (st.textScale) await page.evaluate(x => { const h = document.documentElement; h.style.fontSize = (parseFloat(getComputedStyle(h).fontSize) * x) + 'px'; }, st.textScale);
-            if (st.prepare) await page.evaluate(code => (0, eval)(code), st.prepare);
+            if (st.prepare) await prepareJs(page, st.prepare, 'prepare of state "' + st.name + '"');
             await page.waitForTimeout(150);
             Object.assign(item, await pageChecks(page, vp));
             if (PARITY) item.snap = await snapshot(page);
@@ -516,6 +566,7 @@ async function discover(browser) {
             item.shot = shot;
           } catch (e) {
             item.fatal = String(e.message || e).split('\n')[0].slice(0, 240);
+            if (e.prepare) item.prepareError = item.fatal;
           }
           results.items.push(item);
           await ctx.close();

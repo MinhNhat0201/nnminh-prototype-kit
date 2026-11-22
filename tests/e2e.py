@@ -596,6 +596,12 @@ def main():
           and "skipped" in out.splitlines()[-1], "rules check: skipped status with the reason (server down, SKIP line)", out)
     js = json.loads(run(R + ["check", "--app", "acme-web", "--id", "A11Y-001", "--json", "-"], d))
     check(js and js[0]["status"] == "skipped" and js[0]["ok"] is True, "rules check --json: status skipped, ok true", json.dumps(js))
+    # 0.12.2 (K3-6, K1a-3): a page app's check URL that names the app opens its host page, or --url
+    js = json.loads(run(R + ["check", "--app", "acme-page", "--id", "A11Y-001", "--json", "-"], d))
+    js2 = json.loads(run(R + ["check", "--app", "acme-page", "--id", "A11Y-001", "--url", "http://127.0.0.1:9/x/p.html", "--json", "-"], d))
+    check(js and "http://127.0.0.1:9/apps/acme-web/" in js[0]["command"] and "not reachable" in js[0]["reason"]
+          and "http://127.0.0.1:9/x/p.html" in js2[0]["command"],
+          "rules check: a page app's check URL opens its host page (or --url), not a URL with the page app id", json.dumps(js + js2))
     out = run(R + ["coverage"], d)
     check("need a running server" in out, "rules coverage: checks that need a server", out)
     out_p, out_pr = run(R + ["list", "--skill", "prototype", "--brief"], d), run(R + ["list", "--skill", "pr", "--brief"], d)
@@ -811,6 +817,54 @@ def main():
             write(d / "kit.config.json", cfg_keep)
             srv4.shutdown()
             srv5.shutdown()
+        # 0.12.2: parity: a prepare that fails on both sides is an error, never a match (K3-3); top-level await in prepare
+        # (K3-4); init --url: a dialog a button opens without a hash is a state (K1a-4); axe limited to plan.contentRoot (K3-5)
+        dlg = ("<!doctype html><html lang=\"en\"><head><title>Notes</title></head><body><div id=\"shell\"><button aria-haspopup=\"menu\">"
+               "Account</button></div><main id=\"main\"><h1>Notes</h1><p id=\"msg\">List</p><button id=\"add\">New note</button></main>"
+               "<div role=\"dialog\" id=\"dlg\" aria-label=\"New note\" hidden><p>Title</p></div><script>\n"
+               "document.getElementById('add').onclick = () => { document.getElementById('dlg').hidden = false; };\n</script></body></html>\n")
+        write(d / "par3/a/index.html", dlg)
+        write(d / "par3/b/index.html", dlg)
+        srv6, base6 = serve(d / "par3")
+        try:
+            out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-web", "--page", d / "par3/a/index.html",
+                       "--url", base6 + "a/index.html", "--dir", d / "valdir-dlg"], d)
+            dp = json.loads((d / "valdir-dlg/plan.json").read_text())
+            sts = dp["screens"][0]["states"]
+            check(len(dp["screens"]) == 1 and [x["name"] for x in sts] == ["New note"] and dp["flows"]
+                  and dp["flows"][-1]["steps"][-1] == {"expectVisible": "#dlg"} and any("Account" in h for h in dp["_stateHints"]),
+                  "validate init --url: a dialog a button opens (no hash) is a state and a flow; popup controls outside the root are hints (K1a-4)",
+                  out + json.dumps(dp)[:2000])
+            pplan = {"contentRoot": "main", "screens": [{"id": "S01", "route": "", "states": [
+                {"name": "await", "prepare": "await new Promise(r => setTimeout(r, 50)); document.getElementById('msg').textContent = 'Waited';"},
+                {"name": "broken", "prepare": "document.querySelector('#none').click()"}]}],
+                "flows": [{"name": "bad prepare", "prepare": "await Promise.reject(new Error('boom'))", "steps": [{"wait": 50}]}]}
+            write(d / "par3/plan.json", json.dumps(pplan))
+            out = run([PY, S / "validate/scripts/validation.py", "parity", "--a", base6 + "a/index.html", "--b", base6 + "b/index.html",
+                       "--plan", d / "par3/plan.json", "--dir", d / "par3-out", "--min-pixels", "400"], d, expect=1)
+            pj = json.loads((d / "par3-out/parity.json").read_text())
+            st = {(r["where"], r["check"]): r for r in pj["rows"]}
+            br = st.get(("S01 · broken · 1280px · light", "prepare")) or {}
+            check(br.get("status") == "error" and br.get("side") == "A and B" and "broken" in br.get("a", "") and pj["errors"] == 2
+                  and st[("flow · bad prepare", "prepare")]["status"] == "error" and "ERROR: S01 · broken" in out
+                  and pj["pixels"]["minPixels"] == 400 and "## Errors (2)" in (d / "par3-out/parity.md").read_text(),
+                  "validate parity: a prepare that fails on both builds is an error with the side and the message, exit 1 (K3-3)",
+                  out + json.dumps(pj["rows"])[:3000])
+            ra = json.loads((d / "par3-out/a/results.json").read_text())
+            aw = next(it for it in ra["items"] if it["state"] == "await")
+            check(not aw.get("fatal") and "Waited" in aw["snap"]["text"] and st[("S01 · await · 1280px · light", "text")]["status"] == "match",
+                  "validate: prepare takes top-level await (K3-4)", json.dumps(aw)[:2000])
+            write(d / "axe-ctx/axe.min.js", "/*! axe v4.9.9 stub */\nwindow.axe = { run: async (ctx) => ({ violations: [{ id: 'scope', impact: 'minor',"
+                  " help: JSON.stringify(ctx && ctx.include ? ctx.include : 'document'), nodes: [{ target: ['main'] }] }] }) };\n")
+            write(d / "valdir-axe/plan.json", json.dumps({"contentRoot": "#nope, main", "screens": [{"id": "S01", "route": ""}]}))
+            out = run([PY, S / "validate/scripts/validation.py", "run", "--app", "acme-web", "--dir", d / "valdir-axe", "--url", base6 + "a/index.html",
+                       "--viewports", "1280", "--modes", "light", "--no-rules", "--axe", d / "axe-ctx"], d, expect=None)
+            rr = json.loads((sorted((d / "valdir-axe").glob("2*/"))[-1] / "results.json").read_text())
+            check(rr["items"][0]["axe"][0]["help"] == '[["main"]]' and "NOTE: --no-rules" in out,
+                  "validate: without plan.axe.include, axe is limited to the first plan.contentRoot selector that matches (K3-5)",
+                  out + json.dumps(rr["items"])[:2000])
+        finally:
+            srv6.shutdown()
         import socket
         so = socket.socket()
         so.bind(("127.0.0.1", 0))
@@ -865,6 +919,15 @@ def main():
     check("Shell.store.get acme.libView" in out and "built at run time" in out, "extract_rules: define.storageCalls + storagePrefix give the stored key", out)
     del cfg["define"]
     write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    # 0.12.2 (K3-2): --skip-shell, --exclude, --function on the command line
+    write(d / "apps/acme-web/shelled.html", "<!-- SHELL:top --><nav>Shell menu</nav><!-- /SHELL:top -->\n<main><h1>Own text</h1></main>\n"
+          "<script>function save(){ toast('Saved here'); }\nfunction other(){ toast('Not this'); }</script>\n")
+    out = run([PY, S / "define/scripts/extract_rules.py", "apps/acme-web/", "--skip-shell", "--exclude", "**/lib.js", "--exclude", "*/notes.js", "--json"], d)
+    rows = {r["text"] for r in json.loads(out)}
+    out2 = run([PY, S / "define/scripts/extract_rules.py", "apps/acme-web/shelled.html", "--function", "save", "--json"], d)
+    check("Own text" in rows and "Shell menu" not in rows and "File uploaded." not in rows and "Title is too long" not in rows
+          and {r["text"] for r in json.loads(out2)} == {"Saved here"},
+          "extract_rules: --skip-shell leaves out SHELL regions, --exclude skips files, --function reads one function body", out + out2)
 
     # K11-5: the contract of a page app includes its host app's contract
     out = run([PY, KIT / "scripts/kitconf.py", "contract", "--app", "acme-page"], d)

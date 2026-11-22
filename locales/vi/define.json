@@ -14,5 +14,6 @@
   "define.extract.kind.storage": "dữ liệu lưu",
   "define.extract.note.dynamic": "(route dựng lúc chạy: đọc mã)",
   "define.extract.note.wrapper": "(lưu qua lớp bọc? kiểm mã)",
-  "define.extract.counts": "Số dòng: {text} chữ hiển thị, {message} thông báo, {string} chữ trong mã, {input} ràng buộc ô nhập, {limit} giới hạn, {route} route, {storage} khoá lưu trữ."
+  "define.extract.counts": "Số dòng: {text} chữ hiển thị, {message} thông báo, {string} chữ trong mã, {input} ràng buộc ô nhập, {limit} giới hạn, {route} route, {param} tham số URL, {storage} khoá lưu trữ.",
+  "define.extract.kind.param": "tham số URL"
 }

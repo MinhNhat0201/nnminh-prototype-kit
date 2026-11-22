@@ -50,8 +50,9 @@ Commands:
   rules.py except   <id> --app A --note "..." [--decision D-004]   add an app exception to a project or DS rule
   rules.py deprecate <id> --reason "..." [--decision D-005]
   rules.py supersede <old> --by <new> [--decision D-006]
-  rules.py check    [--app A] [--skill S] [--category C] [--id ID] [--json <file>|-]   run the check commands of the
-                    active rules in scope; exit 1 when a must rule fails
+  rules.py check    [--app A] [--skill S] [--category C] [--id ID] [--json <file>|-] [--url U]   run the check commands of
+                    the active rules in scope; exit 1 when a must rule fails. A page app (apps[].type page) whose check
+                    URL names the app ({app} in the URL) opens --url instead, else each host page (usedBy) on that server
   rules.py coverage [--json]        must/should rules with and without an automated check, per category and per app
   rules.py conflicts                format errors, contradicting overrides, stale exceptions, superseded rules without
                     a successor, unknown apps, skills, categories or decisions; exit 1 on error
@@ -596,12 +597,27 @@ def skip_line(lines, words=("SKIPPED", "SKIP")):
     return None
 
 
-def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900):
+APP_URL = re.compile(r"(https?://[^/\s'\"]+)/[^\s'\"]*\{app\}[^\s'\"]*")
+
+
+def page_app_runs(cfg, app_id, cmd, url=None):
+    """A check whose URL names the app id, for a page app (no folder of the site): [(command, page)] with that URL
+    replaced by url (validation.py run --url) or by the same server and the path of each host page (kitconf.app_pages)."""
+    m = APP_URL.search(cmd)
+    if not m:
+        return [(cmd, None)]
+    if url:
+        return [(cmd[:m.start()] + shlex.quote(url) + cmd[m.end():], url)]
+    pages = kitconf.app_pages(cfg, app_id) if kitconf.page_hosts(cfg, app_id) else []   # no host page: nothing to open
+    return [(cmd[:m.start()] + m.group(1) + "/" + pg + cmd[m.end():], pg) for pg in pages]
+
+
+def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, url=None):
     """Run the check commands of the active rules in scope. One result per rule and app:
     {id, title, severity, category, app, command, exit, status, ok, reason, summary}.
     status: pass (exit 0), fail, or skipped: the command needs a server or URL that is not reachable, the app folder
     ({path}) does not exist, or the command exited 77 / printed "SKIP: <reason>" (not applicable, scanned nothing).
-    ok is True unless the status is fail."""
+    ok is True unless the status is fail. url: for a page app, the page a check URL naming the app opens (else its host pages)."""
     rules, _ = load_rules(cfg)
     apps = {a.get("id"): a for a in cfg.get("apps") or []}
     out, probed, words = [], {}, skip_words(cfg)
@@ -616,12 +632,21 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900):
                        and not overriders(rules, r, a)]
         else:
             targets = [app] if (not app or (in_scope(r, app) and not exception_for(r, app) and not overriders(rules, r, app))) else []
-        # {page}: one run per page to open (a page app: each host page, kitconf.app_pages)
-        for a, pg in [(a, pg) for a in targets for pg in ((kitconf.app_pages(cfg, a) or [""]) if a and "{page}" in r["check"] else [None])]:
+        # {page}: one run per page to open (a page app: each host page, kitconf.app_pages); a page app whose check URL
+        # names the app: that URL becomes url, else each host page on the same server
+        runs = []
+        for a in targets:
+            if a and "{page}" in r["check"]:
+                runs += [(a, r["check"], pg) for pg in kitconf.app_pages(cfg, a) or [""]]
+            elif (apps.get(a) or {}).get("type") == "page" and kitconf.url_names_app(r["check"]):
+                runs += [(a, c, pg) for c, pg in page_app_runs(cfg, a, r["check"], url)] or [(a, r["check"], None)]
+            else:
+                runs.append((a, r["check"], None))
+        for a, cmd, pg in runs:
             ap = apps.get(a) or {}
             vals = {"app": a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
                     "stack": (ap.get("stack") or cfg.get("stack") or "") if a else "", "page": pg or ""}
-            line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", r["check"])
+            line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", cmd)
             res = {"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
                    "app": a if per_app else app, "perApp": per_app, "command": line, "exit": None, "status": "skipped", "ok": True,
                    "reason": "", "summary": []}
@@ -630,8 +655,9 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900):
             srv = needs_server(line)
             if srv and srv not in probed:
                 probed[srv] = reachable(*srv)
-            if ap.get("type") == "page" and kitconf.url_names_app(r["check"]):
-                res["reason"] = "page app: the URL names the app id, which is no page of the site; use {page} (its host pages)"
+            if ap.get("type") == "page" and kitconf.url_names_app(cmd):
+                res["reason"] = ("page app: the check URL names the app id, which is no page of the site, and the app has no host page "
+                                 "(usedBy) to open instead: pass --url, list usedBy, or use {page} in the check")
             elif srv and not probed[srv]:
                 res["reason"] = "needs a server at %s:%d, not reachable (start it, then run again)" % srv
             elif "{path}" in r["check"] and a and not (Path(cfg["_root"]) / ap.get("path", "")).exists():
@@ -986,7 +1012,7 @@ def cmd_supersede(cfg, a):
 
 
 def cmd_check(cfg, a):
-    res = run_checks(cfg, a.app, a.skill, a.category, a.id)
+    res = run_checks(cfg, a.app, a.skill, a.category, a.id, url=a.url)
     if a.json:
         txt = json.dumps(res, ensure_ascii=False, indent=1)
         if a.json == "-":
@@ -1229,6 +1255,14 @@ def selftest():
         keep_p, _, _ = resolve(kitconf.for_app(cfg, "phone"), rules, app="phone")
         assert "STY-501" in {r["id"] for r in keep_p}, "inherited through rules.from"
         assert not [e for e in validate(cfg, rules, perr)[0] if "duplicate" in e or "STY-501" in e], validate(cfg, rules, perr)[0]
+        # 0.12.2 (K3-6, K1a-3): a page app's check URL that names the app opens --url, else each host page on that server
+        (d / "apps" / "web" / "notes").mkdir(parents=True, exist_ok=True)
+        (d / "apps" / "web" / "notes" / "index.html").write_text("<main></main>")
+        pc = dict(cfg, apps=list(cfg["apps"]) + [{"id": "notes-vue", "type": "page", "path": "vue/notes", "usedBy": ["apps/web/notes/notes.js"]}])
+        cmd = "node a11y.js http://localhost:8765/apps/{app}/ --{platform}"
+        assert page_app_runs(pc, "notes-vue", cmd) == [("node a11y.js http://localhost:8765/apps/web/notes/ --{platform}", "apps/web/notes/")]
+        assert page_app_runs(pc, "notes-vue", cmd, "http://127.0.0.1:9/x/?a=1&b=2")[0][0] == "node a11y.js 'http://127.0.0.1:9/x/?a=1&b=2' --{platform}"
+        assert page_app_runs(dict(pc, apps=pc["apps"][:-1] + [dict(pc["apps"][-1], usedBy=[])]), "notes-vue", cmd) == []
         print("rules.py selftest OK")
     finally:
         shutil.rmtree(d, ignore_errors=True)
@@ -1263,6 +1297,7 @@ def main():
     p = sub.add_parser("check", help="run the check commands of the rules in scope")
     for k in ("app", "skill", "category", "id", "json"):
         p.add_argument("--" + k)
+    p.add_argument("--url", help="page app: the page a check URL that names the app opens (default: its host pages)")
     p = sub.add_parser("coverage", help="automated checks per category and app"); p.add_argument("--json", action="store_true")
     sub.add_parser("conflicts", help="validate every rule and the relations between them")
     p = sub.add_parser("export", help="Project rules page or the CLAUDE.md block")
