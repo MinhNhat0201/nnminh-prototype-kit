@@ -56,5 +56,12 @@
   "validate.parity.check.pixels": "Điểm ảnh",
   "validate.parity.check.result": "Kết quả luồng",
   "validate.parity.check.urls": "URL sau mỗi bước",
-  "validate.parity.check.storage": "localStorage"
+  "validate.parity.check.storage": "localStorage",
+  "validate.parity.error": "Lỗi",
+  "validate.parity.errorsTitle": "Lỗi",
+  "validate.parity.errorsNote": "Script prepare bị lỗi (hoặc màn không mở được ở cả hai bản) nên ở đây không so được gì. Sửa kế hoạch hoặc trang rồi chạy lại: lỗi không bao giờ được tính là khớp.",
+  "validate.parity.errorsSummary": "{n} lỗi: xem mục Lỗi.",
+  "validate.parity.side": "Lỗi ở bản",
+  "validate.parity.check.prepare": "Script prepare",
+  "validate.parity.pixelsMeta": "điểm ảnh tính là lệch từ {minPixels} px hoặc {threshold} %"
 }

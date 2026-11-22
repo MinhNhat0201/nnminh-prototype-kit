@@ -3,21 +3,31 @@
 
 Lists what a user can see or trip over, read from the page and its scripts: visible text, toast and error messages,
 input constraints (maxlength, minlength, required, pattern, min, max, step, input types), numeric limits in code,
-route patterns (#/…, and a row at each route built at run time) and storage keys (localStorage, sessionStorage, the
-project's storage wrapper in kit.config.json > define.storageCalls, and any .get/.put/.set/.remove call with a string key,
-marked "via a wrapper?"). Messages are the string arguments of the calls in define.messageCalls (toast, alert…); other
-strings of the scripts a user may read (labels, mock data) are listed apart as "text in script". The output is a draft
-table (id, kind, text or value, source file:line) for the agent to complete into the parity checklist of the plan. It
-never decides a rule.
+route patterns (#/…, and a row at each route built at run time), URL parameters (?ext=1, searchParams.get('x'),
+URLSearchParams) and storage keys (localStorage, sessionStorage, the project's storage wrapper in kit.config.json >
+define.storageCalls, any .get/.put/.set/.remove call and any bare get/put/lsGet/lsSet-like call with a string key, marked
+"via a wrapper?"; a key held in a constant, KEY = 'app.pos' then getItem(KEY), is resolved). Messages are the string
+arguments of the calls in define.messageCalls (toast, alert…) and data-msg attributes; other strings of the scripts a user
+may read (labels, mock data) are listed apart as "text in script"; markup built in script strings (pieces of HTML,
+template literals) gives its text and its title, aria-label, placeholder attributes. The output is a draft table (id,
+kind, text or value, source file:line) for the agent to complete into the parity checklist of the plan. It never decides
+a rule.
 
 Usage:
-  extract_rules.py <file or folder>… [--json] [--out <file.md>]
+  extract_rules.py <file or folder>… [--json] [--out <file.md>] [--skip-shell] [--exclude <glob>]… [--function <name>]…
       Files: .html .htm .js .mjs .ts .vue .jsx .tsx (a folder is read recursively, node_modules and dist skipped).
+      --skip-shell: leave out the regions of the shared shell, by default <!-- SHELL:x --> … <!-- /SHELL:x --> (HTML) and
+      /* SHELL:x */ … /* /SHELL:x */ (scripts, CSS); kit.config.json > define.skipRegions replaces them with your own
+      regular expressions (each matches a whole region).
+      --exclude <glob>: skip files whose path (relative to the project, or to the folder given) matches, e.g. '**/shared/**'.
+      --function <name>: in scripts, read only the body of this function (function name(…){…}, name = function…,
+      name(…) {…} methods, const name = (…) => {…}); markup outside scripts is then left out. Repeatable.
       Default output: a Markdown table on stdout in the project language (kit.config.json > language, else English).
   extract_rules.py --selftest
 
 Never edits the page. Never commits or sends anything.
 """
+import fnmatch
 import html as htmllib
 import json
 import re
@@ -30,9 +40,13 @@ from kitconf import DEFAULTS, load, t  # noqa: E402
 
 EXT = {".html", ".htm", ".js", ".mjs", ".ts", ".vue", ".jsx", ".tsx"}
 SKIP = {"node_modules", "dist", ".git"}
-KINDS = ("text", "message", "string", "input", "limit", "route", "storage")
+KINDS = ("text", "message", "string", "input", "limit", "route", "param", "storage")
 MESSAGE_CALLS = DEFAULTS["define"]["messageCalls"]  # kit.config.json > define.messageCalls
 WRAPPER_VERBS = ("get", "put", "set", "remove")
+# a bare call that looks like a storage helper: get('k', d), put('k', v), lsGet('k'), storeSet('k', v), saveLocal('k', v)
+BARE_STORE = re.compile(r"(?i)(?:get|put|set|remove)|(?:ls|store|storage|prefs?|local|session)_?(?:get|set|put|remove|del|load|save)(?:item)?"
+                        r"|(?:get|set|put|remove|load|save)_?(?:ls|store|storage|prefs?|local)")
+SHELL_REGIONS = [r"<!--\s*SHELL:([\w-]+)\s*-->.*?<!--\s*/SHELL:\1\s*-->", r"/\*\s*SHELL:([\w-]+)\s*\*/.*?/\*\s*/SHELL:\1\s*\*/"]
 NOT_STORAGE = {"headers", "searchparams", "params", "query", "formdata", "dataset", "attributes", "classlist", "style",
                "map", "cache", "url", "router", "route", "app", "axios", "http", "api", "fetch"}
 
@@ -46,6 +60,15 @@ LIMIT = [re.compile(p) for p in (
     r"[\w$.\])]*\.(?:slice|substring|substr)\(\s*0\s*,\s*\d+\s*\)",
     r"Math\.(?:min|max)\([^()]*\d+[^()]*\)")]
 STORAGE = re.compile(r"(localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\(\s*['\"`]([^'\"`]+)")
+STORAGE_ID = re.compile(r"(localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\(\s*([A-Za-z_$][\w$]*)\s*[,)]")
+CONST = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(['\"])([^'\"\n]+)\2\s*[;,\n)]")
+PARAM = re.compile(r"(?:searchParams|URLSearchParams\([^()]*(?:\([^()]*\))?[^()]*\)|\b(?:params|query|qs|usp|sp))\s*\.\s*(?:get|has|getAll|set|delete|append)\(\s*['\"`]([\w.\-]+)")
+QUERY = re.compile(r"[?&]([A-Za-z_][\w\-]*)=([\w\-.%]*)")
+IDENT = re.compile(r"[A-Za-z_$][\w$]*")
+QUERY_LIT = re.compile(r"[?&]?([A-Za-z_][\w\-]*)=([\w\-.%]*)")   # a whole literal 'ext=1' (appended after '?' or '&')
+# function get(k, d) { … localStorage.getItem('app.' + k) … }: a wrapper of this file, its calls give the stored key
+WRAP_DEF = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)[^)]*\)\s*\{[^}]*?(localStorage|sessionStorage)"
+                      r"\s*\.\s*(?:get|set|remove)Item\(\s*(['\"])([^'\"\n]*)\4\s*\+\s*\2\b")
 ROUTE_RX = re.compile(r"/\^?#\\/(?:\\.|[^/\\\n])*/[a-z]*")
 WS = re.compile(r"\s*")
 CALL = re.compile(r"(?<![\w$.])((?:[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*)*[A-Za-z_$][\w$]*)\s*\(")
@@ -53,7 +76,8 @@ CONCAT = re.compile(r"(?:\s*\+\s*(?:[\w$.]+(?:\[[^\]\n]*\])?(?:\([^()\n]*\))?|'[
 DYN_KEY = re.compile(r"[\w$\]]\s*\[\s*(['\"`])(#?/[^'\"`\n]*)\1\s*\+[^\]\n]+\]")
 TAG = re.compile(r"<([a-zA-Z][\w-]*)((?:\s+[^\s=>/]+(?:\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+))?)*)\s*/?>")
 ATTR = re.compile(r"([^\s=>/]+)(?:\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+))?")
-VISIBLE_ATTRS = ("placeholder", "title", "aria-label", "alt", "label")
+VISIBLE_ATTRS = ("placeholder", "title", "aria-label", "alt", "label", "data-title", "data-tip", "data-tooltip", "data-placeholder")
+MESSAGE_ATTRS = ("data-msg", "data-message", "data-toast")   # text a click shows as a toast or a notice
 INPUT_ATTRS = ("maxlength", "minlength", "required", "pattern", "min", "max", "step", "accept")
 INPUT_TYPES = ("email", "number", "tel", "url", "date", "time", "datetime-local", "month", "file", "password")
 
@@ -82,18 +106,19 @@ def blank(m):
     return re.sub(r"[^\n]", " ", m.group(0))
 
 
-def from_markup(text, base, out, src):
-    """Visible text, visible attributes, input constraints and #/ links of HTML (or a Vue template)."""
+def from_markup(text, base, out, src, fragment=False):
+    """Visible text, visible attributes, input constraints and #/ links of HTML (or a Vue template). fragment: a piece of
+    HTML from a script string, whose text may start or end the piece ('Delete</b>', '<div class="x">Start')."""
     clean = re.sub(r"<(script|style|svg)\b.*?</\1\s*>|<!--.*?-->", blank, text, flags=re.S | re.I)
     for m in TAG.finditer(clean):
         tag, attrs = m.group(1).lower(), {}
         for a in ATTR.finditer(m.group(2) or ""):
             attrs[a.group(1).lower()] = htmllib.unescape((a.group(2) or "").strip("\"'"))
         ln = base + line_of(text, m.start())
-        for k in VISIBLE_ATTRS:
+        for k in VISIBLE_ATTRS + MESSAGE_ATTRS:
             v = attrs.get(k, "")
             if v and not v.startswith(("{", "$")) and re.search(r"[^\W\d_]", v):
-                out.append(("text", "%s: %s" % (k, v), src, ln, None))
+                out.append(("message" if k in MESSAGE_ATTRS else "text", "%s: %s" % (k, v), src, ln, None))
         cons = ["%s=%s" % (k, attrs[k]) if attrs[k] else k for k in INPUT_ATTRS if k in attrs]
         if attrs.get("type") in INPUT_TYPES:
             cons.insert(0, "type=" + attrs["type"])
@@ -103,8 +128,10 @@ def from_markup(text, base, out, src):
         for k in ("href", "to", ":to"):
             if attrs.get(k, "").startswith("#/"):
                 out.append(("route", attrs[k], src, ln, None))
-    for m in re.finditer(r">([^<>]+)<", clean):
+    for m in re.finditer(r"(?:^|>)([^<>]+)(?=<|$)" if fragment else r">([^<>]+)<", clean):
         s = re.sub(r"\s+", " ", htmllib.unescape(m.group(1))).strip()
+        if fragment and ('="' in s or "='" in s or re.fullmatch(r"[\s{}…]*", s)):   # an attribute piece, or only {…}
+            continue
         if s and re.search(r"[^\W\d_]", s) and not re.fullmatch(r"\{\{[^}]*\}\}", s):
             out.append(("text", s, src, base + line_of(text, m.start(1)), None))
 
@@ -143,12 +170,20 @@ def from_script(text, base, out, src, opts=None):
     msg_calls = opts.get("messageCalls") or MESSAGE_CALLS
     store_calls, prefix = opts.get("storageCalls") or [], opts.get("storagePrefix") or ""
     spans = []
+    consts = {}   # KEY = 'app.pos': a storage key held in a constant (the first value given to the name)
+    for m in CONST.finditer(code):
+        consts.setdefault(m.group(1), m.group(3))
+    wraps = {m.group(1): (m.group(3), m.group(5)) for m in WRAP_DEF.finditer(code)}
     for m in CALL.finditer(code):
         callee = re.sub(r"\s|\?", "", m.group(1))
         if named(callee, msg_calls):
             spans.append((m.end(), close_paren(code, m.end() - 1)))
-        arg = STR.match(code, WS.match(code, m.end()).end())
+        at = WS.match(code, m.end()).end()
+        arg = STR.match(code, at)
         key = next((g for g in arg.groups() if g is not None), None) if arg else None
+        if key is None:   # an identifier argument whose value is a constant string: get(KEY)
+            idm = IDENT.match(code, at)
+            key = consts.get(idm.group(0)) if idm and re.match(r"\s*[,)]", code[idm.end():]) else None
         if not key or "${" in key or callee.split(".")[0] in ("localStorage", "sessionStorage"):
             continue
         ln = base + line_of(code, m.start())
@@ -156,6 +191,10 @@ def from_script(text, base, out, src, opts=None):
         if store_calls and named(callee, store_calls):
             out.append(("storage", "%s %s%s" % (callee, prefix, key), src, ln, None))
         elif len(parts) > 1 and parts[-1] in WRAPPER_VERBS and parts[-2].lower() not in NOT_STORAGE:
+            out.append(("storage", "%s %s" % (callee, key), src, ln, "wrapper"))
+        elif len(parts) == 1 and callee in wraps:   # a wrapper defined in this file: the key it stores is known
+            out.append(("storage", "%s %s%s (%s)" % (wraps[callee][0], wraps[callee][1], key, callee), src, ln, None))
+        elif len(parts) == 1 and BARE_STORE.fullmatch(callee) and re.fullmatch(r"[\w.:\-]+", key):
             out.append(("storage", "%s %s" % (callee, key), src, ln, "wrapper"))
     for m in STR.finditer(code):
         raw = next(g for g in m.groups() if g is not None)
@@ -168,8 +207,11 @@ def from_script(text, base, out, src, opts=None):
             else:
                 out.append(("route", s, src, base + ln, None))
             continue
-        if "<" in s and ">" in s:  # an HTML template inside a string
-            from_markup(s, base + ln - 1, out, src)
+        qs = [QUERY_LIT.fullmatch(raw)] if QUERY_LIT.fullmatch(raw) else QUERY.finditer(raw) if "?" in raw else ()
+        for q in qs:   # a URL parameter: '?ext=1', 'a.html?tab=2', 'ext=1'
+            out.append(("param", "%s=%s" % (q.group(1), q.group(2)), src, base + ln, None))
+        if "<" in s and ">" in s:  # an HTML template inside a string (a whole one or a piece of one)
+            from_markup(s, base + ln - 1, out, src, fragment=True)
             continue
         if visible(re.sub(r"\$\{[^{}]*\}", "x", raw)):
             kind = "message" if any(a <= m.start() < b for a, b in spans) else "string"
@@ -181,32 +223,82 @@ def from_script(text, base, out, src, opts=None):
             out.append(("limit", re.sub(r"\s+", " ", m.group(0)), src, base + line_of(code, m.start()), None))
     for m in STORAGE.finditer(code):
         out.append(("storage", "%s %s" % (m.group(1), m.group(2)), src, base + line_of(code, m.start()), None))
+    for m in STORAGE_ID.finditer(code):   # localStorage.getItem(KEY) with KEY = '…'
+        if m.group(2) in consts:
+            out.append(("storage", "%s %s" % (m.group(1), consts[m.group(2)]), src, base + line_of(code, m.start()), None))
+    for m in PARAM.finditer(code):   # u.searchParams.get('q'), new URLSearchParams(location.search).get('ext')
+        out.append(("param", m.group(1), src, base + line_of(code, m.start()), None))
     for m in ROUTE_RX.finditer(code):
         out.append(("route", m.group(0), src, base + line_of(code, m.start()), None))
 
 
+FUNC_HEAD = r"(?:\bfunction\s*\*?\s*{n}\s*\(|(?<![\w$.]){n}\s*[:=]\s*(?:async\s+)?(?:function\b[^(]*\(|\([^()]*\)\s*=>|[\w$]+\s*=>)|(?<![\w$.]){n}\s*\([^()]*\)\s*\{{)"
+
+
+def only_functions(code, names):
+    """code with everything outside the bodies of the named functions blanked (line numbers kept). [] of names = all."""
+    keep = []
+    for n in names:
+        for m in re.finditer(FUNC_HEAD.format(n=re.escape(n)), code):
+            i = code.find("{", m.end() - 1)
+            arrow = code[m.start():m.end()].endswith("=>")
+            if arrow and not code[m.end():].lstrip().startswith("{"):   # an arrow with an expression body: to the end of the line
+                j = code.find("\n", m.end())
+                keep.append((m.start(), len(code) if j < 0 else j))
+            elif i >= 0:
+                keep.append((m.start(), close_paren(code, i) + 1))
+    return "".join(c if c == "\n" or any(a <= i < b for a, b in keep) else " " for i, c in enumerate(code))
+
+
+def skip_regions(text, patterns):
+    """text with the regions matched by the patterns blanked (line numbers kept)."""
+    for rx in patterns:
+        text = re.sub(rx, blank, text, flags=re.S)
+    return text
+
+
 def extract(path, rel, opts=None):
     text = path.read_text(encoding="utf-8", errors="replace")
+    opts = opts or {}
+    if opts.get("_skipShell"):
+        text = skip_regions(text, opts.get("skipRegions") or SHELL_REGIONS)
+    funcs = opts.get("_functions") or []
     out = []
     if path.suffix in (".html", ".htm", ".vue"):
         for m in re.finditer(r"<script\b[^>]*>(.*?)</script\s*>", text, re.S | re.I):
             if not re.search(r"\bsrc\s*=", text[m.start():m.start(1)]):
-                from_script(m.group(1), line_of(text, m.start(1)) - 1, out, rel, opts)
-        from_markup(text, 0, out, rel)
+                code = only_functions(m.group(1), funcs) if funcs else m.group(1)
+                from_script(code, line_of(text, m.start(1)) - 1, out, rel, opts)
+        if not funcs:
+            from_markup(text, 0, out, rel)
     else:
-        from_script(text, 0, out, rel, opts)
+        from_script(only_functions(text, funcs) if funcs else text, 0, out, rel, opts)
     return out
 
 
-def collect(paths, root, opts=None):
-    """Rows of the files: opts = kit.config.json > define (messageCalls, storageCalls, storagePrefix)."""
+def excluded(f, root, base, globs):
+    """True when the file matches one of the --exclude globs, relative to the project root or to the folder given."""
+    rels = []
+    for b in (root, base):
+        try:
+            rels.append(f.resolve().relative_to(Path(b).resolve()).as_posix())
+        except ValueError:
+            pass
+    rels.append(f.as_posix())
+    return any(fnmatch.fnmatch(r, g) or fnmatch.fnmatch(r, g.replace("**/", "")) for r in rels for g in globs)
+
+
+def collect(paths, root, opts=None, exclude=()):
+    """Rows of the files: opts = kit.config.json > define (messageCalls, storageCalls, storagePrefix, skipRegions) plus
+    _skipShell and _functions from the command line; exclude = globs of files to leave out."""
     files = []
     for p in paths:
         p = Path(p)
         if p.is_dir():
-            files += [f for f in sorted(p.rglob("*")) if f.is_file() and f.suffix in EXT and not (SKIP & set(f.parts))]
+            files += [f for f in sorted(p.rglob("*")) if f.is_file() and f.suffix in EXT and not (SKIP & set(f.parts))
+                      and not excluded(f, root, p, exclude)]
         elif p.is_file():
-            files.append(p)
+            files += [] if excluded(p, root, p.parent, exclude) else [p]
         else:
             sys.exit("ERROR: not found: %s" % p)
     rows, seen = [], {}
@@ -291,6 +383,45 @@ def selftest():
     md = markdown("en", rows, ["index.html"])
     assert "| E001 |" in md and "Parity" in md and "Rule" in md and "built at run time" in md and "wrapper" in md, md
     assert "Quy tắc" in markdown("vi", rows, ["index.html"])
+    # 0.12.2 (K1a-1): bare storage helpers, a key in a constant, a wrapper of the file, URL parameters
+    (d / "k1.js").write_text(
+        "function get(k,d){try{var v=localStorage.getItem('app2.'+k);return v==null?d:JSON.parse(v)}catch(e){return d}}\n"
+        "var W = get('extW', 420); lsSet('theme', 'x'); var t = lsGet('theme');\n"
+        "var KEY='app2.pinPos';\nvar pos = JSON.parse(localStorage.getItem(KEY) || 'null');\n"
+        "u.searchParams.delete('ext'); var q = new URLSearchParams(location.search).get('tab');\n"
+        "f.src = '../index.html' + '?' + 'ext=1'; go('a.html?mode=lite&x=2');\n", encoding="utf-8")
+    k1 = {(r["kind"], r["text"]): r.get("note") for r in collect([d / "k1.js"], d)}
+    for want in (("storage", "localStorage app2.extW (get)"), ("storage", "lsSet theme"), ("storage", "lsGet theme"),
+                 ("storage", "localStorage app2.pinPos"), ("param", "ext"), ("param", "tab"), ("param", "ext=1"),
+                 ("param", "mode=lite"), ("param", "x=2")):
+        assert want in k1, (want, sorted(k1))
+    assert k1[("storage", "lsSet theme")] == "wrapper" and k1[("storage", "localStorage app2.extW (get)")] is None, k1
+    # K3-1: text in markup pieces of script strings and template literals; data-msg is a message
+    (d / "k31.js").write_text(
+        "var h = '<div class=\"x-e\" data-msg=\"Nothing saved yet\">Empty list</div>';\n"
+        "b.innerHTML = '<button aria-label=\"Remove\">' + ico + 'Remove item</button>';\nvar s = '<div class=\"x\">Start here';\n"
+        "el.innerHTML = `<p>Drop files ${n}</p>\n<input placeholder=\"Find by name\">`;\nvar p = '\" title=\"' + t + '\">';\n", encoding="utf-8")
+    k31 = {(r["kind"], r["text"]) for r in collect([d / "k31.js"], d)}
+    for want in (("message", "data-msg: Nothing saved yet"), ("text", "Empty list"), ("text", "Remove item"), ("text", "Start here"),
+                 ("text", "aria-label: Remove"), ("text", "Drop files {…}"), ("text", "placeholder: Find by name")):
+        assert want in k31, (want, sorted(k31))
+    assert not any('="' in t or t in ("{…}", '">') for _k, t in k31), sorted(k31)
+    # K3-2: shell regions, --exclude, --function
+    (d / "shared").mkdir()
+    (d / "shared" / "shell.js").write_text("toast('Shell message');\n", encoding="utf-8")
+    (d / "k32.html").write_text("<!-- SHELL:top -->\n<nav><a>Shell menu</a></nav>\n<!-- /SHELL:top -->\n<main><h1>Own page</h1></main>\n"
+                                "<script>/* SHELL:js */ toast('Shell toast'); /* /SHELL:js */\nfunction save(v){ if (v.length > 9) toast('Too long'); }\n"
+                                "const other = () => { toast('Other'); };\nvar obj = { load(x) { toast('Loaded'); } };</script>\n", encoding="utf-8")
+    sh = {r["text"]: r["source"] for r in collect([d / "k32.html", d / "shared"], d, {"_skipShell": True}, exclude=["shared/**"])}
+    assert "Own page" in sh and "Too long" in sh and not {"Shell menu", "Shell toast", "Shell message"} & set(sh), sh
+    assert sh["Own page"] == "k32.html:4" and sh["Too long"] == "k32.html:6", sh
+    full = {r["text"] for r in collect([d / "k32.html"], d)}
+    assert {"Shell menu", "Shell toast"} <= full, full
+    fn = {r["text"] for r in collect([d / "k32.html"], d, {"_functions": ["save", "load"]})}
+    assert fn == {"Too long", "v.length > 9", "Loaded"}, fn
+    assert {r["text"] for r in collect([d / "k32.html"], d, {"_functions": ["other"]})} == {"Other"}
+    custom = {r["text"] for r in collect([d / "k32.html"], d, {"_skipShell": True, "skipRegions": [r"<nav>.*?</nav>"]})}
+    assert "Shell menu" not in custom and "Shell toast" in custom, custom
     print("extract_rules.py selftest OK")
 
 
@@ -302,26 +433,42 @@ def main():
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__)
         return
-    as_json, out_file, paths = "--json" in argv, None, []
+    as_json, out_file, paths, exclude, funcs = "--json" in argv, None, [], [], []
     i = 0
     while i < len(argv):
-        if argv[i] == "--out":
-            if i + 1 >= len(argv):
-                sys.exit("ERROR: --out needs a file")
-            out_file, i = argv[i + 1], i + 2
+        if argv[i] in ("--out", "--exclude", "--function"):
+            if i + 1 >= len(argv) or argv[i + 1].startswith("--"):
+                sys.exit("ERROR: %s needs a value" % argv[i])
+            v = argv[i + 1]
+            if argv[i] == "--out":
+                out_file = v
+            elif argv[i] == "--exclude":
+                exclude.append(v)
+            else:
+                funcs.append(v)
+            i += 2
             continue
-        if argv[i] != "--json":
+        if argv[i] not in ("--json", "--skip-shell"):
             paths.append(argv[i])
         i += 1
     if not paths:
         sys.exit("ERROR: give the page files or folders to read")
     cfg = load(require=False) or {"language": "en"}
     root = Path(cfg.get("_root") or Path.cwd()).resolve()
-    opts = cfg.get("define") or {}
-    for k in ("messageCalls", "storageCalls"):
+    opts = dict(cfg.get("define") or {})
+    for k in ("messageCalls", "storageCalls", "skipRegions"):
         if not isinstance(opts.get(k) or [], list):
-            sys.exit("ERROR: kit.config.json > define.%s must be a list of call names" % k)
-    rows = collect(paths, root, opts)
+            sys.exit("ERROR: kit.config.json > define.%s must be a list" % k)
+    for rx in opts.get("skipRegions") or []:
+        try:
+            re.compile(rx)
+        except re.error as e:
+            sys.exit("ERROR: kit.config.json > define.skipRegions: %r is no regular expression (%s)" % (rx, e))
+    opts.update(_skipShell="--skip-shell" in argv, _functions=funcs)
+    rows = collect(paths, root, opts, exclude)
+    if funcs and not rows:
+        print("NOTE: no row inside function(s) %s: check the name (function x(…), x = function, x(…) {…}, const x = (…) =>)" % ", ".join(funcs),
+              file=sys.stderr)
     text = json.dumps(rows, ensure_ascii=False, indent=1) if as_json else markdown(cfg, rows, paths)
     if out_file:
         Path(out_file).write_text(text + "\n", encoding="utf-8")

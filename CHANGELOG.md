@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.2 · 2026-11-22
+Fixes from a project that ported HTML pages to Vue page apps (`apps[].type: "page"`) with `extract_rules.py` and `validate parity` (K1a-1…K1a-4, K3-1…K3-6). Every new key has a default that keeps the 0.12.1 behaviour, except that a failing `prepare` is no longer a parity match.
+
+Validate
+- `parity`: a `prepare` (plan, state or flow) that throws on either side is an **Error** row with the side (A, B, A and B) and the message, never a Match; a view that opens on neither side is an Error too. `parity.md` lists Errors first, each one is printed as an `ERROR:` line, and the exit code is 1 (K3-3).
+- `prepare` scripts and `eval` steps take `await` at the top level: the code then runs as the body of an async function and is awaited (K3-4).
+- `parity`, `run`, `report`: `--min-pixels` and `--threshold` default to `plan.minPixels` / `plan.threshold`, else the new `kit.config.json > validate.minPixels` / `validate.threshold`, else 100 px and 0.5 % (the same for all three); `parity.md` and `parity.json` show the limits used (K1a-2).
+- `run`: without `plan.axe.include`, axe is limited to the first `plan.contentRoot` selector that matches, so the shell around a page is not judged (K3-5).
+- `run` with a page app: without `--url` it opens an `.html` of `apps[].output`, else the first host page (`usedBy`), instead of stopping on a missing `dist/index.html`. A rule check whose URL names the app (`http://host/apps/{app}/`) opens the run's http(s) entry, else each host page on that server; `rules.py check` takes the same `--url`. Every rule check still skipped is printed as a `NOTE:` with its reason, and `--no-rules` prints a NOTE too (K3-6, K1a-3).
+- `init --url`: a button of the content root that opens a dialog, menu, tab panel, `[data-view]` or panel without changing the hash becomes a state of the first screen (a `prepare` that clicks it) and a flow when the opened element has an id; hidden dialogs and popup controls outside the content root go to `_stateHints`, with a NOTE when no state was found (K1a-4).
+
+Define
+- `extract_rules.py`: storage keys through bare helpers (`get('extW', …)`, `put(…)`, `lsSet(…)`, `lsGet(…)`, marked "via a wrapper?"), through a wrapper defined in the same file (`function get(k){… localStorage.getItem('app.' + k)}` gives `localStorage app.extW`), and keys held in a constant (`KEY = 'app.pinPos'` then `getItem(KEY)`); new kind "URL parameter" (`?ext=1`, `'ext=1'`, `searchParams.get|has|set|delete('x')`, `URLSearchParams(…).get('x')`) (K1a-1).
+- `extract_rules.py`: text of markup pieces in script strings (`'Remove</button>'`, `'<div class="x">Start'`, template literals with HTML), `data-tip`, `data-title`, `data-tooltip`, `data-placeholder` attributes, and `data-msg` (also `data-message`, `data-toast`) as messages (K3-1).
+- `extract_rules.py`: `--skip-shell` leaves out `<!-- SHELL:x --> … <!-- /SHELL:x -->` and `/* SHELL:x */ … /* /SHELL:x */` regions (or the regular expressions of the new `define.skipRegions`), `--exclude <glob>` skips files, `--function <name>` reads only the body of that function (repeatable); line numbers stay those of the file (K3-2).
+- `kitconf.py check` validates `define.skipRegions`, `validate.minPixels` and `validate.threshold`.
+
 ## 0.12.1 · 2026-11-22
 Fixes from a project that moved its Vue pages into one npm workspace (one package per host app, a shared vendor file, one page used by two host apps). Every new key has a default that keeps the 0.12.0 behaviour.
 

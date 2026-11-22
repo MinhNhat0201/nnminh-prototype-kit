@@ -52,10 +52,10 @@ DEFAULTS = {
     "review": {"extraChecks": []},
     "prototype": {"post": None},
     "define": {"messageCalls": ["toast", "showToast", "alert", "confirm", "prompt", "notify", "snackbar", "showError",
-                                "showMessage", "setCustomValidity"], "storageCalls": [], "storagePrefix": None},
+                                "showMessage", "setCustomValidity"], "storageCalls": [], "storagePrefix": None, "skipRegions": []},
     "figma": {"imageSuffix": None},
     "validate": {"touchTarget": {"default": 44, "desktop": 24}, "axePath": None, "setTheme": None,
-                 "contentRoot": "main, #app, [role=main]"},
+                 "contentRoot": "main, #app, [role=main]", "threshold": 0.5, "minPixels": 100},
     "skills": {},
     "rules": {"categories": {}},
     "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify", "rules": "rules"},
@@ -758,6 +758,14 @@ def check(cfg):
             errs.append("define.%s must be a list of call names, e.g. [\"X.store.get\", \"toast\"]" % k)
     if df.get("storagePrefix") is not None and not isinstance(df["storagePrefix"], str):
         errs.append("define.storagePrefix must be a string (the prefix the storage wrapper adds to every key) or null")
+    for rx in df.get("skipRegions") or []:
+        try:
+            re.compile(rx)
+        except (re.error, TypeError):
+            errs.append("define.skipRegions: %r is no regular expression (each one matches a whole region to leave out)" % (rx,))
+    vd = cfg.get("validate") or {}
+    if not isinstance(vd.get("minPixels", 100), int) or isinstance(vd.get("minPixels"), bool) or not isinstance(vd.get("threshold", 0.5), (int, float)):
+        errs.append("validate.minPixels must be a whole number of pixels and validate.threshold a percent")
     for a in cfg["apps"]:
         if a.get("pageHook") is not None and not isinstance(a["pageHook"], str):
             errs.append(f"app '{a.get('id')}': pageHook must be a project command (placeholders {{id}}, {{path}}, ...) or null")
@@ -884,6 +892,9 @@ def selftest():
     assert c["define"]["storageCalls"] == [] and "toast" in c["define"]["messageCalls"]
     c["define"] = {"storageCalls": "X.store.get", "storagePrefix": 3}
     assert len([e for e in check(c) if e.startswith("define.")]) == 2, check(c)
+    c["define"], c["validate"] = {"skipRegions": ["<!--(", r"<nav>.*?</nav>"]}, dict(c.get("validate") or {}, minPixels="400")
+    assert len([e for e in check(c) if e.startswith(("define.", "validate."))]) == 2, check(c)
+    c["define"], c["validate"] = {}, dict(c["validate"], minPixels=400)
     pg = d / "vue" / "notes"
     (pg / "src" / "components").mkdir(parents=True)
     (pg / "package.json").write_text(json.dumps({"name": "notes-vue", "description": "Notes page", "scripts": {}}))

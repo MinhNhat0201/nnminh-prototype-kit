@@ -14,7 +14,10 @@ Commands:
       kit.config.json > validate.contentRoot, default "main, #app, [role=main]": the first that matches, never the shell);
       screens are named from the page title and heading; other buttons of the content root are each clicked once in a
       fresh page (never one named like delete, remove, reset) and a hash they set becomes a screen; with no route in the
-      files the URL as given is the first screen. Routes with a parameter (#/n/:id) are listed under _paramRoutes.
+      files the URL as given is the first screen. A button that opens a dialog, menu, tab panel, [data-view] or panel
+      without changing the hash becomes a state of the first screen (a prepare that clicks it; a flow when the opened
+      element has an id); hidden dialogs and popup controls outside the content root are listed in _stateHints.
+      Routes with a parameter (#/n/:id) are listed under _paramRoutes.
       When nothing is found the sample plan is written with a NOTE (pass --routes).
       Without --from-manifest the starter plan is read from the app: one screen per page and hash route (href="#/…",
       "#/…" in route tables, router paths), one flow per hash link, control ids as selector hints (--blank: template).
@@ -25,12 +28,16 @@ Commands:
   validation.py run --app <id> [--url <entry>] [--viewports 390,768,1280] [--modes light,dark] [--threshold 0.5] [--min-pixels 100]
                     [--touch-min <px>] [--no-rules] [--axe <axe.min.js|folder>] [--waivers <file>] [--compare <run|report.json|none>]
       Run validate.js (Playwright) on the app, compare screenshots with the baseline (Pillow; a screenshot counts as changed
-      when at least --min-pixels pixels or --threshold percent differ), write
+      when at least --min-pixels pixels or --threshold percent differ; defaults plan.minPixels / plan.threshold, else
+      kit.config.json > validate.minPixels / validate.threshold, else 100 px and 0.5 %), write
       <paths.validation>/<app>/<run>/report.md and report.json. Exit 1 when anything fails.
+      A page app (apps[].type page) without --url opens an .html of apps[].output, else its first host page (usedBy).
       Also runs the check commands of the active rules for the validate skill (scripts/rules.py check --app): a failing
       must rule is a Fail, a failing should or note rule needs a human, a skipped check (server down, not applicable) is
       Skipped. --rules-scope app (default): only checks of this app ({app}/{path}) can fail the run; failing project-wide
       checks go to "Outside the scope". --rules-scope all = every check; --rules-scope STY-001,A11Y-002 = those only.
+      For a page app, a check URL that names the app (http://host/apps/{app}/) opens this run's http(s) entry, else each
+      host page on that server. Every skipped check is printed as a NOTE with its reason.
       Waivers (--waivers, default <dir>/waivers.json): findings matched by check/id + selector (+ screen) with a required
       reason go to "Known / waived", never Fail. --compare (alias --baseline; default: the previous run) marks each Fail and
       Needs-a-human row new or carried over and counts the ones no longer found; axe findings match by rule id, screen,
@@ -42,17 +49,23 @@ Commands:
 Every command takes --dir <folder>: plan, runs and baseline there instead of <paths.validation>/<app>. Steps without "timeout" wait plan.timeout ms
       (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
       plan.prepare (JS string or {"js": …, "reload": true}): run after every page load of every screen and flow, before
-      their own steps and prepare (dismiss a shell overlay once for the whole plan). axe runs on every state of the plan
-      at the widest width; "axe": false on a state or a screen opts out. The server of an http(s) entry is checked before
+      their own steps and prepare (dismiss a shell overlay once for the whole plan). Every prepare and eval step may use
+      await at the top level (run as the body of an async function). axe runs on every state of the plan at the widest
+      width; "axe": false on a state or a screen opts out; without plan.axe.include it is limited to the first
+      plan.contentRoot selector that matches. The server of an http(s) entry is checked before
       each screen and flow: when it does not answer, the run stops with one ERROR line.
   validation.py parity --a <url> --b <url> --plan <plan.json> --dir <out> [--app <id>] [--viewports 1280] [--modes light]
+                       [--threshold 0.5] [--min-pixels 100]
       Run the same plan (screens, states, flows) on two builds (an HTML page and its Vue port, before and after a
       refactor) and compare per screen and state: visible text, interactive elements by role and name, aria states,
       console errors, screenshot pixels (Pillow, when installed); per flow: result, URL after each step, localStorage at
       the end. URLs are compared relative to each side's entry folder, path only (scheme, host and port ignored), so a
       flow that leaves for another page of the same app matches. plan.mask (CSS selectors: clocks, timestamps) is masked
       in screenshots and its text replaced before text compare; plan.normalize ["time"] replaces clock and relative times.
-      Writes <out>/parity.md and parity.json (Match / Differs with both values); exit 1 when anything differs.
+      A prepare that fails on either side (or a view that opens on neither) is an Error with the side and the message,
+      never a Match. Pixels differ from --min-pixels (default plan.minPixels, validate.minPixels, 100) or --threshold %.
+      Writes <out>/parity.md and parity.json (Errors, then Match / Differs with both values); exit 1 when anything
+      differs or fails.
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
   validation.py report --app <id> [--run <run folder>] [--waivers <file>] [--compare <run|report.json|none>]
@@ -84,6 +97,7 @@ HERE = Path(__file__).resolve().parent
 KIT = HERE.parents[2]
 sys.path.insert(0, str(KIT / "scripts"))
 from kitconf import load, t, app as app_cfg  # noqa: E402
+import kitconf  # noqa: E402
 import rules as RULES  # noqa: E402  (scripts/rules.py)
 
 FAIL_IMPACT = {"critical", "serious"}
@@ -110,11 +124,25 @@ def shown(cfg, p):
         return str(p)
 
 
+def page_entry(cfg, app):
+    """The file to open for a page app (apps[].type page): an .html entry of apps[].output, else the index.html of the
+    first host page (usedBy, kitconf.app_pages). None when there is none."""
+    root = Path(cfg["_root"])
+    cands = [o for o in kitconf.outputs(app) if o.endswith((".html", ".htm"))]
+    cands += [p + "index.html" if p.endswith("/") else p for p in kitconf.app_pages(cfg, app.get("id"))]
+    return next((root / c for c in cands if (root / c).is_file()), None)
+
+
 def entry_url(cfg, a, app, plan=None):
     if a.url:
         return a.url
     if plan and plan.get("url"):
         return plan["url"]
+    if app.get("type") == "page":
+        f = page_entry(cfg, app)
+        if f is None:
+            die("page app %s: no page to open (no .html in apps[].output, no host page in usedBy): pass --url" % app.get("id"))
+        return f.resolve().as_uri()
     base = Path(cfg["_root"]) / app["path"]
     f = base / "dist" / "index.html" if app.get("stack", cfg["stack"]) in ("react", "vue") else base / app.get("entry", "index.html")
     if not f.is_file():
@@ -294,6 +322,19 @@ def merge_discovered(plan, disc, routes_given=False):
         if route and len(flows) < 8 and not any(f["steps"][0].get("click") == click for f in flows if f.get("steps")):
             flows.append({"name": "Open %s" % (r.get("name") or route), "start": "", "viewport": 1280,
                           "steps": [{"click": click}, {"expectUrl": r["route"]}]})
+    # no hash route, but a dialog, panel or view opened by a button: a state of the first screen (and a flow when it has
+    # a selector to expect)
+    first = next((sc for sc in screens if sc["route"] == ""), None)
+    for st in disc.get("states") or []:
+        if first is None or any(x.get("name") == st["name"] for x in first["states"]):
+            continue
+        first["states"].append({"name": st["name"], "_opens": st.get("opens") or "",
+                                "prepare": "document.querySelector(%s).click(); await new Promise(r => setTimeout(r, 300));" % json.dumps(st["css"])})
+        if st.get("sel") and len(flows) < 8:
+            flows.append({"name": "Open %s" % st["name"], "start": "", "viewport": 1280,
+                          "steps": [{"click": st.get("via") or st["css"]}, {"expectVisible": st["sel"]}]})
+    if disc.get("hints"):
+        plan["_domHints"] = disc["hints"]
     if disc.get("selectors"):
         plan["_selectors"] = disc["selectors"]
     if disc.get("contentRoot"):
@@ -406,11 +447,16 @@ def cmd_init(cfg, a):
     plan = plan_from_app(cfg, app, a.page, [x.strip() for x in a.routes.split(",") if x.strip()] if a.routes else None, a.url,
                          browser=not a.no_browser, content_root=a.content_root) if not a.blank else None
     if plan:
-        plan["_stateHints"] = state_hints(cfg)
+        dom = plan.pop("_domHints", [])
+        plan["_stateHints"] = state_hints(cfg) + dom
+        n_states = sum(len(sc.get("states") or []) for sc in plan["screens"])
+        if len(plan["screens"]) <= 1 and not n_states and dom:
+            print("NOTE: one screen and no state found; _stateHints lists %d control(s) or dialog(s) of the page to add as states" % len(dom))
     if plan and plan["screens"]:
         f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print("Wrote %s: %d screens and %d flows read from the %s (%d selector hints%s). Check the routes, add states and flows."
-              % (shown(cfg, f), len(plan["screens"]), len(plan["flows"]), "rendered page and files" if plan.get("contentRoot") or plan.get("_contentRoot") else "app",
+        print("Wrote %s: %d screens, %d states and %d flows read from the %s (%d selector hints%s). Check the routes, add states and flows."
+              % (shown(cfg, f), len(plan["screens"]), n_states, len(plan["flows"]),
+                 "rendered page and files" if plan.get("contentRoot") or plan.get("_contentRoot") else "app",
                  len(plan.get("_selectors") or []), ", inside " + plan["contentRoot"] if plan.get("contentRoot") else ""))
         return
     plan = {
@@ -698,6 +744,20 @@ def axe_path(cfg, a):
     return str(p.resolve())
 
 
+PIXELS = {"threshold": 0.5, "minPixels": 100}   # a screenshot counts as changed from this many pixels (or percent)
+
+
+def pixel_limits(cfg, a, plan=None):
+    """(threshold %, min pixels): the command line, else plan.threshold / plan.minPixels, else kit.config.json >
+    validate.threshold / validate.minPixels, else 0.5 % and 100 px (the same defaults for run, report and parity)."""
+    v = cfg.get("validate") or {}
+    pick = lambda arg, k: arg if arg is not None else (plan or {}).get(k, v.get(k, PIXELS[k]))
+    try:
+        return float(pick(a.threshold, "threshold")), int(pick(a.min_pixels, "minPixels"))
+    except (TypeError, ValueError):
+        die("threshold must be a number and minPixels a whole number (command line, plan or validate.*)")
+
+
 def compare_all(cfg, app_id, run, threshold, min_px=100):
     base = vdir(cfg, app_id) / "baseline"
     (run / "diffs").mkdir(exist_ok=True)
@@ -761,10 +821,16 @@ def cmd_run(cfg, a):
         sys.stdout.write(p.stderr[-2000:])
         die("browser run failed")
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
-    if not a.no_rules:
-        res["rules"] = rules_in_scope(RULES.run_checks(cfg, app=a.app, skill="validate"), a.rules_scope)
+    if not a.no_rules:   # a page app: a check URL that names the app opens this run's http entry, else its host pages
+        res["rules"] = rules_in_scope(RULES.run_checks(cfg, app=a.app, skill="validate", url=url if re.match(r"https?:", url) else None),
+                                      a.rules_scope)
         (run / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
-    diffs = compare_all(cfg, a.app, run, a.threshold, a.min_pixels)
+        for x in res["rules"]:
+            if x["status"] == "skipped":
+                print("NOTE: rule %s%s skipped: %s" % (x["id"], (" · " + x["app"]) if x.get("app") else "", x.get("reason") or "?"))
+    else:
+        print("NOTE: --no-rules: the rule checks of the rules registry were not run")
+    diffs = compare_all(cfg, a.app, run, *pixel_limits(cfg, a, json.loads(plan.read_text(encoding="utf-8"))))
     fail, review, skipped = write_report(cfg, a.app, run, res, diffs, waivers, previous_report(cfg, a.app, run, a.compare))
     print("Report: %s · %d fail · %d to review · %d skipped" % (
         shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
@@ -774,7 +840,9 @@ def cmd_run(cfg, a):
 def cmd_report(cfg, a):
     run = latest_run(cfg, a.app, a.run)
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
-    fail, review, skipped = write_report(cfg, a.app, run, res, compare_all(cfg, a.app, run, a.threshold, a.min_pixels),
+    pf = vdir(cfg, a.app) / "plan.json"
+    lim = pixel_limits(cfg, a, json.loads(pf.read_text(encoding="utf-8")) if pf.is_file() else None)
+    fail, review, skipped = write_report(cfg, a.app, run, res, compare_all(cfg, a.app, run, *lim),
                                          load_waivers(waivers_path(cfg, a)), previous_report(cfg, a.app, run, a.compare))
     print("Report: %s · %d fail · %d to review · %d skipped" % (shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
 
@@ -858,6 +926,16 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
         rows.append({"where": where, "check": check, "status": "differs" if d else "match",
                      "a": _short(d[0]) if d else same_a, "b": _short(d[1]) if d else (same_a if same_b is None else same_b)})
 
+    def broken(where, x, y, both_fatal=False):
+        """An error row when a prepare failed on either side (or the view failed to open on both): never a match."""
+        pa, pb = x.get("prepareError"), y.get("prepareError")
+        if not (pa or pb or both_fatal):
+            return False
+        side = "A and B" if (pa and pb) or (both_fatal and not (pa or pb)) else "A" if pa else "B"
+        rows.append({"where": where, "check": "prepare" if pa or pb else "open", "status": "error", "side": side,
+                     "a": _short(pa or x.get("fatal") or x.get("error") or "ok"), "b": _short(pb or y.get("fatal") or y.get("error") or "ok")})
+        return True
+
     def snap_rows(where, x, y):
         sx, sy = normalize_snap(x.get("snap") or {}, normalize), normalize_snap(y.get("snap") or {}, normalize)
         add(where, "text", _cmp_lines(sx.get("text"), sy.get("text")), "%d lines" % len(sx.get("text") or []))
@@ -883,9 +961,10 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
         if x is None or y is None:
             add(where, "open", ("not run" if x is None else "run", "not run" if y is None else "run"))
             continue
+        if broken(where, x, y, bool(x.get("fatal") and y.get("fatal"))):
+            continue
         if x.get("fatal") or y.get("fatal"):
-            add(where, "open", None if (x.get("fatal") and y.get("fatal")) else (x.get("fatal") or "opened", y.get("fatal") or "opened"),
-                "both failed: " + _short(x.get("fatal") or "", 120))
+            add(where, "open", (x.get("fatal") or "opened", y.get("fatal") or "opened"))
             continue
         snap_rows(where, x, y)
         ea, eb = _errs(x), _errs(y)
@@ -897,6 +976,8 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
         where = "flow · " + n
         if x is None or y is None:
             add(where, "result", ("not run" if x is None else "run", "not run" if y is None else "run"))
+            continue
+        if broken(where, x, y):
             continue
         res = lambda f: "passed" if f["ok"] else "step %s: %s" % (f.get("failedStep") or "-", f.get("error") or "; ".join(f.get("errors") or []))
         add(where, "result", None if res(x) == res(y) else (res(x), res(y)), res(x))
@@ -914,14 +995,21 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
     return rows
 
 
-def write_parity(cfg, out, a_url, b_url, plan_path, rows):
+def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None):
     T = lambda k, **kw: t(cfg, "validate.parity." + k, **kw)
     diff_rows = [r for r in rows if r["status"] == "differs"]
+    err_rows = [r for r in rows if r["status"] == "error"]
     n_match = sum(1 for r in rows if r["status"] == "match")
     checks = list(dict.fromkeys(r["check"] for r in rows))
-    lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path), "",
-             T("summary", match=n_match, differs=len(diff_rows), skipped=len(rows) - n_match - len(diff_rows)), "",
-             "## %s (%d)" % (T("differsTitle"), len(diff_rows)), "", T("differsNote"), ""]
+    lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path) + (" · " + T("pixelsMeta", **limits) if limits else ""), "",
+             T("summary", match=n_match, differs=len(diff_rows), skipped=len(rows) - n_match - len(diff_rows) - len(err_rows)) +
+             (" " + T("errorsSummary", n=len(err_rows)) if err_rows else ""), ""]
+    if err_rows:
+        lines += ["## %s (%d)" % (T("errorsTitle"), len(err_rows)), "", T("errorsNote"), "",
+                  "| %s | %s | %s | A | B |" % (T("where"), T("check"), T("side")), "|---|---|---|---|---|"]
+        lines += ["| %s | %s | %s | %s | %s |" % (r["where"], T("check." + r["check"]), r["side"], r["a"].replace("|", "/"), r["b"].replace("|", "/"))
+                  for r in err_rows] + [""]
+    lines += ["## %s (%d)" % (T("differsTitle"), len(diff_rows)), "", T("differsNote"), ""]
     if diff_rows:
         lines += ["| %s | %s | A | B |" % (T("where"), T("check")), "|---|---|---|---|"]
         lines += ["| %s | %s | %s | %s |" % (r["where"], T("check." + r["check"]), r["a"].replace("|", "/"), r["b"].replace("|", "/"))
@@ -938,8 +1026,9 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows):
     lines.append("")
     (out / "parity.md").write_text("\n".join(lines), encoding="utf-8")
     (out / "parity.json").write_text(json.dumps({"a": a_url, "b": b_url, "plan": str(plan_path), "match": n_match,
-                                                 "differs": len(diff_rows), "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
-    return n_match, len(diff_rows)
+                                                 "differs": len(diff_rows), "errors": len(err_rows), "pixels": limits, "rows": rows},
+                                                ensure_ascii=False, indent=2), encoding="utf-8")
+    return n_match, len(diff_rows), len(err_rows)
 
 
 def cmd_parity(cfg, a):
@@ -973,15 +1062,19 @@ def cmd_parity(cfg, a):
         res[side] = json.loads((d / "results.json").read_text(encoding="utf-8"))
     (out / "diffs").mkdir(exist_ok=True)
     diffs = {}
+    pl = json.loads(plan.read_text(encoding="utf-8"))
+    thr, min_px = pixel_limits(cfg, a, pl)
     for shot in sorted((out / "a" / "shots").glob("*.png")):
         b = out / "b" / "shots" / shot.name
         if b.is_file():
-            diffs[shot.name] = diff(shot, b, out / "diffs" / shot.name, a.threshold, a.min_pixels)
-    pl = json.loads(plan.read_text(encoding="utf-8"))
+            diffs[shot.name] = diff(shot, b, out / "diffs" / shot.name, thr, min_px)
     rows = parity_compare(res["a"], res["b"], diffs, pl.get("normalize") or ())
-    m, n = write_parity(cfg, out, a.a, a.b, a.plan, rows)
-    print("Parity: %s · %d match · %d differ" % (shown(cfg, out / "parity.md"), m, n))
-    sys.exit(1 if n else 0)
+    m, n, e = write_parity(cfg, out, a.a, a.b, a.plan, rows, {"threshold": thr, "minPixels": min_px})
+    for r in rows:
+        if r["status"] == "error":
+            print("ERROR: %s · %s failed on %s: A: %s · B: %s" % (r["where"], r["check"], r["side"], r["a"], r["b"]))
+    print("Parity: %s · %d match · %d differ%s" % (shown(cfg, out / "parity.md"), m, n, " · %d error(s)" % e if e else ""))
+    sys.exit(1 if n or e else 0)
 
 
 def selftest():
@@ -1091,7 +1184,7 @@ def selftest():
     assert st[("S01 · menu · 1280px · light", "roles")]["status"] == "differs" and st[("S01 · menu · 1280px · light", "aria")]["status"] == "match"
     assert st[("flow · Open filter", "urls")]["b"] == "step 2: #/files" and st[("flow · Open filter", "storage")]["a"] == "k: grid", rows
     assert st[("flow · Open filter", "result")]["status"] == "match"
-    n_m, n_d = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", rows)
+    n_m, n_d, _ = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", rows)
     pm = (d / "parity.md").read_text()
     assert n_d == 4 and "## Differs (4)" in pm and "| Visible text |" in pm and json.loads((d / "parity.json").read_text())["differs"] == 4, pm
     # 0.12.1: plan.normalize ["time"]: clock and relative times on both sides; unknown names stop the run
@@ -1115,6 +1208,40 @@ def selftest():
     (d / "ws" / "pg" / "lib" / "r.ts").write_text('const R = [{ path: "/n/:id" }]')
     pp = plan_from_app({"_root": str(d), "stack": "html"}, {"path": "ws/pg", "stack": "vue"})
     assert [x["route"] for x in pp["screens"]] == ["", "#/list"] and pp["_paramRoutes"] == ["#/n/:id"] and "#addBtn" in pp["_selectors"], pp
+    # 0.12.2 (K3-3): a prepare that fails on either side, or a view that opens on neither, is an error, never a match
+    bad_a = dict(view, state="p", fatal="prepare of state \"p\" failed: x is not defined", prepareError="prepare of state \"p\" failed: x is not defined")
+    for xa, xb, side in ((bad_a, bad_a, "A and B"), (bad_a, dict(view, state="p"), "A"), (dict(view, state="p"), bad_a, "B"),
+                         (dict(view, state="p", fatal="net"), dict(view, state="p", fatal="net"), "A and B")):
+        er = [r for r in parity_compare({"items": [xa]}, {"items": [xb]}) if r["status"] == "error"]
+        assert len(er) == 1 and er[0]["side"] == side and er[0]["check"] == ("open" if "prepareError" not in xa and "prepareError" not in xb else "prepare"), er
+    fl_bad = dict(flow, ok=False, error="flow prepare failed: boom", prepareError="flow prepare failed: boom")
+    er = parity_compare({"flows": [fl_bad]}, {"flows": [fl_bad]})
+    assert [r["status"] for r in er] == ["error"] and "boom" in er[0]["a"], er
+    n_m, n_d, n_e = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", er, {"threshold": 0.5, "minPixels": 400})
+    pm = (d / "parity.md").read_text()
+    assert n_e == 1 and n_m == 0 and "## Errors (1)" in pm and "from 400 px" in pm and json.loads((d / "parity.json").read_text())["errors"] == 1, pm
+    # K1a-2: pixel limits from the command line, else the plan, else validate.*, else 0.5 % / 100 px (run, report, parity alike)
+    ns = argparse.Namespace(threshold=None, min_pixels=None)
+    assert pixel_limits({}, ns) == (0.5, 100) and pixel_limits({"validate": {"minPixels": 300}}, ns) == (0.5, 300)
+    assert pixel_limits({"validate": {"minPixels": 300}}, ns, {"minPixels": 800}) == (0.5, 800)
+    assert pixel_limits({"validate": {"minPixels": 300}}, argparse.Namespace(threshold=1.0, min_pixels=50), {"minPixels": 800}) == (1.0, 50)
+    # K1a-4: a dialog or panel a button opens without a hash becomes a state of the first screen, and a flow when it has a selector
+    mp = merge_discovered({"screens": [], "flows": []}, {"heading": "Notes", "contentRoot": "main", "routes": [], "hints": ["hidden dialog #d"],
+                                                         "states": [{"name": "New note", "css": "#add", "via": "role=button[name=\"New note\"]",
+                                                                     "opens": "dialog \"New note\"", "sel": "#dlg"},
+                                                                    {"name": "Grid", "css": "#grid", "via": "#grid", "opens": "[data-view] \"grid\"", "sel": None}]})
+    st0 = mp["screens"][0]["states"]
+    assert [x["name"] for x in st0] == ["New note", "Grid"] and "await" in st0[0]["prepare"] and '"#add"' in st0[0]["prepare"], st0
+    assert [f["steps"] for f in mp["flows"]] == [[{"click": "role=button[name=\"New note\"]"}, {"expectVisible": "#dlg"}]] and mp["_domHints"], mp
+    # K3-6: a page app opens an .html of apps[].output, else its first host page
+    (d / "host" / "pg").mkdir(parents=True)
+    (d / "host" / "pg" / "index.html").write_text("<main></main>")
+    pc = {"_root": str(d), "apps": [{"id": "host", "path": "host"}, {"id": "pg", "type": "page", "path": "src/pg", "usedBy": ["host/pg/pg.js"]}]}
+    assert page_entry(pc, pc["apps"][1]) == d / "host" / "pg" / "index.html"
+    pc2 = dict(pc, apps=[pc["apps"][0], dict(pc["apps"][1], usedBy=[], output=["dist/x.js", "host/pg/index.html"])])
+    assert page_entry(pc2, pc2["apps"][1]) == d / "host" / "pg" / "index.html"
+    pc2["apps"][1]["output"] = "dist/x.js"
+    assert page_entry(pc2, pc2["apps"][1]) is None
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")
@@ -1139,8 +1266,8 @@ def main():
     p.add_argument("--no-browser", action="store_true", help="with --url: read the files only, do not open the page")
     p = sub.add_parser("run", help="run the checks and write the report")
     p.add_argument("--app", required=True); p.add_argument("--url"); p.add_argument("--viewports", default="390,768,1280")
-    p.add_argument("--modes"); p.add_argument("--threshold", type=float, default=0.5, help="percent of pixels")
-    p.add_argument("--min-pixels", type=int, default=100, help="changed pixels that count as a visual change")
+    p.add_argument("--modes"); p.add_argument("--threshold", type=float, help="percent of pixels (default plan, validate.threshold, 0.5)")
+    p.add_argument("--min-pixels", type=int, help="changed pixels that count as a visual change (default plan.minPixels, validate.minPixels, 100)")
     p.add_argument("--touch-min", type=int, help="smallest touch target in px on phone widths (default: by app platform)")
     p.add_argument("--no-rules", action="store_true", help="do not run the check commands of the rules registry")
     p.add_argument("--axe", help="axe.min.js (or a folder with axe-core) outside the project; else KIT_AXE_PATH, validate.axePath")
@@ -1150,11 +1277,13 @@ def main():
     p.add_argument("--plan", required=True, help="plan.json with the screens, states and flows to run on both")
     p.add_argument("--app", help="app id: its DS profile gives the theming attributes for named states")
     p.add_argument("--viewports", default="1280"); p.add_argument("--modes", help="default: the DS's first mode")
-    p.add_argument("--threshold", type=float, default=0.5); p.add_argument("--min-pixels", type=int, default=100)
+    p.add_argument("--threshold", type=float, help="percent of pixels (default plan.threshold, validate.threshold, 0.5)")
+    p.add_argument("--min-pixels", type=int, help="fewer changed pixels never differ, e.g. anti-aliasing noise (default plan.minPixels, "
+                                                 "validate.minPixels, 100: the same as run)")
     p = sub.add_parser("baseline", help="accept a run's screenshots as baseline"); p.add_argument("--app", required=True); p.add_argument("--run")
     p = sub.add_parser("report", help="rebuild the report of a run")
-    p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float, default=0.5)
-    p.add_argument("--min-pixels", type=int, default=100)
+    p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float)
+    p.add_argument("--min-pixels", type=int)
     for sp in sub.choices.values():
         sp.add_argument("--dir", help="folder for the plan, runs and baseline (default <paths.validation>/<app>)")
     for k in ("run", "report"):

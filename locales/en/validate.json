@@ -56,5 +56,12 @@
   "validate.parity.check.pixels": "Pixels",
   "validate.parity.check.result": "Flow result",
   "validate.parity.check.urls": "URL after each step",
-  "validate.parity.check.storage": "localStorage"
+  "validate.parity.check.storage": "localStorage",
+  "validate.parity.error": "Error",
+  "validate.parity.errorsTitle": "Errors",
+  "validate.parity.errorsNote": "A prepare script failed (or the view did not open on either build), so nothing was compared here. Fix the plan or the page and run again: an error is never a match.",
+  "validate.parity.errorsSummary": "{n} error(s): see Errors.",
+  "validate.parity.side": "Failed on",
+  "validate.parity.check.prepare": "Prepare script",
+  "validate.parity.pixelsMeta": "pixels differ from {minPixels} px or {threshold} %"
 }
