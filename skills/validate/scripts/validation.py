@@ -8,7 +8,11 @@ Commands:
       (steps: goto, reload, click, fill, select, press, wait, expectVisible, expectHidden, expectText, expectUrl).
       --page: read only this file (relative to the app folder, else the project; a built bundle such as dist/index.html
       works too); --routes: use these hash routes instead of the ones found; --url: plan url (the page served over HTTP),
-      routes are then hash-only. Routes with a parameter (#/n/:id) are listed under _paramRoutes to fill in by hand.
+      routes are then hash-only, and the page is opened in Chromium (--no-browser: files only) so routes and ids that its
+      scripts build (a Vue or React bundle) are found too: hash links, data-route attributes, the hash a tab or nav button
+      sets, and ids / aria-labels of visible controls inside the content root (--content-root, else plan or
+      kit.config.json > validate.contentRoot, default "main, #app, [role=main]": the first that matches, never the shell);
+      screens are named from the page title and heading. Routes with a parameter (#/n/:id) are listed under _paramRoutes.
       Without --from-manifest the starter plan is read from the app: one screen per page and hash route (href="#/…",
       "#/…" in route tables, router paths), one flow per hash link, control ids as selector hints (--blank: template).
       --from-manifest builds the screens from the capture manifest of annotate/handoff instead: each screen gets the
@@ -26,13 +30,23 @@ Commands:
       checks go to "Outside the scope". --rules-scope all = every check; --rules-scope STY-001,A11Y-002 = those only.
       Waivers (--waivers, default <dir>/waivers.json): findings matched by check/id + selector (+ screen) with a required
       reason go to "Known / waived", never Fail. --compare (alias --baseline; default: the previous run) marks each Fail and
-      Needs-a-human row new or carried over and counts the ones no longer found. axe-core: --axe, else env KIT_AXE_PATH,
+      Needs-a-human row new or carried over and counts the ones no longer found; axe findings match by rule id, screen,
+      state and the text of the failing elements, so a changed selector is not a new finding. axe-core: --axe, else env KIT_AXE_PATH,
       else kit.config.json > validate.axePath, else node_modules of the project or the kit.
       States: plan.states (every screen) and screen states may be named: "<ds.json theming key>=<value>" ("brand=ocean")
       or "text=200%". Theme values and dark mode go through kit.config.json > validate.setTheme (JS body with key, value)
       when set, else the ds.json > theming.<key>.attr attribute on <html>.
 Every command takes --dir <folder>: plan, runs and baseline there instead of <paths.validation>/<app>. Steps without "timeout" wait plan.timeout ms
       (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
+      plan.prepare (JS string or {"js": …, "reload": true}): run after every page load of every screen and flow, before
+      their own steps and prepare (dismiss a shell overlay once for the whole plan). axe runs on every state of the plan
+      at the widest width; "axe": false on a state or a screen opts out. The server of an http(s) entry is checked before
+      each screen and flow: when it does not answer, the run stops with one ERROR line.
+  validation.py parity --a <url> --b <url> --plan <plan.json> --dir <out> [--app <id>] [--viewports 1280] [--modes light]
+      Run the same plan (screens, states, flows) on two builds (an HTML page and its Vue port, before and after a
+      refactor) and compare per screen and state: visible text, interactive elements by role and name, aria states,
+      console errors, screenshot pixels (Pillow, when installed); per flow: result, URL after each step, localStorage at
+      the end. Writes <out>/parity.md and parity.json (Match / Differs with both values); exit 1 when anything differs.
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
   validation.py report --app <id> [--run <run folder>] [--waivers <file>] [--compare <run|report.json|none>]
@@ -50,6 +64,7 @@ Never edits the app, commits, pushes or sends anything.
 import argparse
 import contextlib
 import datetime as dt
+import difflib
 import io
 import json
 import os
@@ -135,7 +150,10 @@ PLAN_HELP = {
     "namedStates": "A state may be a name: '<ds.json theming key>=<value>' (e.g. 'brand=ocean') or 'text=200%'. "
                    "plan.states are added to every screen; _stateHints lists the ones this DS offers.",
     "axe": "plan.axe or screen.axe {include: [selector], exclude: [selector]} limits axe to part of the page. Findings that are "
-           "known or outside the work go into waivers.json (check, id, selector, screen, reason), not out of the plan.",
+           "known or outside the work go into waivers.json (check, id, selector, screen, reason), not out of the plan. axe runs on "
+           "every state; \"axe\": false on a state or screen opts out.",
+    "prepare": "plan.prepare: JS (or {js, reload: true}) run after every page load of every screen and flow, before their own "
+               "steps, e.g. to dismiss a shell overlay. contentRoot: the page's own content (selectors, parity text).",
 }
 
 
@@ -214,6 +232,62 @@ HASH_STR = re.compile(r"""["'`](#/[\w\-/:.]*)["'`]""")
 ROUTER_PATH = re.compile(r"""\bpath\s*:\s*["'](/[\w\-/:]*)["']""")
 ID_CTRL = re.compile(r"""<(button|a|input|select|textarea)\b[^>]*\bid\s*=\s*["']([A-Za-z][\w-]*)["']""", re.I)
 SKIP_PARTS = {"node_modules", "dist", "build", ".git", "shared", "assets"}
+TITLE = re.compile(r"<title[^>]*>([^<]+)</title>", re.I)
+CONTENT_ROOT = "main, #app, [role=main]"
+
+
+def page_title(txt):
+    """The <title> of a page file, for screen names (never 'index.html')."""
+    m = TITLE.search(txt)
+    return re.sub(r"\s+", " ", m.group(1)).strip() if m else ""
+
+
+def discover(url, content_root):
+    """Open url in Chromium (validate.js --discover) and read the rendered page: title, heading, routes, selectors of
+    the content root. None when the browser cannot run (the plan is then read from the files only)."""
+    r = subprocess.run(["node", str(HERE / "validate.js"), "--discover", "--url", url, "--content-root", content_root],
+                       capture_output=True, text=True)
+    line = (r.stdout.strip().splitlines() or [""])[-1]
+    if r.returncode == 2:   # server down: say so, the plan is still read from the files
+        print("WARNING: " + line.replace("ERROR: ", "", 1))
+        return None
+    try:
+        return json.loads(line) if r.returncode == 0 else None
+    except ValueError:
+        return None
+
+
+def merge_discovered(plan, disc, routes_given=False):
+    """Add what the rendered page showed to a starter plan read from files: hash routes (unless --routes was given), screen
+    names from the heading or title, a click flow per route, and the selectors inside the content root instead of the
+    file's ids (those include the shell around the page)."""
+    label = disc.get("heading") or disc.get("title") or ""
+    screens, flows = plan["screens"], plan["flows"]
+    for sc in screens:
+        if label and sc["route"] == "":
+            sc["name"] = label
+    have = {sc["route"] for sc in screens}
+    for r in disc.get("routes") or []:
+        route = "" if r["route"] == "#/" else r["route"]
+        if ":" in route:
+            continue
+        if not routes_given and route not in have:
+            have.add(route)
+            screens.append({"id": "S%02d" % (len(screens) + 1), "name": " · ".join(x for x in (label, r.get("name") or route) if x),
+                            "route": route, "states": []})
+        click = r.get("via") or "a[href='%s']" % r["route"]
+        if route and len(flows) < 8 and not any(f["steps"][0].get("click") == click for f in flows if f.get("steps")):
+            flows.append({"name": "Open %s" % (r.get("name") or route), "start": "", "viewport": 1280,
+                          "steps": [{"click": click}, {"expectUrl": r["route"]}]})
+    if disc.get("selectors"):
+        plan["_selectors"] = disc["selectors"]
+    if disc.get("contentRoot"):
+        plan["contentRoot"] = disc["contentRoot"]
+    else:
+        plan["_contentRoot"] = "no content root matched: selectors come from the whole page; set --content-root"
+    plan["_source"] = ("starter plan read from the rendered page (routes, names, selectors inside %s) and the app files: check every "
+                       "route, add the states (empty, error, loading) and the flows the work needs" % (disc.get("contentRoot") or "the page"))
+    return plan
 
 
 def find_page(cfg, app, page):
@@ -224,12 +298,12 @@ def find_page(cfg, app, page):
     die("page not found: %s (relative to the app folder %s or the project)" % (page, app["path"]))
 
 
-def plan_from_app(cfg, app, page=None, routes=None, url=None):
+def plan_from_app(cfg, app, page=None, routes=None, url=None, browser=False, content_root=None):
     """Starter plan read from the app's files: one screen per page and hash route found (href="#/…", "#/…" strings in
     route tables, router path: '/…' in react/vue sources or a built bundle), one flow per in-page hash link (click it,
     expect the URL), and the ids of the main controls (buttons, links, fields) as selector hints. Never guesses states
     or data. page = only this file; routes = these hash routes instead of the ones found; url = the plan url (the page
-    as served), so routes are hash-only."""
+    as served), so routes are hash-only; browser = also read the rendered page at url (merge_discovered)."""
     root = Path(cfg["_root"])
     base = root / app["path"]
     stack = app.get("stack") or cfg.get("stack")
@@ -249,6 +323,7 @@ def plan_from_app(cfg, app, page=None, routes=None, url=None):
     screens, flows, seen, ids, params = [], [], set(), [], []
     for f in pages:
         txt = f.read_text(encoding="utf-8", errors="replace")
+        ttl = page_title(txt)
         if one is not None:   # one page: hash-only routes when it is served at url, else relative to the entry
             rel = "" if url or base.is_file() else Path(os.path.relpath(f, base if base.is_dir() else base.parent)).as_posix()
         else:
@@ -265,7 +340,8 @@ def plan_from_app(cfg, app, page=None, routes=None, url=None):
             if key in seen or ":" in r:
                 continue
             seen.add(key)
-            screens.append({"id": "S%02d" % (len(screens) + 1), "name": (page or entry) + (r or ""), "route": key, "states": []})
+            screens.append({"id": "S%02d" % (len(screens) + 1), "name": (ttl + (" " + r if r else "")) if ttl else (page or entry) + (r or ""),
+                            "route": key, "states": []})
         for h in dict.fromkeys(HASH_HREF.findall(txt)):
             if len(flows) < 8 and h != "#/":
                 flows.append({"name": "Open %s%s" % (page, h), "start": page, "viewport": 1280,
@@ -280,6 +356,14 @@ def plan_from_app(cfg, app, page=None, routes=None, url=None):
         plan["_paramRoutes"] = list(dict.fromkeys(params))[:20]
     if url:
         plan["url"] = url
+    if url and browser:
+        disc = discover(url, content_root or (cfg.get("validate") or {}).get("contentRoot") or CONTENT_ROOT)
+        if disc is None:
+            print("WARNING: could not read %s in Chromium: routes and selectors come from the files only (serve the page "
+                  "and run init again for the routes its scripts build)" % url)
+        else:
+            merge_discovered(plan, disc, routes is not None)
+            plan["screens"] = plan["screens"][:60]
     return plan
 
 
@@ -302,14 +386,15 @@ def cmd_init(cfg, a):
         return
     d.mkdir(parents=True, exist_ok=True)
     app = app_cfg(cfg, a.app)
-    plan = plan_from_app(cfg, app, a.page, [x.strip() for x in a.routes.split(",") if x.strip()] if a.routes else None, a.url) \
-        if not a.blank else None
+    plan = plan_from_app(cfg, app, a.page, [x.strip() for x in a.routes.split(",") if x.strip()] if a.routes else None, a.url,
+                         browser=not a.no_browser, content_root=a.content_root) if not a.blank else None
     if plan:
         plan["_stateHints"] = state_hints(cfg)
     if plan and plan["screens"]:
         f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        print("Wrote %s: %d screens and %d flows read from the app (%d selector hints). Check the routes, add states and flows."
-              % (shown(cfg, f), len(plan["screens"]), len(plan["flows"]), len(plan.get("_selectors") or [])))
+        print("Wrote %s: %d screens and %d flows read from the %s (%d selector hints%s). Check the routes, add states and flows."
+              % (shown(cfg, f), len(plan["screens"]), len(plan["flows"]), "rendered page and files" if plan.get("contentRoot") or plan.get("_contentRoot") else "app",
+                 len(plan.get("_selectors") or []), ", inside " + plan["contentRoot"] if plan.get("contentRoot") else ""))
         return
     plan = {
         "_help": PLAN_HELP,
@@ -395,11 +480,36 @@ def row_key(r):
     return r[3] if len(r) > 3 else "|".join(map(str, r[:3]))
 
 
+def a11y_key(where, rid, nodes):
+    """Key of an axe row: rule id, screen view and the normalized text of its failing elements (never the selector, so
+    a changed selector is the same finding)."""
+    texts = sorted({re.sub(r"[\s|~]+", " ", str(n.get("text") or "")).strip().lower() for n in nodes} - {""})
+    return "a11y|%s|%s|%s" % (where, rid, "~".join(texts))
+
+
+def _a11y_parts(k):
+    p = k.split("|")
+    if p[0] != "a11y" or len(p) < 3:
+        return None
+    return "|".join(p[:3]), set(filter(None, (p[3] if len(p) > 3 else "").split("~")))
+
+
 def compare_keys(prev, fail, review):
-    """prev = an earlier report.json: which rows are new, which carried over, how many keys are gone."""
+    """prev = an earlier report.json: which rows are new, which carried over, how many keys are gone. axe rows match
+    on rule id + screen view when their element texts overlap (or either side has none, e.g. a report from before 0.12)."""
     old = {row_key(r) for r in (prev.get("fail") or []) + (prev.get("review") or [])}
     now = {row_key(r) for r in fail + review}
-    return {"run": prev.get("run"), "new": sorted(now - old), "carried": sorted(now & old), "fixed": sorted(old - now)}
+    carried, matched = [], set()
+    for k in sorted(now):
+        o = k if k in old else None
+        a = _a11y_parts(k) if o is None else None
+        if a:
+            o = next((x for x in sorted(old - matched) if (_a11y_parts(x) or ("",))[0] == a[0]
+                      and (not a[1] or not _a11y_parts(x)[1] or a[1] & _a11y_parts(x)[1])), None)
+        if o is not None:
+            carried.append(k)
+            matched.add(o)
+    return {"run": prev.get("run"), "new": sorted(now - set(carried)), "carried": carried, "fixed": sorted(old - matched)}
 
 
 # ---------- classify + report ----------
@@ -438,8 +548,8 @@ def classify(res, diffs, waivers=()):
                 "overflow|" + where, texts=tuple(o["elements"]))
         for v in it.get("axe") or []:
             bucket = fail if v["impact"] in FAIL_IMPACT else review
-            key = "a11y|%s|%s" % (where, v["id"])
             nodes = v.get("list") or [{"target": v["target"], "inside": []}]
+            key = a11y_key(where, v["id"], nodes)
             keep, waived = [], {}
             for n in nodes:
                 w = waiver_for(waivers, "a11y", where, v["id"], [n["target"]] + list(n.get("inside") or [])) if waivers else None
@@ -623,6 +733,8 @@ def cmd_run(cfg, a):
         cmd += ["--set-theme", st]
     p = subprocess.run(cmd, capture_output=True, text=True)
     sys.stdout.write(p.stdout)
+    if p.returncode == 2:   # the server stopped answering: validate.js printed the one ERROR line
+        sys.exit(1)
     if p.returncode != 0 or not (run / "results.json").is_file():
         sys.stdout.write(p.stderr[-2000:])
         die("browser run failed")
@@ -655,6 +767,175 @@ def cmd_baseline(cfg, a):
         n += 1
     (base / "SOURCE.txt").write_text("Accepted from run %s on %s\n" % (run.name, dt.date.today().isoformat()), encoding="utf-8")
     print("Baseline: %d screenshot(s) from %s" % (n, run.name))
+
+
+# ---------- parity: the same plan on two builds ----------
+
+def _short(v, n=300):
+    v = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+    return v if len(v) <= n else v[:n - 1] + "…"
+
+
+def _cmp_dict(a, b):
+    """(a side, b side) of the keys whose values differ; None when equal."""
+    a, b = a or {}, b or {}
+    ks = sorted(k for k in set(a) | set(b) if a.get(k) != b.get(k))
+    if not ks:
+        return None
+    return ("; ".join("%s: %s" % (k, a.get(k, "—")) for k in ks[:8]), "; ".join("%s: %s" % (k, b.get(k, "—")) for k in ks[:8]))
+
+
+def _cmp_lines(a, b):
+    a, b = a or [], b or []
+    if a == b:
+        return None
+    if sorted(a) == sorted(b):
+        i = next(i for i, (x, y) in enumerate(zip(a, b)) if x != y)
+        return ("order differs at line %d: %s" % (i + 1, a[i]), "order differs at line %d: %s" % (i + 1, b[i]))
+    only_a, only_b = [], []   # lines that a line-by-line diff removes from a and adds in b
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op != "equal":
+            only_a += a[i1:i2]
+            only_b += b[j1:j2]
+    return ("only here (%d): %s" % (len(only_a), " / ".join(only_a[:6]) or "—"), "only here (%d): %s" % (len(only_b), " / ".join(only_b[:6]) or "—"))
+
+
+def _errs(x):
+    return sorted({re.sub(r"\d+", "#", e) for e in (x.get("errors") or [])})
+
+
+def parity_compare(ra, rb, diffs=None):
+    """Rows {where, check, status: match|differs, a, b} for two results.json of the same plan (validate.js --parity).
+    Views match on screen, state, width and mode; flows on name. diffs = {shot: diff()} of A vs B screenshots."""
+    rows, diffs = [], diffs or {}
+
+    def add(where, check, d, same_a="", same_b=None):
+        rows.append({"where": where, "check": check, "status": "differs" if d else "match",
+                     "a": _short(d[0]) if d else same_a, "b": _short(d[1]) if d else (same_a if same_b is None else same_b)})
+
+    def snap_rows(where, x, y):
+        sx, sy = x.get("snap") or {}, y.get("snap") or {}
+        add(where, "text", _cmp_lines(sx.get("text"), sy.get("text")), "%d lines" % len(sx.get("text") or []))
+        add(where, "roles", _cmp_dict(sx.get("roles"), sy.get("roles")), "%d elements" % sum((sx.get("roles") or {}).values()))
+        add(where, "aria", _cmp_dict(sx.get("aria"), sy.get("aria")), "%d states" % len(sx.get("aria") or {}))
+
+    def pixels(where, x):
+        dfx = diffs.get(x.get("shot"))
+        if not dfx:
+            return
+        if dfx["status"] == "skipped":
+            rows.append({"where": where, "check": "pixels", "status": "skipped", "a": dfx.get("why", ""), "b": ""})
+        else:
+            d = None if dfx["status"] == "same" else (dfx.get("why") or "%s px (%s%%)" % (dfx.get("px"), dfx.get("pct")),
+                                                      "diffs/" + dfx["diff"] if dfx.get("diff") else "")
+            add(where, "pixels", d, "%s%% px differ" % dfx.get("pct", 0), "")
+
+    key = lambda it: (it["screen"], it["state"], it["vp"], it["mode"])
+    ia, ib = {key(x): x for x in ra.get("items") or []}, {key(x): x for x in rb.get("items") or []}
+    for k in list(dict.fromkeys(list(ia) + list(ib))):
+        where = "%s · %s · %spx · %s" % k
+        x, y = ia.get(k), ib.get(k)
+        if x is None or y is None:
+            add(where, "open", ("not run" if x is None else "run", "not run" if y is None else "run"))
+            continue
+        if x.get("fatal") or y.get("fatal"):
+            add(where, "open", None if (x.get("fatal") and y.get("fatal")) else (x.get("fatal") or "opened", y.get("fatal") or "opened"),
+                "both failed: " + _short(x.get("fatal") or "", 120))
+            continue
+        snap_rows(where, x, y)
+        ea, eb = _errs(x), _errs(y)
+        add(where, "errors", None if ea == eb else ("; ".join(ea) or "none", "; ".join(eb) or "none"), "%d" % len(ea))
+        pixels(where, x)
+    fa, fb = {f["name"]: f for f in ra.get("flows") or []}, {f["name"]: f for f in rb.get("flows") or []}
+    for n in list(dict.fromkeys(list(fa) + list(fb))):
+        x, y = fa.get(n), fb.get(n)
+        where = "flow · " + n
+        if x is None or y is None:
+            add(where, "result", ("not run" if x is None else "run", "not run" if y is None else "run"))
+            continue
+        res = lambda f: "passed" if f["ok"] else "step %s: %s" % (f.get("failedStep") or "-", f.get("error") or "; ".join(f.get("errors") or []))
+        add(where, "result", None if res(x) == res(y) else (res(x), res(y)), res(x))
+        ua, ub = x.get("urls") or [], y.get("urls") or []
+        steps = [i for i in range(max(len(ua), len(ub))) if (ua[i:i + 1] or ["—"]) != (ub[i:i + 1] or ["—"])]
+        add(where, "urls", ("; ".join("step %d: %s" % (i + 1, (ua[i:i + 1] or ["—"])[0]) for i in steps[:6]),
+                            "; ".join("step %d: %s" % (i + 1, (ub[i:i + 1] or ["—"])[0]) for i in steps[:6])) if steps else None,
+            ua[-1] if ua else "—")
+        stamp = lambda st: {k: re.sub(r"\b\d{10,13}\b", "<time>", str(v)) for k, v in (st or {}).items()}   # epoch times differ per run
+        add(where, "storage", _cmp_dict(stamp(x.get("storage")), stamp(y.get("storage"))), "%d keys" % len(x.get("storage") or {}))
+        snap_rows(where, x, y)
+        ea, eb = _errs(x), _errs(y)
+        add(where, "errors", None if ea == eb else ("; ".join(ea) or "none", "; ".join(eb) or "none"), "%d" % len(ea))
+        pixels(where, x)
+    return rows
+
+
+def write_parity(cfg, out, a_url, b_url, plan_path, rows):
+    T = lambda k, **kw: t(cfg, "validate.parity." + k, **kw)
+    diff_rows = [r for r in rows if r["status"] == "differs"]
+    n_match = sum(1 for r in rows if r["status"] == "match")
+    checks = list(dict.fromkeys(r["check"] for r in rows))
+    lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path), "",
+             T("summary", match=n_match, differs=len(diff_rows), skipped=len(rows) - n_match - len(diff_rows)), "",
+             "## %s (%d)" % (T("differsTitle"), len(diff_rows)), "", T("differsNote"), ""]
+    if diff_rows:
+        lines += ["| %s | %s | A | B |" % (T("where"), T("check")), "|---|---|---|---|"]
+        lines += ["| %s | %s | %s | %s |" % (r["where"], T("check." + r["check"]), r["a"].replace("|", "/"), r["b"].replace("|", "/"))
+                  for r in diff_rows]
+    else:
+        lines.append("—")
+    lines += ["", "## " + T("allTitle"), "", "| %s | %s |" % (T("where"), " | ".join(T("check." + c) for c in checks)),
+              "|---|" + "---|" * len(checks)]
+    by = {}
+    for r in rows:
+        by.setdefault(r["where"], {})[r["check"]] = r["status"]
+    for w, cs in by.items():
+        lines.append("| %s | %s |" % (w, " | ".join(T(cs[c]) if c in cs else "" for c in checks)))
+    lines.append("")
+    (out / "parity.md").write_text("\n".join(lines), encoding="utf-8")
+    (out / "parity.json").write_text(json.dumps({"a": a_url, "b": b_url, "plan": str(plan_path), "match": n_match,
+                                                 "differs": len(diff_rows), "rows": rows}, ensure_ascii=False, indent=2), encoding="utf-8")
+    return n_match, len(diff_rows)
+
+
+def cmd_parity(cfg, a):
+    if not a.dir:
+        die("parity needs --dir <folder> for the two runs and the report")
+    plan = Path(a.plan)
+    if not plan.is_file():
+        die("plan not found: %s" % a.plan)
+    out = Path(a.dir)
+    attr, modes, theming = mode_setup(cfg)
+    res = {}
+    for side, url in (("a", a.a), ("b", a.b)):
+        d = out / side
+        if d.exists():
+            shutil.rmtree(d)
+        d.mkdir(parents=True)
+        cmd = ["node", str(HERE / "validate.js"), "--parity", "--url", url, "--plan", str(plan), "--out", str(d),
+               "--viewports", a.viewports, "--modes", a.modes or modes[0], "--mode-attr", attr, "--project", cfg["_root"],
+               "--theming", json.dumps(theming)]
+        st = (cfg.get("validate") or {}).get("setTheme")
+        if st:
+            cmd += ["--set-theme", st]
+        print("%s: %s" % (side.upper(), url))
+        p = subprocess.run(cmd, capture_output=True, text=True)
+        sys.stdout.write(p.stdout)
+        if p.returncode == 2:
+            sys.exit(1)
+        if p.returncode != 0 or not (d / "results.json").is_file():
+            sys.stdout.write(p.stderr[-2000:])
+            die("browser run failed on %s" % url)
+        res[side] = json.loads((d / "results.json").read_text(encoding="utf-8"))
+    (out / "diffs").mkdir(exist_ok=True)
+    diffs = {}
+    for shot in sorted((out / "a" / "shots").glob("*.png")):
+        b = out / "b" / "shots" / shot.name
+        if b.is_file():
+            diffs[shot.name] = diff(shot, b, out / "diffs" / shot.name, a.threshold, a.min_pixels)
+    rows = parity_compare(res["a"], res["b"], diffs)
+    m, n = write_parity(cfg, out, a.a, a.b, a.plan, rows)
+    print("Parity: %s · %d match · %d differ" % (shown(cfg, out / "parity.md"), m, n))
+    sys.exit(1 if n else 0)
 
 
 def selftest():
@@ -728,6 +1009,45 @@ def selftest():
     # compare: new vs carried over vs gone (rows of an older report without keys still compare)
     cm = compare_keys({"run": "r1", "fail": [list(f[0]), ["flow", "Old", "x"]]}, f + [("flow", "F2", "x", "flow|F2")], [])
     assert cm["carried"] == [f[0][3]] and cm["new"] == ["flow|F2"] and cm["fixed"] == ["flow|Old|x"], cm
+    # compare: axe rows match on rule + view + element text, not on the selector; legacy keys without text still match
+    W = "S01 · menu · 1280px · light"
+    k1 = a11y_key(W, "aria-required-children", [{"target": "button[data-k='']", "text": "Filter"}])
+    k2 = a11y_key(W, "aria-required-children", [{"target": ".tab:nth-child(1)", "text": " filter "}])
+    k3 = a11y_key(W, "aria-required-children", [{"target": ".x", "text": "Sort"}])
+    assert k1 == k2 and "button" not in k1, (k1, k2)
+    cm = compare_keys({"fail": [["a11y", W, "d", k1], ["a11y", W, "d", "a11y|%s|label" % W]]},
+                      [("a11y", W, "d", k3), ("a11y", W, "d", a11y_key(W, "label", [{"text": "Search"}]))], [])
+    assert cm["carried"] == [a11y_key(W, "label", [{"text": "Search"}])] and cm["new"] == [k3] and cm["fixed"] == [k1], cm
+    # init --url: what the rendered page shows is merged into the starter plan
+    assert page_title("<title> Library ·\n Acme Web </title>") == "Library · Acme Web" and page_title("<p>x</p>") == ""
+    base_plan = {"screens": [{"id": "S01", "name": "index.html", "route": "", "states": []}], "flows": [], "_selectors": ["#modeBtn"]}
+    disc = {"title": "Library · Acme Web", "heading": "Library", "contentRoot": "main", "selectors": ["#q", "button[aria-label=\"Filter\"]"],
+            "routes": [{"route": "#/docs", "name": "Docs"}, {"route": "#/img", "name": "Images", "via": "#tabImg"}, {"route": "#/n/:id", "name": "x"}]}
+    mp = merge_discovered(json.loads(json.dumps(base_plan)), disc)
+    assert [(x["route"], x["name"]) for x in mp["screens"]] == [("", "Library"), ("#/docs", "Library · Docs"), ("#/img", "Library · Images")], mp
+    assert [f["steps"][0]["click"] for f in mp["flows"]] == ["a[href='#/docs']", "#tabImg"] and mp["_selectors"][0] == "#q", mp
+    assert mp["contentRoot"] == "main" and "#modeBtn" not in mp["_selectors"], mp
+    mp = merge_discovered(json.loads(json.dumps(base_plan)), dict(disc, contentRoot=None, selectors=[]), routes_given=True)
+    assert len(mp["screens"]) == 1 and mp["_selectors"] == ["#modeBtn"] and "_contentRoot" in mp, mp
+    # parity: equal views match; a text, a role, a storage and a URL difference are reported with both values
+    snap = {"text": ["Library", "Docs"], "roles": {'button "Filter"': 1}, "aria": {'button "Filter"': "expanded=false"}}
+    view = {"screen": "S01", "state": "default", "vp": 1280, "mode": "light", "errors": [], "shot": "s.png", "snap": snap}
+    flow = {"name": "Open filter", "ok": True, "urls": ["#/", "#/docs"], "storage": {"k": "grid", "t": '{"at":1795337192295}'}, "errors": [], "snap": snap}
+    ra = {"items": [view, dict(view, state="menu")], "flows": [flow]}
+    rb = {"items": [view, dict(view, state="menu", snap=dict(snap, text=["Library", "Files"], roles={'listbox "Filter"': 1}))],
+          "flows": [dict(flow, urls=["#/", "#/files"], storage={"k": "list", "t": '{"at":1795337245027}'})]}
+    rows = parity_compare(ra, rb, {"s.png": {"status": "same", "pct": 0.0, "px": 0}})
+    st = {(r["where"], r["check"]): r for r in rows}
+    assert all(r["status"] == "match" for r in rows if r["where"].startswith("S01 · default")), rows
+    assert st[("S01 · default · 1280px · light", "pixels")]["status"] == "match"
+    tx = st[("S01 · menu · 1280px · light", "text")]
+    assert tx["status"] == "differs" and "Docs" in tx["a"] and "Files" in tx["b"], tx
+    assert st[("S01 · menu · 1280px · light", "roles")]["status"] == "differs" and st[("S01 · menu · 1280px · light", "aria")]["status"] == "match"
+    assert st[("flow · Open filter", "urls")]["b"] == "step 2: #/files" and st[("flow · Open filter", "storage")]["a"] == "k: grid", rows
+    assert st[("flow · Open filter", "result")]["status"] == "match"
+    n_m, n_d = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", rows)
+    pm = (d / "parity.md").read_text()
+    assert n_d == 4 and "## Differs (4)" in pm and "| Visible text |" in pm and json.loads((d / "parity.json").read_text())["differs"] == 4, pm
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")
@@ -746,7 +1066,10 @@ def main():
     p.add_argument("--blank", action="store_true", help="write the example template instead of reading the app")
     p.add_argument("--page", help="read only this file (relative to the app folder or the project; a built bundle works)")
     p.add_argument("--routes", help="comma list of hash routes to use instead of the ones found, e.g. '#/,#/n/1'")
-    p.add_argument("--url", help="plan url: the URL the page is served at (routes are then hash-only)")
+    p.add_argument("--url", help="plan url: the URL the page is served at (routes are then hash-only; the page is opened to read "
+                                 "routes and selectors its scripts build)")
+    p.add_argument("--content-root", help="selector list of the page's own content (default validate.contentRoot, 'main, #app, [role=main]')")
+    p.add_argument("--no-browser", action="store_true", help="with --url: read the files only, do not open the page")
     p = sub.add_parser("run", help="run the checks and write the report")
     p.add_argument("--app", required=True); p.add_argument("--url"); p.add_argument("--viewports", default="390,768,1280")
     p.add_argument("--modes"); p.add_argument("--threshold", type=float, default=0.5, help="percent of pixels")
@@ -754,6 +1077,13 @@ def main():
     p.add_argument("--touch-min", type=int, help="smallest touch target in px on phone widths (default: by app platform)")
     p.add_argument("--no-rules", action="store_true", help="do not run the check commands of the rules registry")
     p.add_argument("--axe", help="axe.min.js (or a folder with axe-core) outside the project; else KIT_AXE_PATH, validate.axePath")
+    p = sub.add_parser("parity", help="run one plan on two builds and compare them")
+    p.add_argument("--a", required=True, help="URL of the first build (e.g. the HTML page)")
+    p.add_argument("--b", required=True, help="URL of the second build (e.g. its Vue port)")
+    p.add_argument("--plan", required=True, help="plan.json with the screens, states and flows to run on both")
+    p.add_argument("--app", help="app id: its DS profile gives the theming attributes for named states")
+    p.add_argument("--viewports", default="1280"); p.add_argument("--modes", help="default: the DS's first mode")
+    p.add_argument("--threshold", type=float, default=0.5); p.add_argument("--min-pixels", type=int, default=100)
     p = sub.add_parser("baseline", help="accept a run's screenshots as baseline"); p.add_argument("--app", required=True); p.add_argument("--run")
     p = sub.add_parser("report", help="rebuild the report of a run")
     p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float, default=0.5)
@@ -772,8 +1102,11 @@ def main():
     a = ap.parse_args()
     global OUT_DIR
     OUT_DIR = a.dir
-    cfg = load(app=a.app)  # the app's own DS profile (apps[].ds): theming attributes, touch targets
-    {"init": cmd_init, "run": cmd_run, "baseline": cmd_baseline, "report": cmd_report}[a.cmd](cfg, a)
+    if a.cmd == "parity":   # works outside a project too (two URLs and a plan)
+        cfg = load(require=False, app=a.app) or {"language": "en", "_root": os.getcwd(), "_ds": {}}
+    else:
+        cfg = load(app=a.app)  # the app's own DS profile (apps[].ds): theming attributes, touch targets
+    {"init": cmd_init, "run": cmd_run, "baseline": cmd_baseline, "report": cmd_report, "parity": cmd_parity}[a.cmd](cfg, a)
 
 
 if __name__ == "__main__":

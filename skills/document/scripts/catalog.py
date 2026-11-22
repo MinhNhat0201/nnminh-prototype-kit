@@ -101,13 +101,19 @@ def parse_variants(text, base):
 
 
 def parse_map(lines):
-    rows = {}
+    """Rows of the components.map table: {class: {"react", "vue", "kind"}}. Columns are found by their header (React, Vue,
+    Kind) when it names them, so a profile may add columns (usage counts…); else class | react | vue | kind."""
+    rows, col = {}, {"react": 1, "vue": 2, "kind": 3}
     for ln in lines:
         cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+        heads = {c.lower(): i for i, c in enumerate(cells)}
+        if not cells[0].startswith("`.") and {"react", "vue"} & set(heads):
+            col = {k: heads.get(k) for k in ("react", "vue", "kind")}
+            continue
         if len(cells) < 3 or not cells[0].startswith("`."):
             continue
         cls = cells[0].strip("`").lstrip(".")
-        rows[cls] = {"react": cells[1], "vue": cells[2], "kind": cells[3] if len(cells) > 3 else ""}
+        rows[cls] = {k: cells[i] if i is not None and i < len(cells) else "" for k, i in col.items()}
     return rows
 
 
@@ -311,9 +317,31 @@ def cmd_check(cfg, d, a):
     sys.exit(1 if errs else 0)
 
 
+def from_sources(cfg, d):
+    """catalog.json content read from catalog.md and ds.json when there is no catalog.json (profiles built by a project
+    script). A catalog.md with no '## Components' section gives one entry per components.map row."""
+    md = d / (cfg["_ds"].get("catalog") or "catalog.md")
+    text = md.read_text(encoding="utf-8") if md.is_file() else ""
+    comps = parse_catalog(text)
+    if not comps:
+        lines = text.splitlines()
+        start = next((i for i, ln in enumerate(lines) if ln.lower().startswith("## components.map")), len(lines))
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+        for cls, m in parse_map(lines[start + 1:end]).items():
+            comps.append({"id": slug(cls), "name": m["vue"].strip("`<>/ ") or m["react"].strip("`<>/ ") or cls, "class": cls,
+                          "classes": [cls], "structure": "", "status": "active", "replacedBy": None,
+                          "code": {"html": "." + cls, "react": m["react"], "vue": m["vue"]}, "usage": {"use": [], "avoid": []}})
+    return {"components": comps, "patterns": all_patterns(cfg["_ds"], text)}
+
+
 def cmd_find(cfg, d, a):
     words = [w.lower() for w in a.words]
-    data = read_cat(cfg, d)
+    if cat_path(cfg, d).is_file():
+        data = read_cat(cfg, d)
+    else:
+        data = from_sources(cfg, d)
+        print("NOTE: no %s: searched catalog.md and ds.json > patterns (catalog.py build writes the full catalogue)"
+              % cat_path(cfg, d).name)
     hits = []
     for c in data["components"]:
         hay = " ".join([c["id"], c["name"], c.get("class") or "", c["code"].get("react", ""), c["code"].get("vue", ""),
@@ -323,7 +351,8 @@ def cmd_find(cfg, d, a):
             hits.append((score, c))
     for _, c in sorted(hits, key=lambda x: (-x[0], x[1]["name"])):
         flag = " [DEPRECATED → %s]" % c["replacedBy"] if c["status"] == "deprecated" else (" [experimental]" if c["status"] == "experimental" else "")
-        print("%-20s .%-22s react: %-30s%s" % (c["id"], c.get("class") or "-", c["code"].get("react", "")[:30], flag))
+        code = ("react: " + c["code"]["react"][:30]) if c["code"].get("react") else ("vue: " + c["code"].get("vue", "")[:30]) if c["code"].get("vue") else ""
+        print("%-20s .%-22s %-37s%s" % (c["id"], c.get("class") or "-", code, flag))
     for pt in data.get("patterns") or []:
         hay = " ".join([pt["id"], pt["name"], " ".join(pt.get("classes") or []), pt.get("use", ""), pt.get("structure", "")]).lower()
         if any(re.search(r"\b%s" % re.escape(w), hay) for w in words):
@@ -463,6 +492,15 @@ def selftest():
     assert [p["id"] for p in pats] == ["master-detail", "settings-page"] and pats[0]["classes"] == ["pg-split", "pg-side"], pats
     assert pats[0]["source"] == "catalog.md" and pats[1]["classes"] == ["pg-set"] and "compact" in pats[0]["use"], pats
     assert [c["id"] for c in parse_catalog(md)] == ["button"], "patterns are not components"
+    m = parse_map(["| Class | Used in apps | React | Vue |", "|---|---|---|---|", "| `.btn` | 992 |  | `<Button>` |"])
+    assert m["btn"] == {"react": "", "vue": "`<Button>`", "kind": ""}, m
+    assert parse_map(["| `.btn` | `Button` | `<Btn>` | input |"])["btn"]["kind"] == "input", "no header: positional columns"
+    (d / "ds").mkdir()
+    (d / "ds" / "catalog.md").write_text("# Catalogue\n\n## components.map\n\n| Class | Used | React | Vue |\n|---|---|---|---|\n"
+                                         "| `.srch` | 45 |  | `<Search>` |\n\n## Patterns\n\n### List page\n\n- Class: `.pgx`\n- Use: filters and a table\n")
+    src = from_sources({"_ds": {"patterns": []}}, d / "ds")
+    assert [c["id"] for c in src["components"]] == ["srch"] and src["components"][0]["name"] == "Search", src
+    assert [p["id"] for p in src["patterns"]] == ["list-page"], src
     print("catalog.py selftest OK")
 
 

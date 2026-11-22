@@ -34,8 +34,14 @@ when it exists (the components it lists), else from the components CSS. Files ot
 (apps[].usedBy of a "page" app) are skipped, and the DS version is read from pages (HTML <meta> and footer label; Vue,
 JSX and TSX label text), never from scripts.
 
-DS Vue layer: when ds.json > components.vue is set, vue apps also get the row "DS Vue components": local .vue files
-named like a DS Vue component (rebuilt instead of used) and imports of shadcn-vue components (@/components/ui/).
+DS Vue layer: when ds.json > components.vue is set, vue apps also get the row "DS Vue components": DS Vue components
+used (imports from the package folder or an alias of it in vite.config.* / tsconfig.json, also through a local re-export
+file, counted by template tags), local .vue files named like a DS Vue component (rebuilt instead of used; App.vue, main,
+index and layout shells never count) and imports of shadcn-vue components (@/components/ui/).
+
+Page apps (type "page", built into files of host apps, apps[].usedBy): the DS version and the DS CSS come from the host
+apps (the app whose path holds a usedBy file) when the page declares none; the report names the host pages to open for
+browser checks ({page} in extraChecks and rule checks). A check whose URL holds {app} is skipped for a page app.
 """
 import argparse
 import collections
@@ -51,7 +57,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, t, ds_vue, app_ds, css_load, fill_command  # noqa: E402
+from kitconf import load, ds_path, t, ds_vue, app_ds, css_load, fill_command, page_hosts, app_pages, url_names_app  # noqa: E402
 import rules as RULES  # noqa: E402  (scripts/rules.py)
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".vite", ".next", ".nuxt", "coverage", ".git"}
@@ -517,8 +523,15 @@ def audit_app(ctx, app, lib):
     inline = [strip(x) for x in inline]
     res = {"app": app["id"], "name": app.get("name", app["id"]), "files": len(files)}
 
+    # page app: the DS version and the DS CSS live in the host apps that load the built page
+    hosts = page_hosts(ctx.cfg, app["id"])
+    host_ids = sorted({h for h, _ in hosts if h and h in ctx.apps()})
+    host_files = sorted({f for h in host_ids for f in app_files(ctx, ctx.apps()[h])}) if host_ids else []
+    if hosts:
+        res["host"] = {"apps": host_ids, "files": [u for _, u in hosts], "pages": app_pages(ctx.cfg, app["id"])}
+
     # 1. version: the <meta> wins when a page has one; labels count for consistency
-    seen = declared_versions(ctx, files)
+    seen = declared_versions(ctx, files) or declared_versions(ctx, host_files)
     vs = sorted({vkey(k) for k in seen if vkey(k)})
     metas = sorted({vkey(k) for k in seen if k.startswith("meta ") and vkey(k)})
     cur = (metas or vs or [None])[-1]
@@ -526,7 +539,11 @@ def audit_app(ctx, app, lib):
                       "behind": bool(cur and vkey(lib["version"]) and cur < vkey(lib["version"])),
                       "inconsistent": len(vs) > 1}
 
-    # 2. embedded tokens against the bundle
+    # 2. embedded tokens against the bundle (a page app without DS CSS of its own: the host apps' DS CSS)
+    if host_files and not ctx.DEF.search(ds_css) and not imported:
+        htexts = {f: read(f) for f in host_files}
+        imported = [str(f.relative_to(ctx.root)) for f, x in htexts.items() if imports_bundle(ctx, x)]
+        ds_css = strip("\n".join(d for f, x in htexts.items() for _, d, _ in css_blocks(ctx, f, x)))
     app_defs = {(k, norm(v)) for k, v in ctx.DEF.findall(ds_css)}
     app_names = {k for k, _ in app_defs}
     res["tokens"] = {"embedded": len(app_names), "imported": imported,
@@ -662,9 +679,10 @@ def audit_app(ctx, app, lib):
         names = ds_vue_names(ctx, cv)
         pkg = (ctx.root / cv["package"]).resolve() if (ctx.root / cv.get("package", "")).exists() else None
         rebuilt = sorted(str(f.relative_to(ctx.root)) for f in files if f.suffix == ".vue" and squash(f.stem) in names
-                         and not (pkg and pkg in f.resolve().parents))
+                         and squash(f.stem) not in SHELLS and not (pkg and pkg in f.resolve().parents))
         shadcn = sorted(str(f.relative_to(ctx.root)) for f, x in texts.items() if re.search(r"""from\s+['"]@/components/ui/""", x))
-        res["dsvue"] = {"package": cv["package"], "components": len(names), "rebuilt": rebuilt, "shadcn": shadcn}
+        used = ds_vue_usage(ctx, app, texts, pkg, names) if pkg else collections.Counter()
+        res["dsvue"] = {"package": cv["package"], "components": len(names), "rebuilt": rebuilt, "shadcn": shadcn, "used": top_n(used)}
     return res
 
 
@@ -672,12 +690,104 @@ def squash(name):
     return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
+SHELLS = {"app", "main", "index", "root", "layout"}   # root shells of a Vue app, never a rebuilt DS component
+NOT_COMPONENTS = {"node_modules", "demo", "demos", "docs", "example", "examples", "stories", "test", "tests", "__tests__", "playground"}
+IMPORT = re.compile(r"""\b(import|export)\s+(?:type\s+)?([\w$*{}\s,]+?)\s+from\s+['"]([^'"]+)['"]""")
+ALIAS_VITE = re.compile(r"""['"]?([@\w$~][\w$~./-]*)['"]?\s*:\s*(?:(?:new\s+)?[\w.]+\(\s*)*['"]([^'"]+)['"]""")
+ALIAS_TS = re.compile(r'"([^"]+?)(?:/\*)?"\s*:\s*\[\s*"([^"]+?)(?:/\*)?"')
+
+
+def ds_vue_aliases(base, pkg):
+    """Import specifiers that mean the DS Vue package: the package name, and aliases of vite.config.* (resolve.alias)
+    and tsconfig.json (compilerOptions.paths) whose target lies in the package folder."""
+    out = set()
+    pj = pkg / "package.json"
+    if pj.is_file():
+        try:
+            out.add(json.loads(read(pj)).get("name") or "")
+        except ValueError:
+            pass
+    for cfgf, rx in [(f, ALIAS_VITE) for f in sorted(base.glob("vite.config.*"))] + [(f, ALIAS_TS) for f in sorted(base.glob("tsconfig*.json"))]:
+        for k, v in rx.findall(read(cfgf)):
+            p = (base / v).resolve()
+            if not v.startswith(("http", "node:")) and (p == pkg or pkg in p.parents):
+                out.add(k)
+    return {x for x in out if x}
+
+
+def ds_vue_usage(ctx, app, texts, pkg, names):
+    """{DS Vue component: uses} of an app: names imported from the DS Vue package (directly or through a local re-export
+    file such as src/ds.ts), counted by template tags (<Button>, <button>-cased kebab too); imported but no tag = 1."""
+    base = (ctx.root / app["path"]).resolve()
+    alias = ds_vue_aliases(base, pkg) if base.is_dir() else set()
+
+    def target(f, spec):
+        """Resolved file of a relative import, the package folder for a DS specifier, else None."""
+        if any(spec == a or spec.startswith(a + "/") for a in alias):
+            return pkg
+        if spec.startswith("."):
+            p = (f.parent / spec).resolve()
+            if p == pkg or pkg in p.parents:
+                return pkg
+            for c in (p, p.with_name(p.name + ".ts"), p.with_name(p.name + ".js"), p / "index.ts", p / "index.js"):
+                if c in texts:
+                    return c
+        return None
+
+    def bindings(clause, spec):
+        """[(local name, exported name)] of an import or export clause; a default import is named after the file."""
+        out = []
+        m = re.search(r"\{([^}]*)\}", clause)
+        for part in (m.group(1).split(",") if m else []):
+            bits = part.split()
+            if not bits or bits[0] == "type":
+                bits = bits[1:]
+            if bits:
+                src = Path(spec).stem if bits[0] == "default" else bits[0]
+                out.append((bits[-1], src))
+        head = re.sub(r"\{[^}]*\}", "", clause).strip(" ,")
+        if head and head != "*" and not head.startswith("*"):
+            out.append((head, Path(spec).stem))
+        return out
+
+    exports = {}   # re-export file -> {exported name: DS component}
+    for _ in range(2):  # a re-export of a re-export
+        for f, txt in texts.items():
+            for kind, clause, spec in IMPORT.findall(txt):
+                t_ = target(f, spec)
+                if kind == "export" and t_ is not None:
+                    src = {} if t_ == pkg else exports.get(t_, {})
+                    for loc, ex in bindings(clause, spec):
+                        comp = ex if t_ == pkg else src.get(ex)
+                        if comp and squash(comp) in names:
+                            exports.setdefault(f, {})[loc] = comp
+    used = collections.Counter()
+    for f, txt in texts.items():
+        local = {}
+        for kind, clause, spec in IMPORT.findall(txt):
+            t_ = target(f, spec)
+            if kind != "import" or t_ is None:
+                continue
+            for loc, ex in bindings(clause, spec):
+                comp = ex if t_ == pkg else exports.get(t_, {}).get(ex)
+                if comp and squash(comp) in names:
+                    local[loc] = comp
+        tpl = "\n".join(re.findall(r"<template\b.*</template>", txt, re.S)) if f.suffix == ".vue" else ""
+        for loc, comp in local.items():
+            kebab_ = re.sub(r"(?<!^)([A-Z])", r"-\1", loc).lower()
+            n = len(re.findall(r"<(?:%s|%s)(?=[\s/>])" % (re.escape(loc), re.escape(kebab_)), tpl))
+            used[comp] += n or (0 if f in exports else 1)
+    return collections.Counter({k: v for k, v in used.items() if v})
+
+
 def ds_vue_names(ctx, cv):
-    """Names of the DS Vue components: .vue files in the package folder and the first column of the props map."""
+    """Names of the DS Vue components: .vue files in the package folder (not demo, docs or test folders) and the first
+    column of the props map."""
     names = set()
     pkg = ctx.root / cv.get("package", "")
     if pkg.is_dir():
-        names |= {squash(f.stem) for f in pkg.rglob("*.vue") if "node_modules" not in f.parts}
+        names |= {squash(f.stem) for f in pkg.rglob("*.vue")
+                  if not NOT_COMPONENTS & set(f.relative_to(pkg).parts[:-1]) and squash(f.stem) not in SHELLS}
     pm = cv.get("propsMap")  # absolute path resolved by kitconf.ds_vue
     if pm:
         rows = list(csv.reader(io.StringIO(read(Path(pm)))))
@@ -705,12 +815,20 @@ def run_extra(ctx, apps):
         cmd = x.get("command")
         if not x.get("name") or not cmd:
             continue
-        per_app = any(k in cmd for k in ("{app}", "{path}", "{platform}", "{stack}"))
-        for aid in (apps if per_app else [None]):
+        per_app = any(k in cmd for k in ("{app}", "{path}", "{platform}", "{stack}", "{page}"))
+        # {page}: one run per page to open (a page app: each host page)
+        for aid, pg in [(a, pg) for a in (apps if per_app else [None])
+                        for pg in ((app_pages(ctx.cfg, a) or [""]) if a and "{page}" in cmd else [None])]:
             a_ = (ctx.apps().get(aid) or {}) if aid else {}
             vals = {"app": aid or "", "path": a_.get("path") or "", "platform": a_.get("platform") or "",
-                    "stack": a_.get("stack") or ctx.cfg.get("stack") or ""}
+                    "stack": a_.get("stack") or ctx.cfg.get("stack") or "", "page": pg or ""}
             line = fill_command(cmd, **vals) if aid else cmd
+            name = x["name"] + (" (%s)" % pg if pg and len(app_pages(ctx.cfg, aid)) > 1 else "")
+            if a_.get("type") == "page" and url_names_app(cmd):
+                out[aid].append({"name": name, "command": line, "exit": "—", "level": "skipped",
+                                 "summary": ["page app: the URL names the app id, which is no page of the site; use {page} (host pages: %s)"
+                                             % ", ".join(app_pages(ctx.cfg, aid))]})
+                continue
             try:
                 r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
                 code, lines = r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()]
@@ -721,7 +839,7 @@ def run_extra(ctx, apps):
             # with parse, a matched line that counts something (a number other than 0) is a finding even at exit 0
             counted = [ln for ln in matched if re.search(r"(?<![\w.])0*[1-9]\d*(?:[.,]\d+)?(?![\w.])", ln)]
             lvl = "pass" if code == 0 and not counted else ("note" if x.get("level") == "note" else "deviation")
-            out[aid].append({"name": x["name"], "command": line, "exit": code, "summary": summary, "level": lvl})
+            out[aid].append({"name": name, "command": line, "exit": code, "summary": summary, "level": lvl})
     return out
 
 
@@ -772,7 +890,8 @@ def rows(ctx, r):
               tr("level.note") if lo["pending"] or lo["unregistered"] else tr("level.pass")))
     dv = r.get("dsvue")
     if dv:
-        R.append((tr("row.dsvue"), tr("res.dsvue", n=dv["components"], package=dv["package"], rebuilt=len(dv["rebuilt"]), shadcn=len(dv["shadcn"])),
+        R.append((tr("row.dsvue"), tr("res.dsvue", n=dv["components"], package=dv["package"], rebuilt=len(dv["rebuilt"]), shadcn=len(dv["shadcn"]),
+                                      used=len(dv.get("used") or [])),
                   level(ctx, len(dv["rebuilt"]) + len(dv["shadcn"]), 0)))
     for x in r.get("extra") or []:
         R.append((x["name"], extra_result(ctx, x), tr("level." + x["level"])))
@@ -794,6 +913,10 @@ def report(ctx, r):
           "| %s | %s | %s |" % (tr("col.item"), tr("col.result"), tr("col.level")), "|---|---|---|"]
     L += ["| %s | %s | %s |" % x for x in rows(ctx, r)]
     L += ["", tr("legend"), ""]
+    if r.get("host"):
+        hs = r["host"]
+        L.append("- " + tr("b.page_host", files=codes(hs["files"], n=4), apps=codes(hs["apps"]) or tr("unknown"),
+                            pages=codes(hs["pages"], n=4) or tr("unknown")))
     b = lambda key, items, fmt="`%s`": L.append("- " + tr(key, n=len(items), list=codes(items, fmt))) if items else None
     if r["version"]["inconsistent"]:
         L.append("- " + tr("b.versions", list=", ".join("`%s`" % k for k in sorted(r["version"]["declared"]))))
@@ -815,6 +938,7 @@ def report(ctx, r):
         if x["unknown"]:
             L.append("- " + tr("b.theming_unknown", attr=x["attr"], list=", ".join(x["unknown"])))
     if r.get("dsvue"):
+        b("b.dsvue_used", r["dsvue"].get("used") or [], "`%s` ×%d")
         b("b.dsvue_rebuilt", r["dsvue"]["rebuilt"])
         b("b.dsvue_shadcn", r["dsvue"]["shadcn"])
     b("b.local_pending", lo["pending"], "%s")
@@ -896,6 +1020,34 @@ def selftest():
     assert r["css_lines"] == 3, r["css_lines"]
     ex = run_extra(ctx, ["web"])
     assert ex["web"][0]["command"].endswith(" desktop") and ex["web"][0]["level"] == "pass", ex
+    # 0.12: page app with a host: DS version and DS CSS from the host, DS Vue use through an alias and a re-export file,
+    # App.vue and the package's demo folder are no rebuilt components, {page} = host page, {app} in a URL skipped
+    (d / "packages" / "acme-vue" / "demo").mkdir()
+    (d / "packages" / "acme-vue" / "demo" / "App.vue").write_text("<template><div/></template>")
+    (web / "pg").mkdir()
+    (web / "pg" / "index.html").write_text('<script src="pg.js"></script>')
+    pg = d / "src" / "pg"
+    (pg / "src").mkdir(parents=True)
+    (pg / "vite.config.ts").write_text('export default { resolve: { alias: { "@acme-vue": fileURLToPath(new URL("../../packages/acme-vue", import.meta.url)) } } }')
+    (pg / "src" / "ds.ts").write_text('export { default as AcmeButton } from "@acme-vue/AcmeButton.vue"\nexport { registerIcons } from "@acme-vue/icons"\n')
+    (pg / "src" / "App.vue").write_text('<script setup lang="ts">\nimport { AcmeButton, registerIcons } from "./ds"\n'
+                                        'import AcmeDialog from "@acme-vue/AcmeDialog.vue"\n</script>\n'
+                                        '<template><AcmeButton/><acme-button></acme-button><AcmeDialog/><AcmeButtonX/></template>')
+    cfgj["apps"].append({"id": "pg", "path": "src/pg", "stack": "vue", "type": "page", "usedBy": ["apps/web/pg/pg.js"]})
+    cfgj["review"]["extraChecks"] = [{"name": "A11y", "command": py + " -c \"print('ok')\" http://127.0.0.1:9/apps/{app}/"},
+                                     {"name": "Page", "command": py + " -c \"print('ok')\" {page}"}]
+    (d / "kit.config.json").write_text(json.dumps(cfgj))
+    ctx = Ctx(d)
+    lib = ds_facts(ctx)
+    r = audit_app(ctx, ctx.apps()["pg"], lib)
+    assert r["host"] == {"apps": ["web"], "files": ["apps/web/pg/pg.js"], "pages": ["apps/web/pg/"]}, r.get("host")
+    assert r["version"]["app"] == "1.0.0" and r["tokens"]["embedded"] == 1, (r["version"], r["tokens"])
+    assert r["dsvue"]["rebuilt"] == [] and r["dsvue"]["components"] == 2, r["dsvue"]
+    assert r["dsvue"]["used"] == [("AcmeButton", 2), ("AcmeDialog", 1)], r["dsvue"]["used"]
+    assert "apps/web/pg/" in report(ctx, r)
+    ex = run_extra(ctx, ["pg", "web"])
+    assert ex["pg"][0]["level"] == "skipped" and ex["web"][0]["level"] == "pass", ex
+    assert ex["pg"][1]["command"].endswith(" apps/web/pg/") and ex["web"][1]["command"].endswith(" apps/web/"), ex
     shutil.rmtree(d, ignore_errors=True)
     print("audit_app.py selftest OK")
 

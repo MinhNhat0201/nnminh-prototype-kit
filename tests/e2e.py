@@ -264,6 +264,18 @@ def main():
     check("abcdef" not in json.dumps(aud["acme-web"]["hard"]) and not [v for v in aud["acme-web"]["version"]["declared"] if "0.0.1" in v],
           "review: build output of a page app skipped (usedBy)", out)
     check("path apps/acme-web" in out, "review.extraChecks: {path}", out)
+    # review of a page app: DS version and DS CSS from the host, DS Vue use through the vite alias, App.vue no rebuild
+    write(d / "pages/tasks/vite.config.ts", 'export default { resolve: { alias: { "@ds-vue": fileURLToPath(new URL("../../packages/acme-vue", import.meta.url)) } } }\n')
+    write(d / "pages/tasks/src/App.vue", '<script setup>import AcmeButton from "@ds-vue/AcmeButton.vue"</script>\n'
+                                         '<template><AcmeButton>Go</AcmeButton><Tasks /></template>\n')
+    write(d / "packages/acme-vue/demo/App.vue", "<template><div /></template>\n")
+    out = run([PY, S / "review/scripts/audit_app.py", "acme-page", "--json", d / "audit-page.json", "--no-extra", "--no-rules"], d)
+    ap = json.loads((d / "audit-page.json").read_text())[0]
+    check(ap["version"]["app"] and not ap["version"]["behind"] and (ap["tokens"]["embedded"] or ap["tokens"]["imported"])
+          and ap["host"]["apps"] == ["acme-web"] and ap["host"]["pages"] == ["apps/acme-web/"] and "apps/acme-web/" in out,
+          "review: page app reads the DS version and DS CSS from its host app and names the host page", out)
+    check(ap["dsvue"]["used"] == [["AcmeButton", 1]] and ap["dsvue"]["rebuilt"] == [],
+          "review: page app counts DS Vue imports through the alias; App.vue is no rebuilt component", json.dumps(ap["dsvue"]))
     out = run([PY, S / "sync/scripts/sync_ds.py", "status"], d)
     check("all apps current" in out, "sync.check replaces status", out)
     run([PY, S / "sync/scripts/sync_ds.py", "apply", "--app", "acme-web"], d)
@@ -683,6 +695,8 @@ def main():
             errs = {(it["screen"], it["state"]): " ".join(it["errors"]) for it in res["items"]}
             check("brand-applied" in errs[("S01", "brand=ocean")] and "font-32px" in errs[("S01", "text=200%")],
                   "validate: named states brand=<value> (ds.json theming attr) and text=200%, plan.states on every screen", str(errs))
+            check(all(it.get("axe") for it in res["items"]),
+                  "validate: axe runs on every state of the plan, not only default and theme states (K11-7)", json.dumps(res["items"])[:2000])
             fl = {f["name"]: f["ok"] for f in res["flows"]}
             check(not any(it.get("fatal") for it in res["items"]) and fl == {"reload step": True, "hash only": False},
                   "validate: reload step and goto reload: true load the page again; a hash-only goto does not", json.dumps(res)[:2000])
@@ -704,6 +718,57 @@ def main():
                   "validate: report marks rows new or carried over since the previous run (K-B7)", rep[:3000])
         finally:
             srv2.shutdown()
+
+        # validate init --url on a page whose routes and ids come from its script (K11-6); parity of two builds with a
+        # global plan.prepare that dismisses an overlay (K11-8, K11-10); a server that stops answering (K11-9)
+        page_js = ("<!doctype html><html lang=\"en\"><head><title>Library · Acme Web</title><style>#ovl{position:fixed;inset:0;"
+                   "background:#fff}</style></head><body><div id=\"shell\"><button id=\"modeBtn\">Mode</button></div><main id=\"main\"></main>\n"
+                   "<div id=\"ovl\">Welcome</div><script>if (localStorage.getItem('ovl-seen')) document.getElementById('ovl').remove();\n"
+                   "const T = {'#/docs': '%s', '#/img': 'Images'};\nfunction draw() { const m = document.getElementById('main');\n"
+                   " m.innerHTML = '<h1>Library</h1><a href=\"#/docs\">Docs</a><div role=\"tablist\"><button role=\"tab\" id=\"tabImg\">Images</button></div>'\n"
+                   "  + '<input id=\"q\" aria-label=\"Search\"><button id=\"grid\" type=\"button\">Grid</button><p id=\"body\">' + (T[location.hash] || 'All') + '</p>';\n"
+                   " document.getElementById('tabImg').onclick = () => { location.hash = '#/img'; };\n"
+                   " document.getElementById('grid').onclick = () => { localStorage.setItem('view', 'grid'); location.hash = '#/docs'; }; }\n"
+                   "addEventListener('hashchange', draw); draw();</script></body></html>\n")
+        write(d / "par/a/index.html", page_js % "Docs")
+        write(d / "par/b/index.html", page_js % "Files")
+        srv3, base3 = serve(d / "par")
+        try:
+            out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-web", "--page", d / "par/a/index.html",
+                       "--url", base3 + "a/index.html", "--dir", d / "valdir-js"], d)
+            jp = json.loads((d / "valdir-js/plan.json").read_text())
+            routes = [x["route"] for x in jp["screens"]]
+            check("#/docs" in routes and "#/img" in routes and jp["screens"][0]["name"] == "Library" and jp.get("contentRoot") == "main"
+                  and "#q" in jp["_selectors"] and "#modeBtn" not in jp["_selectors"],
+                  "validate init --url: routes, names and selectors read from the rendered page, inside the content root (K11-6)", out)
+            pplan = {"prepare": {"js": "localStorage.setItem('ovl-seen', '1')", "reload": True},
+                     "screens": [{"id": "S01", "route": ""}, {"id": "S02", "route": "#/docs"}],
+                     "flows": [{"name": "grid", "steps": [{"click": "#grid", "timeout": 1500}, {"expectUrl": "#/docs"}]}]}
+            write(d / "par/plan.json", json.dumps(pplan))
+            out = run([PY, S / "validate/scripts/validation.py", "parity", "--a", base3 + "a/index.html", "--b", base3 + "b/index.html",
+                       "--plan", d / "par/plan.json", "--dir", d / "par-out"], d, expect=1)
+            pj = json.loads((d / "par-out/parity.json").read_text())
+            st = {(r["where"], r["check"]): r for r in pj["rows"]}
+            s1 = [r for r in pj["rows"] if r["where"].startswith("S01 ")]
+            check(s1 and all(r["status"] == "match" for r in s1) and st[("S02 · default · 1280px · light", "text")]["status"] == "differs"
+                  and "Docs" in st[("S02 · default · 1280px · light", "text")]["a"] and "Files" in st[("S02 · default · 1280px · light", "text")]["b"],
+                  "validate parity: an equal screen matches, a changed text differs with both values (K11-8)", json.dumps(pj["rows"])[:3000])
+            check(st[("flow · grid", "result")]["a"] == "passed" and st[("flow · grid", "storage")]["status"] == "match"
+                  and "## Differs (" in (d / "par-out/parity.md").read_text(),
+                  "validate: plan.prepare runs before every screen and flow (overlay dismissed); flow URL and storage compared (K11-10)",
+                  json.dumps(pj["rows"])[:3000])
+        finally:
+            srv3.shutdown()
+        import socket
+        so = socket.socket()
+        so.bind(("127.0.0.1", 0))
+        dead = "http://127.0.0.1:%d/" % so.getsockname()[1]
+        so.close()
+        write(d / "valdir-down/plan.json", json.dumps({"screens": [{"id": "S%02d" % i, "route": "#/%d" % i} for i in range(1, 6)]}))
+        out = run([PY, S / "validate/scripts/validation.py", "run", "--app", "acme-web", "--dir", d / "valdir-down", "--url", dead + "index.html",
+                   "--viewports", "1280", "--modes", "light", "--no-rules"], d, expect=1)
+        check(sum(1 for x in out.splitlines() if x.startswith("ERROR:")) == 1 and "does not answer" in out and "screen S01" in out,
+              "validate: a server that does not answer stops the run with one ERROR line (K11-9)", out)
 
 
     # prototype.post through the generic hook runner; nothing set = nothing run
@@ -732,6 +797,55 @@ def main():
     par = (d / "parity.md").read_text()
     check("Title is too long" in par and "`apps/acme-web/notes.js:2`" in par and "acme-web:notes" in par
           and "NOTE_MAX = 80" in par and "| E001 |" in par, "extract_rules: messages, limits, storage with file:line", par)
+    # K11-1..3: storage through a wrapper, routes built at run time, no HTML pieces or directives
+    write(d / "apps/acme-web/lib.js", "'use strict';\nvar view = Shell.store.get('libView', 'grid');\n"
+          "var h = '<span class=\"ic '+k+' solid\" aria-label=\"'+n+'\">';\nFILES.unshift({n:'Uploaded file'}); toast('success', 'File uploaded.');\n"
+          "tab.onclick = function(){ location.hash = '#/' + tab.dataset.k };\nKINDS.forEach(function(k){ R['/' + k] = show; });\n")
+    out = run([PY, S / "define/scripts/extract_rules.py", "apps/acme-web/lib.js", "--json"], d)
+    rows = {(r["kind"], r["text"]): r.get("note") for r in json.loads(out)}
+    check(rows.get(("storage", "Shell.store.get libView")) == "wrapper" and rows.get(("route", "'#/'+tab.dataset.k")) == "dynamic"
+          and ("route", "R['/'+k]") in rows and ("message", "File uploaded.") in rows and ("string", "Uploaded file") in rows
+          and not any(t in ("use strict", "success") or '="' in t for _k, t in rows),
+          "extract_rules: wrapper storage flagged, dynamic routes, messages only from toast calls, no HTML pieces", out)
+    cfg["define"] = {"storageCalls": ["Shell.store.get"], "storagePrefix": "acme."}
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    out = run([PY, S / "define/scripts/extract_rules.py", "apps/acme-web/lib.js"], d)
+    check("Shell.store.get acme.libView" in out and "built at run time" in out, "extract_rules: define.storageCalls + storagePrefix give the stored key", out)
+    del cfg["define"]
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+
+    # K11-5: the contract of a page app includes its host app's contract
+    out = run([PY, KIT / "scripts/kitconf.py", "contract", "--app", "acme-page"], d)
+    check("Page app acme-page" in out and "Host app acme-web (holds apps/acme-web/tasks.js)" in out and "- Call Shell.ready()" in out,
+          "kitconf contract: page app lists the host app's contract", out)
+    # K11-12: add-page builds a new page app like an existing one; the host's pageHook runs when set
+    write(d / "pages/tasks/package.json", json.dumps({"name": "acme-tasks", "private": True}, indent=2))
+    write(d / "pages/tasks/vite.config.ts", 'export default { build: { lib: { name: "AcmeTasks", fileName: () => "tasks.js" } } }\n')
+    write(d / "pages/tasks/src/main.ts", 'import { createApp } from "vue"\nimport Tasks from "./Tasks.vue"\ncreateApp(Tasks).mount("#page-root")\n')
+    keep_cfg = json.dumps(cfg, indent=1)
+    out = run([PY, KIT / "scripts/kitconf.py", "add-page", "--like", "acme-page", "--id", "acme-notes", "--host", "acme-web", "--dry-run"], d)
+    check("Dry run" in out and not (d / "pages/acme-notes").exists() and "acme-notes" not in (d / "kit.config.json").read_text(),
+          "kitconf add-page --dry-run: plan only", out)
+    hosted = json.loads(keep_cfg)
+    hosted["apps"][0]["pageHook"] = PY + " -c \"import sys; print('hooked', sys.argv[1], sys.argv[2])\" {id} {usedBy}"
+    hosted["local"] = dict(hosted.get("local") or {}, vueCss="src/styles/local.css")
+    write(d / "kit.config.json", json.dumps(hosted, indent=1))
+    out = run([PY, KIT / "scripts/kitconf.py", "add-page", "--like", "acme-page", "--id", "acme-notes", "--host", "acme-web"], d)
+    newc = json.loads((d / "kit.config.json").read_text())
+    ent = next((a for a in newc["apps"] if a["id"] == "acme-notes"), {})
+    check("hooked acme-notes apps/acme-web/acme-notes.js" in out and ent.get("type") == "page"
+          and ent.get("usedBy") == ["apps/acme-web/acme-notes.js"] and "./Tasks.vue" in out
+          and '"acme-notes.js"' in (d / "pages/acme-notes/vite.config.ts").read_text()
+          and json.loads((d / "pages/acme-notes/package.json").read_text())["name"] == "acme-notes"
+          and not (d / "pages/acme-notes/src/Tasks.vue").exists(), "kitconf add-page: skeleton renamed, entry added, pageHook run", out)
+    out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
+    check("WARN: local.vueCss" not in out, "kitconf check: local.vueCss with a vue spa app is no warning", out)
+    newc["apps"] = [a for a in newc["apps"] if a.get("type") != "spa"]
+    write(d / "kit.config.json", json.dumps(newc, indent=1))
+    out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
+    check("WARN: local.vueCss" in out, "kitconf check: warns on local.vueCss when every vue app is a page (K11-13)", out)
+    write(d / "kit.config.json", keep_cfg)
+    shutil.rmtree(d / "pages/acme-notes")
 
     # catalogue: page patterns (catalog.md '## Patterns', ds.json > patterns) for define step 5
     catmd = d / "ds/acme/catalog.md"
@@ -739,6 +853,13 @@ def main():
     write(catmd, keep_cat + "\n## Patterns\n\n### App shell\n\n- Class: `.acme-app`, `.acme-main`\n- Use: top bar, rail and main area\n")
     out = run([PY, S / "document/scripts/catalog.py", "patterns"], d)
     check("app-shell" in out and ".acme-main" in out, "catalog patterns: read from catalog.md without catalog.json", out)
+    cj = d / "ds/acme/catalog.json"
+    if had_json:
+        cj.rename(d / "catalog.json.keep")
+    out = run([PY, S / "document/scripts/catalog.py", "find", "shell"], d)
+    check("[page pattern]" in out and "no catalog.json" in out, "catalog find: reads catalog.md when catalog.json is missing (K11-4)", out)
+    if had_json:
+        (d / "catalog.json.keep").rename(cj)
     run([PY, S / "document/scripts/catalog.py", "build"], d)
     out = run([PY, S / "document/scripts/catalog.py", "check"], d) + run([PY, S / "document/scripts/catalog.py", "find", "shell"], d)
     check("Catalog OK" in out and "[page pattern]" in out, "catalog build/check/find: page patterns kept in catalog.json", out)

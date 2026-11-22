@@ -7,9 +7,12 @@
   "define.extract.rule": "Quy tắc (cần điền)",
   "define.extract.kind.text": "chữ hiển thị",
   "define.extract.kind.message": "thông báo",
+  "define.extract.kind.string": "chữ trong mã",
   "define.extract.kind.input": "ràng buộc ô nhập",
   "define.extract.kind.limit": "giới hạn",
   "define.extract.kind.route": "route",
   "define.extract.kind.storage": "dữ liệu lưu",
-  "define.extract.counts": "Số dòng: {text} chữ hiển thị, {message} thông báo, {input} ràng buộc ô nhập, {limit} giới hạn, {route} route, {storage} khoá lưu trữ."
+  "define.extract.note.dynamic": "(route dựng lúc chạy: đọc mã)",
+  "define.extract.note.wrapper": "(lưu qua lớp bọc? kiểm mã)",
+  "define.extract.counts": "Số dòng: {text} chữ hiển thị, {message} thông báo, {string} chữ trong mã, {input} ràng buộc ô nhập, {limit} giới hạn, {route} route, {storage} khoá lưu trữ."
 }

@@ -77,10 +77,12 @@
  "review.map.note.check_role": "đúng giá trị, kiểm vai trò chữ",
  "review.map.note.other_role": "chỉ có {token} cùng giá trị, là token của vai trò khác: xem ý nghĩa trước khi dùng",
  "review.row.dsvue": "Component Vue của DS",
- "review.res.dsvue": "{n} component Vue của DS ở `{package}`; {rebuilt} bị dựng lại cục bộ; {shadcn} tệp dùng component shadcn-vue",
+ "review.res.dsvue": "{n} component Vue của DS ở `{package}`, dùng {used}; {rebuilt} bị dựng lại cục bộ; {shadcn} tệp dùng component shadcn-vue",
  "review.b.dsvue_rebuilt": "Tệp Vue cục bộ trùng tên component Vue của DS (dựng lại thay vì dùng) ({n}): {list}",
  "review.b.dsvue_shadcn": "Tệp dùng component shadcn-vue dù DS có lớp Vue riêng ({n}): {list}",
  "review.res.extra": "mã thoát {code}: {summary}",
  "review.extra.title": "Kiểm tra của dự án (kit.config.json > review.extraChecks)",
- "review.rule": "Quy tắc"
+ "review.rule": "Quy tắc",
+ "review.b.dsvue_used": "Component Vue của DS đang dùng (theo thẻ trong template, chỉ import thì tính 1) ({n}): {list}",
+ "review.b.page_host": "App trang: bản build thành {files}. Phiên bản DS và CSS DS lấy từ app chủ {apps} khi trang không tự khai. Kiểm trình duyệt mở trang của app chủ {pages} (`{{page}}` trong lệnh kiểm)"
 }

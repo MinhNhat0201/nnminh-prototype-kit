@@ -97,7 +97,7 @@ ID_RX = re.compile(r"^([A-Z][A-Z0-9]{1,5})-(\d{3,})$")
 # Activity groups a rule may name in `skills` instead of (or with) skill names: rules for work that is not a skill.
 # A rule that names only activities is left out of `list --skill <skill>`. "*" = every skill and activity (like []).
 ACTIVITIES = ("scripts", "pr", "commit", "deploy", "release")
-PLACEHOLDERS = ("app", "path", "root", "platform", "stack")
+PLACEHOLDERS = ("app", "path", "root", "platform", "stack", "page")
 SKIP_EXIT = 77   # a check command exits 77 (or prints a line "SKIP: <reason>") when it does not apply or scanned nothing
 URL_RX = re.compile(r"https?://([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(?::(\d+))?")
 BLOCK = ("<!-- kit:rules:begin -->", "<!-- kit:rules:end -->")
@@ -610,24 +610,29 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900):
             continue
         if category and r["category"] != category or not skill_match(r, skill):
             continue
-        per_app = any("{%s}" % k in r["check"] for k in ("app", "path", "platform", "stack"))
+        per_app = any("{%s}" % k in r["check"] for k in ("app", "path", "platform", "stack", "page"))
         if per_app:
             targets = [a for a in ([app] if app else list(apps)) if a in apps and in_scope(r, a) and not exception_for(r, a)
                        and not overriders(rules, r, a)]
         else:
             targets = [app] if (not app or (in_scope(r, app) and not exception_for(r, app) and not overriders(rules, r, app))) else []
-        for a in targets:
+        # {page}: one run per page to open (a page app: each host page, kitconf.app_pages)
+        for a, pg in [(a, pg) for a in targets for pg in ((kitconf.app_pages(cfg, a) or [""]) if a and "{page}" in r["check"] else [None])]:
             ap = apps.get(a) or {}
             vals = {"app": a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
-                    "stack": (ap.get("stack") or cfg.get("stack") or "") if a else ""}
+                    "stack": (ap.get("stack") or cfg.get("stack") or "") if a else "", "page": pg or ""}
             line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", r["check"])
             res = {"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
                    "app": a if per_app else app, "perApp": per_app, "command": line, "exit": None, "status": "skipped", "ok": True,
                    "reason": "", "summary": []}
+            if pg is not None:
+                res["page"] = pg
             srv = needs_server(line)
             if srv and srv not in probed:
                 probed[srv] = reachable(*srv)
-            if srv and not probed[srv]:
+            if ap.get("type") == "page" and kitconf.url_names_app(r["check"]):
+                res["reason"] = "page app: the URL names the app id, which is no page of the site; use {page} (its host pages)"
+            elif srv and not probed[srv]:
                 res["reason"] = "needs a server at %s:%d, not reachable (start it, then run again)" % srv
             elif "{path}" in r["check"] and a and not (Path(cfg["_root"]) / ap.get("path", "")).exists():
                 res["reason"] = "app folder %s not found: nothing to scan" % ap.get("path", "")

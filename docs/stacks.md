@@ -29,7 +29,7 @@ A layer kept as a folder in the project usually has its own `package.json`, and 
 
 ## A Vue page inside a multi-page html app
 
-An `html` app of type `multi` can get one page built in Vue (for example to try the DS Vue layer on one feature) without moving the whole app. The page is its own app entry:
+An `html` app of type `multi` can get one page built in Vue (for example to try the DS Vue layer on one feature) without moving the whole app. The page is its own app entry. When the project already has one page app, start the next one with `python3 <kit>/scripts/kitconf.py add-page --like <page app> --id <new id> --host <host app> [--name "…"] [--dry-run]`: it copies the folder skeleton (package files, Vite and TypeScript config, `src/main.ts`, `env.d.ts`, `.gitignore`; not the components), renames it, adds this entry (`output`, `usedBy` and `pageContract` built like the other page's), and prints the host-side steps (host build, copy, host page, route). It runs the host's `apps[].pageHook` when the project has one; else those steps stay manual. Entry:
 
 ```json
 {"id": "acme-tasks", "name": "Tasks page", "path": "pages/tasks", "stack": "vue", "type": "page",

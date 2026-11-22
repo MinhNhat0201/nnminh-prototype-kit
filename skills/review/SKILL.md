@@ -80,6 +80,7 @@ node <kit>/skills/review/scripts/audit_components_browser.js <scratchpad>/roots.
 ```
 
 For `react` / `vue`, serve the dev server or the built output and pass its URLs.
+For a `page` app (`apps[].type`), open the host pages the report names (`{page}` in check commands), never `<app path>/` or the app id: the page runs only inside its host app.
 One URL per screen; open dialogs or tabs too when a control only shows there.
 The script takes a few elements per DS root class, rebuilds the same element in an iframe that holds only the DS bundle, copies the theming attributes of `<html>`, and compares computed styles (height, padding, radius, text, colour, background, border, shadow, gap).
 Trust a difference only when it repeats on several elements for the same property.

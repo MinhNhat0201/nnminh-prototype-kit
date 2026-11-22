@@ -7,9 +7,12 @@
   "define.extract.rule": "Rule (to complete)",
   "define.extract.kind.text": "text",
   "define.extract.kind.message": "message",
+  "define.extract.kind.string": "text in script",
   "define.extract.kind.input": "input constraint",
   "define.extract.kind.limit": "limit",
   "define.extract.kind.route": "route",
   "define.extract.kind.storage": "storage",
-  "define.extract.counts": "Rows: {text} text, {message} messages, {input} input constraints, {limit} limits, {route} routes, {storage} storage keys."
+  "define.extract.note.dynamic": "(route built at run time: read the code)",
+  "define.extract.note.wrapper": "(storage through a wrapper? check the code)",
+  "define.extract.counts": "Rows: {text} text, {message} messages, {string} text in scripts, {input} input constraints, {limit} limits, {route} routes, {storage} storage keys."
 }
