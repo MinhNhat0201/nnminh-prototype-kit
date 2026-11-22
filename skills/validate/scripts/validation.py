@@ -12,7 +12,10 @@ Commands:
       scripts build (a Vue or React bundle) are found too: hash links, data-route attributes, the hash a tab or nav button
       sets, and ids / aria-labels of visible controls inside the content root (--content-root, else plan or
       kit.config.json > validate.contentRoot, default "main, #app, [role=main]": the first that matches, never the shell);
-      screens are named from the page title and heading. Routes with a parameter (#/n/:id) are listed under _paramRoutes.
+      screens are named from the page title and heading; other buttons of the content root are each clicked once in a
+      fresh page (never one named like delete, remove, reset) and a hash they set becomes a screen; with no route in the
+      files the URL as given is the first screen. Routes with a parameter (#/n/:id) are listed under _paramRoutes.
+      When nothing is found the sample plan is written with a NOTE (pass --routes).
       Without --from-manifest the starter plan is read from the app: one screen per page and hash route (href="#/…",
       "#/…" in route tables, router paths), one flow per hash link, control ids as selector hints (--blank: template).
       --from-manifest builds the screens from the capture manifest of annotate/handoff instead: each screen gets the
@@ -46,7 +49,10 @@ Every command takes --dir <folder>: plan, runs and baseline there instead of <pa
       Run the same plan (screens, states, flows) on two builds (an HTML page and its Vue port, before and after a
       refactor) and compare per screen and state: visible text, interactive elements by role and name, aria states,
       console errors, screenshot pixels (Pillow, when installed); per flow: result, URL after each step, localStorage at
-      the end. Writes <out>/parity.md and parity.json (Match / Differs with both values); exit 1 when anything differs.
+      the end. URLs are compared relative to each side's entry folder, path only (scheme, host and port ignored), so a
+      flow that leaves for another page of the same app matches. plan.mask (CSS selectors: clocks, timestamps) is masked
+      in screenshots and its text replaced before text compare; plan.normalize ["time"] replaces clock and relative times.
+      Writes <out>/parity.md and parity.json (Match / Differs with both values); exit 1 when anything differs.
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
   validation.py report --app <id> [--run <run folder>] [--waivers <file>] [--compare <run|report.json|none>]
@@ -154,6 +160,9 @@ PLAN_HELP = {
            "every state; \"axe\": false on a state or screen opts out.",
     "prepare": "plan.prepare: JS (or {js, reload: true}) run after every page load of every screen and flow, before their own "
                "steps, e.g. to dismiss a shell overlay. contentRoot: the page's own content (selectors, parity text).",
+    "mask": "plan.mask: CSS selectors of parts that change on every run (clocks, timestamps): masked in screenshots, and their "
+            "text replaced by '▒' before parity compares text and names. plan.normalize: [\"time\"] also replaces clock times "
+            "(09:27) and relative times ('5 min ago') in parity text.",
 }
 
 
@@ -267,6 +276,12 @@ def merge_discovered(plan, disc, routes_given=False):
         if label and sc["route"] == "":
             sc["name"] = label
     have = {sc["route"] for sc in screens}
+    if not screens:   # nothing in the files: the page as it opened (the URL given) is the first screen
+        h = disc.get("hash") or ""
+        screens.append({"id": "S01", "name": label or h or "Entry", "route": "", "states": []})
+        have.add("")
+        if h.startswith("#/") and h != "#/":
+            have.add(h)
     for r in disc.get("routes") or []:
         route = "" if r["route"] == "#/" else r["route"]
         if ":" in route:
@@ -314,7 +329,9 @@ def plan_from_app(cfg, app, page=None, routes=None, url=None, browser=False, con
     elif base.is_file():
         pages = [base]
     elif stack in ("react", "vue"):
-        pages = [f for f in sorted((base / "src").rglob("*")) if f.suffix in (".vue", ".tsx", ".jsx", ".ts", ".js")] if (base / "src").is_dir() else []
+        srcd = base / "src" if (base / "src").is_dir() else base   # a page folder inside a workspace package has no src/
+        pages = [f for f in sorted(srcd.rglob("*")) if f.suffix in (".vue", ".tsx", ".jsx", ".ts", ".js")
+                 and "node_modules" not in f.parts and "dist" not in f.relative_to(base).parts] if base.is_dir() else []
         pages += [f for f in [base / "dist" / "index.html"] if f.is_file()]   # routes only present in the built bundle
     else:
         pages = [f for f in sorted(base.rglob("*.html")) if not (set(f.relative_to(base).parts[:-1]) & SKIP_PARTS)
@@ -405,6 +422,11 @@ def cmd_init(cfg, a):
     }
     f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print("Wrote %s. Replace the example screens, states and flows with the app's own." % shown(cfg, f))
+    if not a.blank:
+        print("NOTE: this is the sample plan: no route was found in the app files%s. Pass --routes '#/,#/n/1' (concrete "
+              "routes, a parameter route needs a real id) or --url <the page served over HTTP> so the rendered page is read."
+              % (" nor in the rendered page" if a.url and not a.no_browser else
+                 " (no --url: the rendered page was not read)" if not a.url else " (--no-browser: the rendered page was not read)"))
 
 
 # ---------- diff ----------
@@ -804,17 +826,40 @@ def _errs(x):
     return sorted({re.sub(r"\d+", "#", e) for e in (x.get("errors") or [])})
 
 
-def parity_compare(ra, rb, diffs=None):
+TIME_RX = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AaPp][Mm])?\b"
+                     r"|\b\d+\s*(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|w|weeks?|months?|y|years?)\s+ago\b"
+                     r"|\b\d+\s*(?:giây|phút|giờ|ngày|tuần|tháng|năm)\s+trước\b", re.I)
+NORMALIZERS = {"time": lambda v: TIME_RX.sub("<time>", v)}   # plan.normalize: clock times (09:27) and relative times (5 min ago)
+
+
+def normalize_snap(snap, names):
+    """A parity snapshot with plan.normalize applied to its text lines and to the names of roles and aria states."""
+    fs = [NORMALIZERS[n] for n in names if n in NORMALIZERS]
+    if not fs or not snap:
+        return snap
+    f = lambda v: __import__("functools").reduce(lambda x, g: g(x), fs, v)
+    roles = {}
+    for k, v in (snap.get("roles") or {}).items():
+        roles[f(k)] = roles.get(f(k), 0) + v
+    return dict(snap, text=[f(x) for x in snap.get("text") or []], roles=roles,
+                aria={f(k): v for k, v in (snap.get("aria") or {}).items()})
+
+
+def parity_compare(ra, rb, diffs=None, normalize=()):
     """Rows {where, check, status: match|differs, a, b} for two results.json of the same plan (validate.js --parity).
-    Views match on screen, state, width and mode; flows on name. diffs = {shot: diff()} of A vs B screenshots."""
+    Views match on screen, state, width and mode; flows on name. diffs = {shot: diff()} of A vs B screenshots.
+    normalize = plan.normalize names (["time"]): applied to text and names on both sides before they are compared."""
     rows, diffs = [], diffs or {}
+    bad = [n for n in normalize if n not in NORMALIZERS]
+    if bad:
+        die("plan.normalize: unknown %s (known: %s)" % (", ".join(bad), ", ".join(NORMALIZERS)))
 
     def add(where, check, d, same_a="", same_b=None):
         rows.append({"where": where, "check": check, "status": "differs" if d else "match",
                      "a": _short(d[0]) if d else same_a, "b": _short(d[1]) if d else (same_a if same_b is None else same_b)})
 
     def snap_rows(where, x, y):
-        sx, sy = x.get("snap") or {}, y.get("snap") or {}
+        sx, sy = normalize_snap(x.get("snap") or {}, normalize), normalize_snap(y.get("snap") or {}, normalize)
         add(where, "text", _cmp_lines(sx.get("text"), sy.get("text")), "%d lines" % len(sx.get("text") or []))
         add(where, "roles", _cmp_dict(sx.get("roles"), sy.get("roles")), "%d elements" % sum((sx.get("roles") or {}).values()))
         add(where, "aria", _cmp_dict(sx.get("aria"), sy.get("aria")), "%d states" % len(sx.get("aria") or {}))
@@ -932,7 +977,8 @@ def cmd_parity(cfg, a):
         b = out / "b" / "shots" / shot.name
         if b.is_file():
             diffs[shot.name] = diff(shot, b, out / "diffs" / shot.name, a.threshold, a.min_pixels)
-    rows = parity_compare(res["a"], res["b"], diffs)
+    pl = json.loads(plan.read_text(encoding="utf-8"))
+    rows = parity_compare(res["a"], res["b"], diffs, pl.get("normalize") or ())
     m, n = write_parity(cfg, out, a.a, a.b, a.plan, rows)
     print("Parity: %s · %d match · %d differ" % (shown(cfg, out / "parity.md"), m, n))
     sys.exit(1 if n else 0)
@@ -1048,6 +1094,27 @@ def selftest():
     n_m, n_d = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", rows)
     pm = (d / "parity.md").read_text()
     assert n_d == 4 and "## Differs (4)" in pm and "| Visible text |" in pm and json.loads((d / "parity.json").read_text())["differs"] == 4, pm
+    # 0.12.1: plan.normalize ["time"]: clock and relative times on both sides; unknown names stop the run
+    ta = dict(view, snap=dict(snap, text=["Chat", "Today 09:27", "5 min ago", "2 phút trước"], roles={'button "Sent 09:27"': 1}))
+    tb = dict(view, snap=dict(snap, text=["Chat", "Today 09:28", "6 min ago", "3 phút trước"], roles={'button "Sent 09:28"': 1}))
+    assert any(r["status"] == "differs" for r in parity_compare({"items": [ta]}, {"items": [tb]}))
+    assert all(r["status"] == "match" for r in parity_compare({"items": [ta]}, {"items": [tb]}, normalize=["time"]) if r["check"] != "pixels")
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            parity_compare({"items": []}, {"items": []}, normalize=["dates"])
+        raise AssertionError("unknown normalizer accepted")
+    except SystemExit:
+        pass
+    # init --url: no screen in the files (a page folder of a workspace package, routes built at run time): the URL as
+    # given is the first screen, routes found by clicking buttons are added
+    mp = merge_discovered({"screens": [], "flows": []}, {"heading": "Notes", "hash": "#/n/7", "contentRoot": "main",
+                                                         "routes": [{"route": "#/n/7", "name": "x"}, {"route": "#/n/8", "name": "Card 8", "via": "role=button[name=\"Card 8\"]"}]})
+    assert [(x["route"], x["name"]) for x in mp["screens"]] == [("", "Notes"), ("#/n/8", "Notes · Card 8")], mp["screens"]
+    (d / "ws" / "pg" / "lib").mkdir(parents=True)
+    (d / "ws" / "pg" / "App.vue").write_text('<a href="#/list">L</a><button id="addBtn">+</button>')
+    (d / "ws" / "pg" / "lib" / "r.ts").write_text('const R = [{ path: "/n/:id" }]')
+    pp = plan_from_app({"_root": str(d), "stack": "html"}, {"path": "ws/pg", "stack": "vue"})
+    assert [x["route"] for x in pp["screens"]] == ["", "#/list"] and pp["_paramRoutes"] == ["#/n/:id"] and "#addBtn" in pp["_selectors"], pp
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")

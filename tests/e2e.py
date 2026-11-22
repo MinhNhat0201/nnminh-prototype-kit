@@ -759,6 +759,58 @@ def main():
                   json.dumps(pj["rows"])[:3000])
         finally:
             srv3.shutdown()
+        # 0.12.1: parity URLs relative to each side's entry (another port, another folder) when a flow leaves the page for
+        # another page of the app; plan.mask hides a timestamp; init --url on a Vue page folder without src/ and without
+        # hash links: the URL as given and the hashes its buttons set become screens, a "Delete" button is not clicked
+        card = ("<!doctype html><html lang=\"en\"><head><title>Cards</title></head><body><main id=\"main\"><h1>Cards</h1>"
+                "<p>Updated <span class=\"ts\"></span></p><div id=\"view\"></div><button id=\"one\">Open card 1</button>"
+                "<button id=\"del\">Delete all</button><button id=\"chat\">Chat</button></main><script>\n"
+                "document.querySelector('.ts').textContent = new Date().toISOString();\n"
+                "const show = () => { document.getElementById('view').textContent = location.hash ? 'Card ' + location.hash.slice(4) : 'List'; };\n"
+                "addEventListener('hashchange', show); show();\n"
+                "document.getElementById('one').onclick = () => { location.hash = '#' + '/c/' + 1; };\n"
+                "document.getElementById('del').onclick = () => { location.hash = '#' + '/deleted'; };\n"
+                "document.getElementById('chat').onclick = () => { location.href = '../chat/' + '#' + '/t/1'; };\n"
+                "</script></body></html>\n")
+        for side in ("a", "b"):
+            write(d / "par2" / side / "cards/index.html", card)
+            write(d / "par2" / side / "chat/index.html", "<!doctype html><html lang=\"en\"><head><title>Chat</title></head>"
+                  "<body><main><h1>Chat</h1></main></body></html>\n")
+        srv4, base4 = serve(d / "par2")
+        srv5, base5 = serve(d / "par2")
+        cfg_keep = (d / "kit.config.json").read_text()
+        try:
+            c2 = json.loads(cfg_keep)
+            c2["apps"].append({"id": "acme-cards", "path": "par2/a/cards", "stack": "vue"})
+            write(d / "kit.config.json", json.dumps(c2, indent=1))
+            out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-cards", "--url", base4 + "a/cards/",
+                       "--dir", d / "valdir-cards"], d)
+            cp = json.loads((d / "valdir-cards/plan.json").read_text())
+            routes = [x["route"] for x in cp["screens"]]
+            check(routes == ["", "#/c/1"] and cp["screens"][0]["name"] == "Cards" and "Replace the example" not in out,
+                  "validate init --url: no route in the files: the URL as given and the hash a button sets are screens, a Delete button is not tried",
+                  out + json.dumps(cp)[:2000])
+            pplan = {"screens": [{"id": "S01", "route": ""}],
+                     "flows": [{"name": "to chat", "steps": [{"click": "#chat"}, {"expectUrl": "#/t/1"}]}]}
+            write(d / "par2/plan.json", json.dumps(pplan))
+            run([PY, S / "validate/scripts/validation.py", "parity", "--a", base4 + "a/cards/", "--b", base5 + "b/cards/",
+                 "--plan", d / "par2/plan.json", "--dir", d / "par2-out0"], d, expect=1)
+            pj = json.loads((d / "par2-out0/parity.json").read_text())
+            st = {(r["where"], r["check"]): r for r in pj["rows"]}
+            check(st[("flow · to chat", "urls")]["status"] == "match" and st[("flow · to chat", "urls")]["a"] == "../chat/#/t/1"
+                  and st[("S01 · default · 1280px · light", "text")]["status"] == "differs",
+                  "validate parity: URLs relative to each side's entry (port and folder ignored) when a flow leaves the page", json.dumps(pj["rows"])[:3000])
+            pplan["mask"] = [".ts"]
+            write(d / "par2/plan.json", json.dumps(pplan))
+            out = run([PY, S / "validate/scripts/validation.py", "parity", "--a", base4 + "a/cards/", "--b", base5 + "b/cards/",
+                       "--plan", d / "par2/plan.json", "--dir", d / "par2-out"], d, expect=None)
+            pj = json.loads((d / "par2-out/parity.json").read_text())
+            check(pj["differs"] == 0 and any(r["check"] == "text" and r["where"].startswith("S01") for r in pj["rows"]),
+                  "validate parity: plan.mask hides a timestamp from text and pixel compare", out + json.dumps(pj["rows"])[:3000])
+        finally:
+            write(d / "kit.config.json", cfg_keep)
+            srv4.shutdown()
+            srv5.shutdown()
         import socket
         so = socket.socket()
         so.bind(("127.0.0.1", 0))
@@ -828,7 +880,7 @@ def main():
           "kitconf add-page --dry-run: plan only", out)
     hosted = json.loads(keep_cfg)
     hosted["apps"][0]["pageHook"] = PY + " -c \"import sys; print('hooked', sys.argv[1], sys.argv[2])\" {id} {usedBy}"
-    hosted["local"] = dict(hosted.get("local") or {}, vueCss="src/styles/local.css")
+    hosted["local"] = dict({k: v for k, v in (hosted.get("local") or {}).items() if k != "vueStyle"}, vueCss="src/page.css")
     write(d / "kit.config.json", json.dumps(hosted, indent=1))
     out = run([PY, KIT / "scripts/kitconf.py", "add-page", "--like", "acme-page", "--id", "acme-notes", "--host", "acme-web"], d)
     newc = json.loads((d / "kit.config.json").read_text())
@@ -844,6 +896,38 @@ def main():
     write(d / "kit.config.json", json.dumps(newc, indent=1))
     out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
     check("WARN: local.vueCss" in out, "kitconf check: warns on local.vueCss when every vue app is a page (K11-13)", out)
+    for loc in ({"vueCss": "src/styles/local.css"}, {"vueCss": "src/page.css", "vueStyle": "css-file"}):
+        newc["local"] = dict({k: v for k, v in (newc.get("local") or {}).items() if k != "vueStyle"}, **loc)
+        write(d / "kit.config.json", json.dumps(newc, indent=1))
+        out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
+        check("WARN: local.vueCss" not in out, "kitconf check: no local.vueCss warning for %s with page apps (0.12.1)" % loc, out)
+    # 0.12.1: apps[].output as a list (one page, two host builds); add-page inside an npm workspace package
+    write(d / "vue/package.json", json.dumps({"name": "acme-pages", "private": True, "workspaces": ["shared", "web"]}))
+    write(d / "vue/web/package.json", json.dumps({"name": "@acme/web", "private": True}))
+    write(d / "vue/web/app.config.ts", 'export default { pages: [\n  { id: "board", entry: "src/pages/board/main.ts", dest: "board/board.js" },\n] }\n')
+    write(d / "vue/web/src/pages/board/main.ts", 'import { createApp } from "vue"\nimport App from "./App.vue"\nimport { X } from "../../bridge"\n'
+          'createApp(App).mount("#mod")\nX.ready()\n')
+    write(d / "vue/web/src/pages/board/App.vue", "<template><p>Board</p></template>\n")
+    wsc = json.loads(keep_cfg)
+    wsc["apps"].append({"id": "acme-board", "path": "vue/web/src/pages/board", "stack": "vue", "type": "page",
+                        "build": "cd vue && node build.mjs --page board", "output": ["vue/web/dist/board.js", "vue/web2/dist/board.js"],
+                        "usedBy": ["apps/acme-web/board/board.js"]})
+    write(d / "kit.config.json", json.dumps(wsc, indent=1))
+    run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
+    out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=None)
+    check("output must be" not in out, "kitconf check: apps[].output may be a list", out)
+    out = run([PY, KIT / "scripts/kitconf.py", "add-page", "--like", "acme-board", "--id", "acme-plan", "--host", "acme-web"], d)
+    ent = next((a for a in json.loads((d / "kit.config.json").read_text())["apps"] if a["id"] == "acme-plan"), {})
+    pdir = d / "vue/web/src/pages/plan"
+    check(sorted(x.name for x in pdir.iterdir()) == ["main.ts"] and "npm install" not in out and "vue/web/app.config.ts" in out
+          and 'entry: "src/pages/plan/main.ts"' in out and "--page plan" in out and "./App.vue" in out
+          and ent.get("output") == ["vue/web/dist/plan.js", "vue/web2/dist/plan.js"] and not (d / "vue/web/src/pages/plan/package.json").exists(),
+          "kitconf add-page in an npm workspace: entry file only, page list and workspace build named, no npm install (0.12.1)", out)
+    wsc["apps"][-1]["output"] = ["vue/web/dist/board.js", 3]
+    write(d / "kit.config.json", json.dumps(wsc, indent=1))
+    out = run([PY, KIT / "scripts/kitconf.py", "check"], d, expect=1)
+    check("output must be a build file path or a non-empty list" in out, "kitconf check: a bad apps[].output is an error", out)
+    shutil.rmtree(d / "vue")
     write(d / "kit.config.json", keep_cfg)
     shutil.rmtree(d / "pages/acme-notes")
 

@@ -121,4 +121,11 @@ function pageContract(cfg, appId) {
   return typeof v === 'string' ? [v] : v.map(String);
 }
 
-module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, cssLoad, pageContract, KIT_ROOT };
+// apps[].output as a list (same as kitconf.py outputs): one build file (a string) or several (one page, several host apps).
+function outputs(cfg, appId) {
+  const a = ((cfg && cfg.apps) || []).find(x => x.id === appId) || {};
+  const v = a.output;
+  return typeof v === 'string' && v ? [v] : Array.isArray(v) ? v.filter(x => typeof x === 'string' && x) : [];
+}
+
+module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, cssLoad, pageContract, outputs, KIT_ROOT };

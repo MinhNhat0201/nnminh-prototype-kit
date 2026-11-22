@@ -20,7 +20,9 @@ Command line:
     python3 scripts/kitconf.py add-page --like acme-notes --id acme-tasks --host acme-web [--name "Tasks"] [--dry-run]
         # a new page app built like an existing one: folder skeleton renamed (package.json, vite.config, tsconfig,
         # src/main.ts…, not its components), apps[] entry (type page, pageContract, output, usedBy), host-side steps
-        # printed; apps[<host>].pageHook, when set, is run with {id} {path} {host} {like} {output} {usedBy} {root}
+        # printed; apps[<host>].pageHook, when set, is run with {id} {path} {host} {like} {output} {usedBy} {root}.
+        # A like app inside an npm workspace package: only its entry file (main.ts) is copied to the new page folder,
+        # nothing is installed, and the steps name the package's page list (app.config.ts …) and the workspace build
     python3 scripts/kitconf.py --selftest
 """
 import json
@@ -373,6 +375,49 @@ def url_names_app(cmd):
     return bool(re.search(r"https?://[^\s'\"]*\{app\}", cmd or ""))
 
 
+def outputs(cfg_or_app, app_id=None):
+    """apps[].output as a list: one build file (a string) or several (a list, one page built into several host apps).
+    Takes an app entry, or the config and an app id. Default []."""
+    a = cfg_or_app if app_id is None else next((x for x in (cfg_or_app or {}).get("apps") or [] if x.get("id") == app_id), {})
+    v = (a or {}).get("output")
+    return [v] if isinstance(v, str) and v else [x for x in v if isinstance(x, str) and x] if isinstance(v, list) else []
+
+
+def workspace_of(root, rel):
+    """(workspace folder, package folder), both relative to root, when rel lies inside a package of an npm workspace: a
+    folder from rel's parents up to root whose package.json lists "workspaces" (a list, or {"packages": [...]}) that
+    match a folder holding rel. None for a standalone app."""
+    root = Path(root).resolve()
+    target = (root / rel).resolve()
+    for d in [target] + list(target.parents):
+        if d != root and root not in d.parents:
+            break
+        pj = d / "package.json"
+        try:
+            ws = json.loads(pj.read_text(encoding="utf-8")).get("workspaces") if pj.is_file() else None
+        except (OSError, ValueError):
+            ws = None
+        if isinstance(ws, dict):
+            ws = ws.get("packages")
+        for pat in ws if isinstance(ws, list) else []:
+            for m in d.glob(str(pat).strip("/")):
+                if m.is_dir() and (m == target or m in target.parents) and (m / "package.json").is_file():
+                    return d.relative_to(root).as_posix() or ".", m.relative_to(root).as_posix()
+    return None
+
+
+PAGE_LISTS = ("app.config.*", "pages.config.*", "pages.json", "src/pages.*", "src/pages/index.*")
+
+
+def page_list_file(root, pkg):
+    """The package's page list file (app.config.ts, pages.config.*, …) relative to root, or None."""
+    for pat in PAGE_LISTS:
+        for f in sorted((Path(root) / pkg).glob(pat)):
+            if f.is_file():
+                return f.relative_to(root).as_posix()
+    return None
+
+
 def page_contract(cfg, app_id):
     """Lines of apps[].pageContract: what every page of the app must do for its shell (a string is one line). Default []."""
     for a in (cfg or {}).get("apps") or []:
@@ -432,9 +477,10 @@ def plan_page(cfg, like_id, new_id, host_id, name=None):
     pre, _, suf = like_id.partition(lslug) if lslug in like_id else ("", "", "")
     nslug = new_id[len(pre):len(new_id) - len(suf)] if lslug in like_id and new_id.startswith(pre) and new_id.endswith(suf) \
         and len(new_id) > len(pre) + len(suf) else new_id
-    np_ = (Path(lp).parent / nslug).as_posix()
     if not (root / lp).is_dir():
         raise ValueError("the folder of %s is missing: %s" % (like_id, lp))
+    ws = workspace_of(root, lp)   # (workspace, package) when the like app is a page of an npm workspace package
+    np_ = (Path(ws[1]) / "src" / "pages" / nslug).as_posix() if ws and ws[1] == lp else (Path(lp).parent / nslug).as_posix()
     if (root / np_).exists():
         raise ValueError("%s already exists" % np_)
     swaps = [(lp, np_), (like_id, new_id), (lslug, nslug)]
@@ -448,7 +494,13 @@ def plan_page(cfg, like_id, new_id, host_id, name=None):
                 v = v.replace(a, b)
         return v
     files = {}
-    for pat in PAGE_FILES:
+    src_like = (root / lp / "src") if ws and ws[1] == lp else root / lp
+    for pat in () if not ws else ("main.ts", "main.js", "index.ts", "index.js"):   # workspace: the entry file only
+        f = src_like / pat
+        if f.is_file():
+            files[pat] = ren(f.read_text(encoding="utf-8"), config=False)
+            break
+    for pat in () if ws else PAGE_FILES:
         for f in sorted((root / lp).glob(pat)):
             if not f.is_file():
                 continue
@@ -465,12 +517,15 @@ def plan_page(cfg, like_id, new_id, host_id, name=None):
                 text = ren(text, config=not rel.startswith("src/"))  # src/: keep component names (./Notes.vue)
             files[rel] = text
     missing = []
-    for rel in ("src/main.ts", "src/main.js"):
+    for rel in ("src/main.ts", "src/main.js") if not ws else tuple(files):
         for m in re.finditer(r"""(?:from\s+|import\s+)["'](\.{1,2}/[^"']+)["']""", files.get(rel, "")):
             tgt = (Path(rel).parent / m.group(1)).as_posix()
+            if tgt.startswith("../") and ws:
+                continue   # outside the page folder: the package's own file (bridge, shared code), there already
             if not any(k == tgt or k.startswith(tgt + ".") or k.startswith(tgt + "/") for k in files):
                 missing.append((rel, m.group(1)))
-    entry = {k: ren(v) for k, v in like.items() if k not in ("usedBy", "pageContract", "pageHook")}
+    entry = {k: [ren(x) for x in v] if k == "output" and isinstance(v, list) else ren(v)
+             for k, v in like.items() if k not in ("usedBy", "pageContract", "pageHook")}
     entry.update(id=new_id, name=name or new_id, path=np_, type="page")
     used = []
     for hid, u in page_hosts(cfg, like_id):
@@ -484,18 +539,31 @@ def plan_page(cfg, like_id, new_id, host_id, name=None):
     if like.get("pageContract"):
         entry["pageContract"] = like["pageContract"]
     hb = host.get("build") or ""
-    steps = ["cd %s && npm install (node_modules is not copied)" % np_,
-             "Write the page in %s/src (App.vue and its components); the like app's components are not copied" % np_]
+    if ws:
+        plist = page_list_file(root, ws[1])
+        line = next((x.strip() for x in (root / plist).read_text(encoding="utf-8").splitlines() if lslug in x), "") if plist else ""
+        steps = ["Write the page in %s (App.vue and its components); only %s was copied, and nothing is installed: the "
+                 "workspace %s has one install for every package (npm ci there once)" % (np_, ", ".join(files) or "nothing", ws[0])]
+    else:
+        steps = ["cd %s && npm install (node_modules is not copied)" % np_,
+                 "Write the page in %s/src (App.vue and its components); the like app's components are not copied" % np_]
     for rel in sorted({r for r, _x in missing}):
         steps.append("%s/%s imports %s, which are not copied: write them, or trim %s"
                      % (np_, rel, ", ".join(x for r, x in missing if r == rel), rel))
-    steps += ["Host build (apps[%s].build): run `%s` before the host build step%s" % (
-                  host_id, entry.get("build") or "the page build", " (now: %s)" % hb if hb else ""),
-              "Host build: copy %s to %s" % (entry.get("output") or "the build output", ", ".join(entry["usedBy"])),
+    if ws:
+        steps.append("Register the page in %s%s" % (plist or "the package's page list (%s)" % ws[1],
+                                                    " (like the line of %s: %s)" % (lslug, ren(line)) if line else ""))
+        steps.append("Build through the workspace: `%s` (the like app's build, renamed; check the command)" % (entry.get("build") or "the workspace build"))
+    outs = outputs(entry)
+    steps += ["Host build (apps[%s].build): %s%s" % (
+                  host_id, "it must build the workspace before it copies (add the page build when it does not)" if ws else
+                  "run `%s` before the host build step" % (entry.get("build") or "the page build"), " (now: %s)" % hb if hb else ""),
+              "Host build: copy %s to %s" % (", ".join(outs) or "the build output", ", ".join(entry["usedBy"])),
               "Host page: the page of %s that loads %s, its route and nav entry (model: the like app's host page)"
               % (host_id, ", ".join(Path(x).name for x in entry["usedBy"])),
               "Read the contract: python3 <kit>/scripts/kitconf.py contract --app %s" % new_id]
-    return {"path": np_, "files": files, "entry": entry, "steps": steps, "missing": missing, "like": like_id, "host": host_id}
+    return {"path": np_, "files": files, "entry": entry, "steps": steps, "missing": missing, "like": like_id, "host": host_id,
+            "workspace": ws[0] if ws else None}
 
 
 def add_page(cfg, plan, dry=False):
@@ -526,7 +594,7 @@ def add_page(cfg, plan, dry=False):
     if hook and not dry:
         e = plan["entry"]
         code = run_command(cfg, fill_command(hook, id=e["id"], path=e["path"], host=plan["host"], like=plan["like"],
-                                             output=e.get("output") or "", usedBy=e["usedBy"][0], root=cfg["_root"]),
+                                             output=" ".join(outputs(e)), usedBy=e["usedBy"][0], root=cfg["_root"]),
                            "apps[%s].pageHook" % plan["host"])
     print("Left to do%s:" % (" (the pageHook may have done some)" if hook else ", by hand (no apps[%s].pageHook)" % plan["host"]))
     for i, x in enumerate(plan["steps"], 1):
@@ -538,7 +606,7 @@ def app(cfg, app_id):
     for a in cfg["apps"]:
         if a.get("id") == app_id:
             return _merge({"type": "single", "entry": "index.html", "build": None, "check": None, "stack": cfg["stack"],
-                           "pageContract": [], "pageHook": None}, a)
+                           "pageContract": [], "pageHook": None, "output": None}, a)
     sys.exit(f"ERROR: app '{app_id}' is not declared in kit.config.json > apps.")
 
 
@@ -605,6 +673,10 @@ def check(cfg):
             errs.append(f"app '{a.get('id')}': usedBy must be a list of file paths (where the build output is copied)")
         if a.get("type") == "page" and not ub:
             errs.append(f"app '{a.get('id')}': type page needs usedBy (the files of other apps its build output becomes)")
+        out = a.get("output")
+        if out is not None and not (isinstance(out, str) and out) and \
+                (not isinstance(out, list) or not out or not all(isinstance(x, str) and x for x in out)):
+            errs.append(f"app '{a.get('id')}': output must be a build file path or a non-empty list of them (one per host build)")
         for k in ("sources", "generated"):
             v = a.get(k)
             if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
@@ -700,7 +772,10 @@ def warnings(cfg):
     except (OSError, ValueError, KeyError):
         return out
     vue = [a for a in cfg.get("apps") or [] if a.get("stack", cfg.get("stack")) == "vue"]
-    if vue and all(a.get("type") == "page" for a in vue) and "vueCss" in (raw.get("local") or {}):
+    rl = raw.get("local") or {}
+    # only a vueCss changed from the default, in sfc style, says the project expects the kit to use it
+    if vue and all(a.get("type") == "page" for a in vue) and rl.get("vueCss") not in (None, DEFAULTS["local"]["vueCss"]) \
+            and rl.get("vueStyle", DEFAULTS["local"]["vueStyle"]) != "css-file":
         out.append("local.vueCss is set, but every vue app is type page (%s): vueCss is only read for vue SPAs. A page app "
                    "puts its local CSS blocks in the host app's CSS, as the host's pageContract says (kitconf.py contract "
                    "--app <page app>); remove local.vueCss or point the pageContract at the host file."
@@ -817,7 +892,7 @@ def selftest():
     (pg / "src" / "main.ts").write_text('import { createApp } from "vue"\nimport App from "./App.vue"\ncreateApp(App).mount("#mod")\n')
     (pg / "src" / "App.vue").write_text("<template><p>Notes</p></template>\n")
     (pg / "src" / "components" / "List.vue").write_text("<template />\n")
-    raw = {"ds": "ds/acme", "local": {"vueCss": "src/styles/local.css"}, "apps": [
+    raw = {"ds": "ds/acme", "local": {"vueCss": "src/local.css"}, "apps": [
         {"id": "web", "path": "apps/web", "type": "multi", "pageContract": ["Edit shared/ through build.py only"]},
         {"id": "web2", "path": "apps/web2", "type": "multi", "pageHook": None},
         {"id": "notes-vue", "path": "vue/notes", "stack": "vue", "type": "page", "build": "cd vue/notes && npm run build",
@@ -853,7 +928,41 @@ def selftest():
     assert [a["id"] for a in c["apps"]] == ["web", "web2", "notes-vue", "tasks-vue"] and page_hosts(c, "tasks-vue") == [("web2", "apps/web2/tasks/tasks.js")]
     raw["local"] = {}
     (d / "kit.config.json").write_text(json.dumps(raw, indent=2))
-    assert warnings(load(d)) == [], "vueCss left at its default: no warning"
+    assert warnings(load(d)) == [], "vueCss not set: no warning"
+    raw["local"] = {"vueCss": "src/styles/local.css"}
+    (d / "kit.config.json").write_text(json.dumps(raw, indent=2))
+    assert warnings(load(d)) == [], "vueCss equal to the default: no warning"
+    raw["local"] = {"vueCss": "src/x.css", "vueStyle": "css-file"}
+    (d / "kit.config.json").write_text(json.dumps(raw, indent=2))
+    assert warnings(load(d)) == [], "vueStyle css-file with page apps: no warning"
+    # 0.12.1: apps[].output as a list; add-page inside an npm workspace (one install, a page list file, entry file only)
+    assert outputs({"output": "a.js"}) == ["a.js"] and outputs({"output": ["a.js", "b.js"]}) == ["a.js", "b.js"] and outputs({}) == []
+    c = load(d)
+    c["apps"][2]["output"] = ["vue/notes/dist/notes.js", "vue/notes/dist-v1/notes.js"]
+    assert not [e for e in check(c) if "output" in e] and outputs(c, "notes-vue")[1].endswith("dist-v1/notes.js")
+    c["apps"][2]["output"] = []
+    assert [e for e in check(c) if "output must be" in e], check(c)
+    w = d / "ws"
+    (w / "app2" / "src" / "pages" / "notes").mkdir(parents=True)
+    (w / "package.json").write_text(json.dumps({"name": "ws", "workspaces": ["shared", "app2"]}))
+    (w / "app2" / "package.json").write_text(json.dumps({"name": "@acme/app2"}))
+    (w / "app2" / "app.config.ts").write_text('pages: [\n  { id: "notes", entry: "src/pages/notes/main.ts", dest: "notes/notes.js" },\n]\n')
+    (w / "app2" / "src" / "pages" / "notes" / "main.ts").write_text(
+        'import { createApp } from "vue"\nimport App from "./App.vue"\nimport { X } from "../../bridge"\ncreateApp(App).mount("#mod")\nX.ready()\n')
+    (w / "app2" / "src" / "pages" / "notes" / "App.vue").write_text("<template><p /></template>\n")
+    assert workspace_of(d, "ws/app2/src/pages/notes") == ("ws", "ws/app2") and workspace_of(d, "vue/notes") is None
+    raw["apps"].append({"id": "notes-ws", "path": "ws/app2/src/pages/notes", "stack": "vue", "type": "page",
+                        "build": "cd ws && node build.mjs --app app2 --page notes",
+                        "output": ["ws/app2/dist/notes.js", "ws/app1/dist/notes.js"], "usedBy": ["apps/web/notes/notes.js"]})
+    (d / "kit.config.json").write_text(json.dumps(raw, indent=2))
+    c = load(d)
+    pl = plan_page(c, "notes-ws", "tasks-ws", "web2")
+    e, st = pl["entry"], "\n".join(pl["steps"])
+    assert pl["path"] == "ws/app2/src/pages/tasks" and set(pl["files"]) == {"main.ts"} and pl["workspace"] == "ws", pl
+    assert e["output"] == ["ws/app2/dist/tasks.js", "ws/app1/dist/tasks.js"] and e["build"].endswith("--page tasks"), e
+    assert "npm install" not in st and "ws/app2/app.config.ts" in st and 'entry: "src/pages/tasks/main.ts"' in st \
+        and "./App.vue" in st and "../../bridge" not in st and "node build.mjs --app app2 --page tasks" in st, st
+    assert "ws/app2/dist/tasks.js, ws/app1/dist/tasks.js" in st, st
     print("kitconf selftest OK")
 
 

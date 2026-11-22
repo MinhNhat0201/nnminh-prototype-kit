@@ -1,6 +1,6 @@
 {
   "name": "kit",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "description": "Plan, build, annotate and hand off HTML prototypes with any design system. Each project points the kit at its design system with kit.config.json and a ds/<name>/ profile.",
   "author": { "name": "nnminh" },
   "license": "MIT",
