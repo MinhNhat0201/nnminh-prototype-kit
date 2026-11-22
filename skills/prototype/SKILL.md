@@ -16,7 +16,17 @@ Goal: screens that look like the user's product, reuse DS components as much as 
 Reason: the DS is the single source of truth; every home-made component is maintenance debt for every app.
 
 
-## Step 1. Read configuration and input
+## Step 0. Which DS and design source apply
+
+Decide this before anything else, per app; never assume the project-wide one.
+
+| Source | Read it from | Means |
+|---|---|---|
+| DS profile | `apps[].ds` of the target app, else the top-level `ds` (`python3 <kit>/scripts/kitconf.py --app <app>` prints the merged one) | the tokens, components, version label and rules of that profile; a web and a mobile app may use different profiles |
+| Design source note | `apps[].designSource` (free text, optional), e.g. "screens follow the Figma library <name>; the DS covers tokens only" | where layouts and components come from when it is not the DS catalogue alone; follow it, and still use only tokens of the profile |
+| How the DS CSS loads | `ds.json > css.load` / `apps[].css.load` (`embed` or `link`, see step 5) | where the DS CSS of a page lives |
+
+The note and the profile disagree, or neither covers the request: ask which one wins before building.
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
 - Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` only when the output says so). The rules override everything else here. The user states a new rule while you build → record it through `context` (decision, then `rules.py add`), never only in the app.
@@ -35,6 +45,13 @@ Reason: the DS is the single source of truth; every home-made component is maint
 - Never write a token, class, component name or version from memory. Source unreadable → stop and say so; never invent styles.
 
 ## Step 3. Map every element to the catalogue
+
+Build ladder, in this order; take the first step that works and say which one in the mapping table:
+1. **Reuse** a DS component (or the app's existing screen part that already uses it).
+2. **Compose** DS components and tokens (layout, spacing, surfaces), no new class.
+3. **Local** block (gate B in step 4), tokens only.
+4. **Propose** to the DS (gate C), still built as a local block.
+Write the least code that does the job: no new helper, wrapper or option nobody asked for.
 
 Table: `element | DS component (class / React / Vue name, variant) | match level`.
 
@@ -60,7 +77,7 @@ Each question states: proposed name, role, where it sits in the image or flow, w
 | Option | What you do |
 |---|---|
 | **A. Compose existing** (first; mark "Recommended" when the gap is small or the element is type (c)) | Use the nearest DS component or compose DS components. Nothing new. |
-| **B. Local block** | Class prefix `local.prefix`, tokens only, inside a `/* <local.marker>: <name> */` block (one name per block; file location per stack below). Register it: `python3 <kit>/skills/contribute/scripts/registry.py update`, then fill the new entry in `local.registry` (title, kind, status, summary, where, vs_ds, decision with reason, decided_on). |
+| **B. Local block** | Class prefix `local.prefix`, tokens only, inside a `/* <local.marker>: <name> */` block (one name per block; file location per stack below). Register it: `python3 <kit>/skills/contribute/scripts/registry.py update` (it runs `local.command.update` when the project sets one), then fill every **new and changed** entry in `local.registry` (title, kind, status, summary, where, vs_ds, decision with reason, decided_on; for a changed block also what changed and why). |
 | **C. Local + proposal to the DS** | Build as B, set `status: "propose"` and fill the `proposal` block `contribute` requires (name, type, purpose, anatomy, usage rules, tokens used and missing, version bump; variants, states, reused DS components, what is really missing). Then `registry.py ack <id>`. Each later change to the block: review the proposal and `ack` again. Unverified facts → "Unconfirmed: …", never empty, never guessed. |
 
 - The user wants to keep a distinctive look from the image (large radius, dense layout): say it is a deviation from DS tokens and let them decide here. Never copy it on your own.
@@ -101,7 +118,7 @@ When the user chooses A:
 - Links between pages go through the app's route table with relative paths; never hard-code a site URL.
 - The page opens directly from its link. Missing hand-over data → a valid empty state, no error.
 - Add the entry point (nav item, chip) through the route table.
-- Each `html` page file embeds the DS CSS and the version label.
+- Each `html` page file loads the DS CSS the way the app does (`css.load`, step 5) and carries the version label.
 - Extra tests: open the link directly, reload keeps the screen, Back/Forward, unknown hash, moving between pages.
 
 Unattended: create no new file or route; build as B and put the "New page" announcement with the A proposal at the top of the report.
@@ -125,7 +142,7 @@ Per stack (see `<kit>/docs/stacks.md`):
 | | `html` | `react` | `vue` |
 |---|---|---|---|
 | Where | `apps/<app>/index.html` (or the page file chosen in 4b) | `apps/<app>/src/pages/<Page>.tsx` + route | `apps/<app>/src/pages/<Page>.vue` + route |
-| DS CSS | Embedded bundle between `/* @ds:begin */` and `/* @ds:end */` (`css.marker`); never edit inside it | Imported once in `src/index.css`; do not re-import | Same as React |
+| DS CSS | `css.load` `embed` (default): the bundle between the `ds.json > css.marker` comments of each page. `link`: one `<link rel="stylesheet">` to the app's DS file (`css.linkPath`, relative to the app folder; a page in a sub-folder uses `../`). Never edit inside either | Imported once in `src/index.css`; do not re-import | Same as React |
 | Components | DS classes from `catalog.md` | React column of `components.map` | Vue column of `components.map`; with `ds.json > components.vue`, only the DS Vue components (props from its props map) |
 | Styling | Tokens via `var(...)` in the app's CSS | Tailwind classes mapped to tokens; no arbitrary values (`bg-[#fff]`, `p-[13px]`), no inline `style={{…}}` for colour or spacing | Same as React; no `:style` for colour or spacing |
 | Local blocks | `/* LOCAL: <name> */` block in the app CSS | `src/components/local/<Name>.tsx` with the header comment; classes keep `x-` | `src/components/local/<Name>.vue`, same |
@@ -141,13 +158,14 @@ Run `validate` for the screens, states and flows of this wave (`validation.py ru
 - Light and dark mode; at least two brands if `theming.brand.values` has several.
 - Mobile or responsive screens: system text size 200% (at 390 px, root font size 200%). Everything still visible: no clipped text, no overlap, no lost buttons or inputs; text wraps and frames grow.
 - No hard-coded values left (grep the changed code for hex, `rgb(`, px colour/spacing, and per-stack patterns above).
-- Local blocks added or changed: `python3 <kit>/skills/contribute/scripts/registry.py check` passes.
+- Local blocks added or changed: `python3 <kit>/skills/contribute/scripts/registry.py check` passes, and every new or changed entry has its notes filled.
 - Capture the new screen next to the reference image and compare layout, order and behaviour (not style).
-- Open every main state in the flow (empty, error, loading).
+- Open every main state in the flow: empty, error, loading, and edge data (long names, many items, none, a missing image). The request rarely names them; build them with DS components (empty and error patterns from the catalogue) and list the ones you could not build.
 
 ## Step 7. Save and report
 
-- Save the files. Add an entry to `paths.changelog` (date, app, screens, DS version, tests). Open a PR only if the user asks; never merge.
+- Save the files. Add an entry to `paths.changelog` (date, app, screens, DS version, tests). Open a PR only if the user asks, following the project's own branch and PR rules (`rules.py list --skill pr`); never merge.
+- Optional project step after a build (`kit.config.json > prototype.post`, off by default; for example the project's own preview or publish script): `python3 <kit>/scripts/kitconf.py hook prototype.post --app <app>` runs it in the project root and prints its output and exit code. Run it only when it is set and the user wants it this time; the kit itself never publishes.
 - Decision log (if the project has one): each `approved` decision you built → `decisions.py set <id> implemented --note "<app, screens>"`. Design choices you made that nobody approved → `decisions.py add --status proposed`, and list them in the report.
 - Short report:
   - element mapping table (element | DS component | match level), with differences from the reference image and why;

@@ -32,7 +32,17 @@ from demo_links import app_url, check_url, first_screen, load_screens, read_json
 from kitconf import load, t, version_label, app as app_entry  # noqa: E402
 
 TEMPLATE = HERE.parent / 'assets' / 'wireflow-template.js'
-IMG_SUFFIX = ' · image'  # fixed layer-name suffix of image frames; mapjs and the mockup audit match on it
+IMG_SUFFIX = ' · image'  # default layer-name suffix of image frames (kit.config.json > figma.imageSuffix changes it)
+
+
+def suffixes(cfg):
+    """[suffix the board is built with, other suffixes mapjs/retitlejs accept]: figma.imageSuffix, else the English one,
+    plus the locale's (wireflow.imageSuffix) and the English one, so boards built by other tools or in another
+    language still map."""
+    cfg = cfg or {}
+    own = ((cfg.get('figma') or {}).get('imageSuffix')) or IMG_SUFFIX
+    loc = t(cfg if cfg.get('language') else 'en', 'wireflow.imageSuffix')
+    return list(dict.fromkeys([own, loc if loc != 'wireflow.imageSuffix' else IMG_SUFFIX, IMG_SUFFIX]))
 LABELS = ('openPrototype', 'openFlow', 'demoNote', 'legend', 'toConfirm', 'pageChange', 'outOfScope', 'offflow')
 
 
@@ -123,7 +133,7 @@ def build(a):
 
     data = {
         'page': page, 'pageId': a.page_id.replace('-', ':'), 'title': title, 'meta': meta, 'width': a.width,
-        'scale': a.scale, 'imgSuffix': IMG_SUFFIX, 'L': labels, 'C': colours(a.accent),
+        'scale': a.scale, 'imgSuffix': suffixes(cfg)[0], 'L': labels, 'C': colours(a.accent),
         'screens': {i: compact(by[i]) for i in used},
         'flows': [[f['id'], f['name'], [[r.get('label', ''), r['items']] for r in f['rows']], f.get('url', ''), f.get('start', '')]
                   for f in flows['flows']],
@@ -168,21 +178,23 @@ MAPJS = """const b = await figma.getNodeByIdAsync(%(root)s);
 if (!b) throw new Error('Board not found: ' + %(root)s);
 let p = b; while (p && p.type !== 'PAGE') p = p.parent;
 await figma.setCurrentPageAsync(p);
-const S = %(suffix)s, m = {}, imgs = {};
-for (const n of b.findAll(x => x.type === 'FRAME' && x.name.endsWith(S))) { const id = n.name.slice(0, -S.length); if (!m[id]) { m[id] = n.parent.id; imgs[id] = n.id; } }
+const SS = %(suffix)s, m = {}, imgs = {};
+const sfx = name => SS.find(x => name.endsWith(x));
+for (const n of b.findAll(x => x.type === 'FRAME' && sfx(x.name))) { const id = n.name.slice(0, -sfx(n.name).length).trim(); if (!m[id]) { m[id] = n.parent.id; imgs[id] = n.id; } }
 return { ...m, _imgs: imgs, _board: b.id, _title: b.name, _page: p.id, _pageName: p.name };"""
 
 RETITLEJS = """const b = await figma.getNodeByIdAsync(%(root)s);
 if (!b) throw new Error('Board not found: ' + %(root)s);
 let p = b; while (p && p.type !== 'PAGE') p = p.parent;
 await figma.setCurrentPageAsync(p);
-const T = %(title)s, S = %(suffix)s;
+const T = %(title)s, SS = %(suffix)s;
+const sfx = name => SS.find(x => name.endsWith(x));
 b.name = T;
 const h = b.findOne(x => x.type === 'TEXT' && x.name === 'Board title');
 if (h) { await figma.loadFontAsync(h.fontName); h.characters = T; }
 const first = {}, imgs = {}; let copied = 0;
-for (const n of b.findAll(x => x.type === 'FRAME' && x.name.endsWith(S))) {
-  const id = n.name.slice(0, -S.length);
+for (const n of b.findAll(x => x.type === 'FRAME' && sfx(x.name))) {
+  const id = n.name.slice(0, -sfx(n.name).length).trim();
   if (!first[id]) { first[id] = n; imgs[id] = n.id; continue; }
   if (n.fills !== figma.mixed && JSON.stringify(n.fills) !== JSON.stringify(first[id].fills)) { n.fills = first[id].fills; copied++; }
 }
@@ -190,7 +202,8 @@ return { board: b.id, title: b.name, titleText: !!h, copiedFills: copied, _imgs:
 
 
 def js_args(a, **extra):
-    d = {'root': json.dumps(a.root.replace('-', ':')), 'suffix': json.dumps(IMG_SUFFIX)}
+    cfg = load(require=False) or {'language': 'en'}
+    d = {'root': json.dumps(a.root.replace('-', ':')), 'suffix': json.dumps(suffixes(cfg), ensure_ascii=False)}
     d.update({k: json.dumps(v, ensure_ascii=False) for k, v in extra.items()})
     return d
 

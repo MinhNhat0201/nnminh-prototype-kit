@@ -12,7 +12,7 @@ Model and effort: `kit.config.json > skills.validate` (`model`, `effort`) when s
 
 Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill validate` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
 
-Script: `V=<kit>/skills/validate/scripts/validation.py` (`--help` lists every command); it runs `validate.js` (Playwright, installed Chromium; never `playwright install`). Folder: `<paths.validation>/<app>/` (default `docs/validation`).
+Script: `V=<kit>/skills/validate/scripts/validation.py` (`--help` lists every command); it runs `validate.js` (Playwright, installed Chromium; never `playwright install`). Folder: `<paths.validation>/<app>/` (default `docs/validation`); every command takes `--dir <folder>` to keep plan, runs and baseline elsewhere (for example the scratchpad during a trial).
 
 Goal: a prototype that was checked, not only generated.
 Reason: a screen that looks right in one screenshot can still break at another width, in dark mode, with a keyboard, or in its empty state.
@@ -20,7 +20,7 @@ Reason: a screen that looks right in one screenshot can still break at another w
 ## Step 1. Plan what to check
 
 - Load `kit.config.json`. Pick the app. `react` / `vue`: run the app's `build` first (the check opens `dist/index.html`). `html`: the entry file opens directly.
-- First time: `python3 $V init --app <id>` writes `plan.json`. Replace the example with the app's own:
+- First time: `python3 $V init --app <id>` writes a starter `plan.json` read from the app: one screen per page and hash route it finds (`href="#/…"`, `"#/…"` in route tables, router paths), one flow per hash link, and the ids of the main controls as selector hints (`_selectors`). `--blank` writes the example template instead. Check every route, then complete it:
   - **screens**: one per screen (S-ids from the `define` plan or the `annotate` spec), with its `route` (`""` for the entry, `#/settings` for hash routes);
   - **states** per screen: every state the screen has (empty, loading, error, success, long content), each with a `prepare` script run in the page (clear or seed `localStorage`, click a control, set a mock flag). A state you cannot reach without code changes → list it in the report as not checked; never fake it;
   - **flows**: the user flows of the wave, as steps (`click`, `fill`, `select`, `press`, `goto`, `wait`, `expectVisible`, `expectHidden`, `expectText`, `expectUrl`), each with the acceptance criterion it proves.
@@ -36,9 +36,10 @@ Reason: a screen that looks right in one screenshot can still break at another w
 |---|---|---|
 | **Fail** | A real defect | page or console error, horizontal overflow, axe critical or serious, a flow step that fails, a page that does not open, a `must` rule of the rules registry whose check fails |
 | **Needs a human** | The script cannot decide | touch target under the platform minimum on phones, clipped text, no visible focus ring, axe moderate or minor, a visual change against the baseline, a `should` or `note` rule whose check fails |
+| **Outside the scope** | A rule check of the whole project failed; not about these screens, never blocks | a project-wide `check` command (no `{app}` or `{path}`); `--rules-scope all` makes them count, `--rules-scope STY-001,A11Y-002` limits the blocking checks to those rules |
 
 Never reported: text for screen readers only (1×1 box, `clip`, `clip-path`), a file input hidden behind its button, a link inside a sentence (the inline exception of WCAG 2.5.8). Rules: `run` also runs the `check` of every active rule for `validate` (`rules.py check --app <id>`); `--no-rules` skips them.
-| **Skipped** | Not checked, and why | axe-core not installed, no baseline yet |
+| **Skipped** | Not checked, and why | axe-core not installed, no baseline yet, a rule check whose server is down or that does not apply to the app |
 
 ## Step 3. Read the report like a reviewer
 

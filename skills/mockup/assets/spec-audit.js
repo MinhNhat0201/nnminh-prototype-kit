@@ -26,8 +26,9 @@ const parity = { wireflow: [], specs: specs.children.map(n => code(n.name)), mis
 if (CFG.wireflowId) {
   const wf = await figma.getNodeByIdAsync(CFG.wireflowId);
   if (!wf) throw new Error('Wireflow board not found: ' + CFG.wireflowId);
-  wf.findAll(n => n.type === 'FRAME' && n.name.endsWith(CFG.imageSuffix))
-    .forEach(n => { const c = n.name.slice(0, -CFG.imageSuffix.length).trim(); if (!parity.wireflow.includes(c)) parity.wireflow.push(c); });
+  const SFX = [].concat(CFG.imageSuffix), sfx = name => SFX.find(x => name.endsWith(x));   // one suffix or a list
+  wf.findAll(n => n.type === 'FRAME' && sfx(n.name))
+    .forEach(n => { const c = n.name.slice(0, -sfx(n.name).length).trim(); if (!parity.wireflow.includes(c)) parity.wireflow.push(c); });
   parity.missing = parity.wireflow.filter(c => !parity.specs.includes(c));
   parity.extra = parity.specs.filter(c => !parity.wireflow.includes(c));
 }

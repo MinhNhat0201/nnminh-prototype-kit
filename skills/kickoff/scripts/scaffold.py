@@ -35,7 +35,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, version_label, STACKS, t as tr  # noqa: E402
+from kitconf import css_load, ds_rules, load, ds_path, version_label, STACKS, t as tr  # noqa: E402
 
 TEMPLATES = KIT / "templates"
 SKIP = {"node_modules", "dist", "dist-handoff", "__pycache__", ".vite"}
@@ -149,8 +149,19 @@ def fill(text, values, src):
     return PLACEHOLDER.sub(lambda m: values[m.group(1)], text)
 
 
+def link_ds(text, page_rel, link_path, marker):
+    """css.load "link": the embedded DS block of a page becomes <link rel="stylesheet"> to the app's DS file."""
+    depth = len(Path(page_rel).parts) - 1
+    href = "../" * depth + link_path
+    rx = re.compile(r"<style>\s*/\*\s*%s\s*\*/.*?/\*\s*%s\s*\*/\s*</style>" % (re.escape(marker["begin"]), re.escape(marker["end"])), re.S)
+    return rx.sub(lambda m: '<link rel="stylesheet" href="%s">' % href, text, count=1)
+
+
 def selftest():
     import tempfile
+    page = "<head><style>/* @ds:begin */\n:root{}\n/* @ds:end */</style><style>.x{}</style>"
+    assert link_ds(page, "settings/index.html", "acme.css", {"begin": "@ds:begin", "end": "@ds:end"}) == \
+        '<head><link rel="stylesheet" href="../acme.css"><style>.x{}</style>', "css.load link"
     ds = {"tailwind": False}
     assert template_for("vue", "spa", ds).name == "vue-plain" and template_for("react", "spa", ds).name == "react-plain"
     assert template_for("vue", "spa", {}).name == "vue" and template_for("html", "single", ds).name == "html"
@@ -249,7 +260,7 @@ def main():
         "DS_BUNDLE": "%s/%s" % (ds_rel, bundle),
         "DS_BUNDLE_FILE": bundle_file,
         "CATALOG": "%s/%s" % (ds_rel, ds.get("catalog") or "catalog.md"),
-        "RULES": "%s/%s" % (ds_rel, ds.get("rules") or "rules.md"),
+        "RULES": "%s/%s" % (ds_rel, ds_rules(ds)[0]),
         "DS_CSS": css,
         "VERSION": ds["version"],
         "VERSION_LABEL": html_attr(version_label(cfg)),
@@ -281,6 +292,7 @@ def main():
 
     # Plan every write first; write nothing when any target exists.
     plan = []  # (target, text)
+    link = css_load(cfg, a.app)["linkPath"] if stack == "html" else None
     default_markers = ("/* @ds:begin */", "/* @ds:end */")
     real_markers = ("/* %s */" % marker["begin"], "/* %s */" % marker["end"])
     for rel, f in template_files(tdir):
@@ -291,7 +303,11 @@ def main():
             text = json.dumps(pj, indent=2) + "\n"
         if f.suffix in (".html", ".css") and real_markers != default_markers:
             text = text.replace(default_markers[0], real_markers[0]).replace(default_markers[1], real_markers[1])
+        if link and f.suffix == ".html":
+            text = link_ds(text, rel.as_posix(), link, marker)
         plan.append((app_dir / rel, text))
+    if link:  # css.load "link": one DS file next to the pages, every page links it (sync rewrites the whole file)
+        plan.append((app_dir / link, css + "\n"))
     if stack in ("react", "vue"):
         plan.append((app_dir / "src" / "ds" / bundle_file,
                      "%s\n%s\n%s\n" % (real_markers[0], css, real_markers[1])))

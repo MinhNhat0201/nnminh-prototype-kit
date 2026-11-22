@@ -14,6 +14,8 @@
   "validate.reviewTitle": "Cần người xem",
   "validate.reviewNote": "Script không tự kết luận được các mục này. Designer xem từng mục rồi sửa, hoặc ghi lại lý do vì sao chấp nhận.",
   "validate.skippedTitle": "Bỏ qua",
+  "validate.outsideTitle": "Ngoài phạm vi",
+  "validate.outsideNote": "Lệnh kiểm quy tắc của cả dự án không đạt. Chúng không thuộc các màn đang kiểm nên không làm lượt này thất bại; sửa riêng hoặc chạy với --rules-scope all.",
   "validate.check": "Kiểm tra",
   "validate.where": "Ở đâu",
   "validate.detail": "Chi tiết",

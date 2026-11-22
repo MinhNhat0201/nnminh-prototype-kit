@@ -51,7 +51,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, t, ds_vue, app_ds  # noqa: E402
+from kitconf import load, ds_path, t, ds_vue, app_ds, css_load, fill_command  # noqa: E402
 import rules as RULES  # noqa: E402  (scripts/rules.py)
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".vite", ".next", ".nuxt", "coverage", ".git"}
@@ -74,7 +74,7 @@ PX_RADIUS = re.compile(r"border-radius\s*:\s*([^;}]*\d+(?:\.\d+)?px[^;}]*)")
 PX_SPACE = re.compile(r"(?:^|[;{\s])(?:margin|padding|gap|row-gap|column-gap)(?:-[a-z]+)?\s*:\s*([^;}]*\d+(?:\.\d+)?px[^;}]*)")
 SHADOW = re.compile(r"box-shadow\s*:\s*(?!none)([^;}]+)")
 FALLBACK = re.compile(r"var\([^()]*,\s*(?:#[0-9a-fA-F]{3,8}|rgba?\([^)]*\))\s*\)")
-RULE = re.compile(r"([^{}]+)\{([^{}]*)\}")
+RULE = re.compile(r"([^{}\s][^{}]*)\{([^{}]*)\}")   # a selector never starts with whitespace: no quadratic scan of blank runs
 CLASS = re.compile(r"\.([A-Za-z][\w-]*)")
 GENERIC = {"active", "selected", "open", "disabled", "hidden", "show", "hide", "left", "right", "center", "grow", "thumb", "small", "large"}
 VISUAL_PROPS = r"color|background[a-z-]*|border[a-z-]*|box-shadow|font[a-z-]*|line-height|height|min-height|padding[a-z-]*"
@@ -119,6 +119,17 @@ def norm(x):
     return re.sub(r"\s+", " ", x.strip())
 
 
+def rule_key(sel, body):
+    """A CSS rule compared by content: whitespace around punctuation and a trailing semicolon do not count."""
+    k = lambda x: re.sub(r"\s*([:;,>+~(){}])\s*", r"\1", norm(x)).rstrip(";")
+    return k(sel), k(body)
+
+
+def local_name(raw):
+    """Name of a LOCAL block header: whitespace and comment continuation stars of a multi-line header collapsed."""
+    return re.sub(r"\s+", " ", re.sub(r"\n\s*\*(?!/)", "\n", raw)).strip()
+
+
 def top_n(counter, n=None):
     """Like Counter.most_common, ties sorted by name so every run gives the same output."""
     return sorted(counter.items(), key=lambda x: (-x[1], str(x[0])))[:n]
@@ -151,7 +162,8 @@ class Ctx:
         self.STYLE_ID = re.compile(r'\bid\s*=\s*["\']%s[^"\']*["\']' % re.escape(sb), re.I) if sb else None
         loc = cfg["local"]
         self.local_prefix = loc["prefix"]
-        self.LOCAL = re.compile(r"/\*\s*%s:\s*([^*]*?)\s*\*/" % re.escape(loc["marker"]))
+        # a header may span lines (" * " continuation) and hold "*" (".m-*"): the name is read up to the closing */
+        self.LOCAL = re.compile(r"/\*\s*%s:\s*(.*?)\*/" % re.escape(loc["marker"]), re.S)
         bundle = self.ds["css"]["bundle"]
         if not bundle:
             die("ds.json > css.bundle is empty: the audit needs the DS CSS bundle.")
@@ -164,6 +176,13 @@ class Ctx:
         srcs = [ds_path(cfg, s) for s in self.ds["css"]["sources"] if "component" in s.lower()]
         self.components_css = [s for s in srcs if Path(s).is_file()] or [self.bundle_path]
         self.stack = cfg["stack"]
+        self.generic = set(GENERIC) | set(((self.ds.get("review") or {}).get("genericClasses")) or [])
+        # css.load "link": the DS file each app links (css.linkPath, relative to the app folder) is DS CSS as a whole
+        self.linked = set()
+        for a in cfg.get("apps") or []:
+            lp = css_load(cfg, a.get("id"))["linkPath"]
+            if lp and a.get("path"):
+                self.linked.add((self.root / a["path"] / lp).resolve())
 
     def apps(self):
         return {a["id"]: a for a in self.cfg["apps"] if a.get("id")}
@@ -175,12 +194,22 @@ class Ctx:
         return t(self.cfg, "review." + key, **kw)
 
 
+def globbed(root, patterns):
+    """Resolved files matched by glob patterns relative to the project root (** allowed)."""
+    out = set()
+    for pat in patterns or []:
+        out |= {f.resolve() for f in root.glob(pat) if f.is_file()}
+    return out
+
+
 def app_files(ctx, app):
     base = (ctx.root / app["path"]).resolve()
     if not base.exists():
         die("app '%s': path not found: %s" % (app["id"], app["path"]))
     if base.is_file():
         return [base]
+    generated = globbed(ctx.root, app.get("generated"))  # build output of the app's own sources: counted once, at the source
+    extra = sorted(f for f in globbed(ctx.root, app.get("sources")) if base not in f.parents)
     ds_dir = Path(ctx.cfg["_ds_dir"]).resolve()
     exts = EXT_HTML | EXT_CSS | EXT_SCRIPT | EXT_VUE
     built = build_outputs(ctx.cfg)
@@ -197,8 +226,11 @@ def app_files(ctx, app):
             continue  # a DS profile copied inside the app is DS, not app
         if f.name.endswith((".min.js", ".min.css")):
             continue
+        if f.resolve() in generated:
+            continue
         out.append(f)
-    return out
+    exts = EXT_HTML | EXT_CSS | EXT_SCRIPT | EXT_VUE
+    return out + [f for f in extra if f.suffix.lower() in exts and f not in generated]
 
 
 # ---------- DS facts ----------
@@ -261,7 +293,7 @@ def ds_facts(ctx, min_rules=3):
     for m in RULE.finditer(css):
         for c in set(CLASS.findall(m.group(1))):
             cnt[c] += 1
-    classes = {c for c, n in cnt.items() if n >= 3 and len(c) > 3 and c not in GENERIC}
+    classes = {c for c, n in cnt.items() if n >= 3 and len(c) > 3 and c not in ctx.generic}
     comp = strip("\n".join(read(f) for f in ctx.components_css))
     rootn, mods = collections.Counter(), collections.defaultdict(set)
     for m in RULE.finditer(comp):
@@ -277,6 +309,7 @@ def ds_facts(ctx, min_rules=3):
     cat = catalog_roots(ctx)
     if cat:  # the catalogue names the components: count those, not every class of the bundle
         roots = cat
+    roots -= ctx.generic  # ds.json > review.genericClasses: utility classes, not components
     classes |= roots  # root classes count even when short (btn, tag)
     rules = {(norm(m.group(1)), norm(m.group(2))) for m in RULE.finditer(css)}
     # wrapper classes that style a native control inside them, e.g. `.acme-select > select` (child) or `.acme-x select` (descendant)
@@ -405,7 +438,7 @@ def css_blocks(ctx, path, text):
     suf = path.suffix.lower()
     mask = lambda m: re.sub(r"[^\n]", " ", m.group(0))
     if suf in EXT_CSS:
-        if path.name == ctx.bundle_name:
+        if path.name == ctx.bundle_name or path.resolve() in ctx.linked:
             return [(1, text, re.sub(r"[^\n]", " ", text))]  # a copy of the DS bundle inside the app is DS CSS
         return [(1, "\n".join(ctx.REGION.findall(text)), ctx.REGION.sub(mask, text))]
     if suf in EXT_HTML | EXT_VUE:
@@ -421,7 +454,7 @@ def css_blocks(ctx, path, text):
 
 
 def imports_bundle(ctx, text):
-    n = re.escape(ctx.bundle_name)
+    n = "(?:%s)" % "|".join(re.escape(x) for x in {ctx.bundle_name} | {Path(p).name for p in ctx.linked})
     return bool(re.search(r"""(?:@import|import)\s*(?:url\()?\s*['"][^'"]*%s['"]""" % n, text)
                 or re.search(r"""<link\b[^>]*\bhref\s*=\s*['"][^'"]*%s['"]""" % n, text, re.I))
 
@@ -439,7 +472,10 @@ def declared_versions(ctx, files):
         txt = read(f)
         for m in meta.finditer(txt):
             seen["meta " + m.group(1)] += 1
-        for m in label.finditer(txt):
+        # the label counts only as visible text: comments, <script> and <style> often say "since <DS> x.y.z"
+        vis = re.sub(r"<(script|style)\b[^>]*>.*?</\1\s*>", " ", txt, flags=re.S | re.I)
+        vis = re.sub(r"<!--.*?-->|/\*.*?\*/|(?<![:\w])//[^\n]*", " ", vis, flags=re.S)
+        for m in label.finditer(vis):
             seen["label " + m.group(1)] += 1
     return seen
 
@@ -467,14 +503,25 @@ def audit_app(ctx, app, lib):
         a_, p_ = tailwind_counts(ctx, txt)
         tw_arb += a_
         tw_pal += p_
-    ds_css, app_css = strip("\n".join(ds_parts)), strip("\n".join(app_parts))
+    # the same rule in a source and in its generated copy (multi apps, other wrappers): count it once
+    seen_rules = set()
+
+    def once(m):
+        k = rule_key(m.group(1), m.group(2))
+        if k in seen_rules:
+            return ""
+        seen_rules.add(k)
+        return m.group(0)
+    app_parts = [RULE.sub(once, strip(x)) for x in app_parts]
+    ds_css, app_css = strip("\n".join(ds_parts)), "\n".join(app_parts)
     inline = [strip(x) for x in inline]
     res = {"app": app["id"], "name": app.get("name", app["id"]), "files": len(files)}
 
-    # 1. version
+    # 1. version: the <meta> wins when a page has one; labels count for consistency
     seen = declared_versions(ctx, files)
     vs = sorted({vkey(k) for k in seen if vkey(k)})
-    cur = vs[-1] if vs else None
+    metas = sorted({vkey(k) for k in seen if k.startswith("meta ") and vkey(k)})
+    cur = (metas or vs or [None])[-1]
     res["version"] = {"ds": lib["version"], "app": ".".join(map(str, cur)) if cur else None, "declared": dict(seen),
                       "behind": bool(cur and vkey(lib["version"]) and cur < vkey(lib["version"])),
                       "inconsistent": len(vs) > 1}
@@ -531,7 +578,7 @@ def audit_app(ctx, app, lib):
         if not ctx.VISUAL.search(m.group(2)):
             continue
         for c in set(CLASS.findall(m.group(1))):
-            if c in lib["classes"] and not c.startswith(ctx.local_prefix):
+            if c in lib["classes"] and not c.startswith(ctx.local_prefix) and c not in ctx.generic:
                 over[c] += 1
     same = sorted({norm(m.group(1)) for m in RULE.finditer(app_css) if norm(m.group(1)) in lib["sel"]
                    and not m.group(1).strip().startswith((":root", "html", "body", "@")) and not re.match(r"^[\d.%,\s]+$", m.group(1).strip())})
@@ -600,14 +647,14 @@ def audit_app(ctx, app, lib):
         data = json.loads(read(reg_path))
         items = data.get("components", []) if isinstance(data, dict) else data
         comps = [c for c in items if isinstance(c, dict) and c.get("app") in (app["id"], app.get("name"))]
-    blocks = sorted({m.strip() for txt in texts.values() for m in ctx.LOCAL.findall(txt)})
-    known = {str(c.get(k)) for c in comps for k in ("block", "name", "title", "id") if c.get(k)}
-    known |= {m.strip() for c in comps if c.get("anchor") for m in ctx.LOCAL.findall(str(c["anchor"]))}  # registry keeps the full comment
+    blocks = sorted({local_name(m) for txt in texts.values() for m in ctx.LOCAL.findall(txt)})
+    known = {local_name(str(c.get(k))) for c in comps for k in ("block", "name", "title", "id") if c.get(k)}
+    known |= {local_name(m) for c in comps if c.get("anchor") for m in ctx.LOCAL.findall(str(c["anchor"]))}  # registry keeps the full comment
     res["local"] = {"registry": str(reg_path.relative_to(ctx.root)), "registry_found": reg_path.is_file(), "total": len(comps),
                     "by_status": dict(collections.Counter(c.get("status") for c in comps)),
                     "pending": [c.get("title") or c.get("name") or c.get("id") for c in comps if c.get("status") == "pending"],
                     "blocks": blocks, "unregistered": [b for b in blocks if b not in known]}
-    res["css_lines"] = app_css.count("\n") + 1
+    res["css_lines"] = sum(1 for x in app_css.splitlines() if x.strip())  # non-empty lines; the masked DS region is blank
 
     # 9. DS Vue component layer (ds.json > components.vue): components rebuilt locally, shadcn-vue used instead
     cv = ds_vue(ctx.cfg)
@@ -644,9 +691,10 @@ def rule_rows(ctx, apps):
     for x in RULES.run_checks(ctx.cfg, skill="review"):
         if x["app"] and x["app"] not in apps:
             continue
-        lvl = "pass" if x["ok"] else ("deviation" if x["severity"] == "must" else "note")
+        lvl = {"pass": "pass", "skipped": "skipped"}.get(x["status"]) or ("deviation" if x["severity"] == "must" else "note")
         out.append({"_app": x["app"], "name": "%s %s: %s" % (ctx.tr("rule"), x["id"], x["title"]), "command": x["command"],
-                    "exit": x["exit"], "summary": x["summary"], "level": lvl, "rule": x["id"]})
+                    "exit": x["exit"] if x["exit"] is not None else "—", "summary": [x["reason"]] if x["status"] == "skipped" else x["summary"],
+                    "level": lvl, "rule": x["id"]})
     return out
 
 
@@ -657,18 +705,22 @@ def run_extra(ctx, apps):
         cmd = x.get("command")
         if not x.get("name") or not cmd:
             continue
-        per_app = "{app}" in cmd or "{path}" in cmd
+        per_app = any(k in cmd for k in ("{app}", "{path}", "{platform}", "{stack}"))
         for aid in (apps if per_app else [None]):
-            path = ((ctx.apps().get(aid) or {}).get("path") or "") if aid else ""
-            line = cmd.replace("{app}", shlex.quote(aid)).replace("{path}", shlex.quote(path)) if aid else cmd
+            a_ = (ctx.apps().get(aid) or {}) if aid else {}
+            vals = {"app": aid or "", "path": a_.get("path") or "", "platform": a_.get("platform") or "",
+                    "stack": a_.get("stack") or ctx.cfg.get("stack") or ""}
+            line = fill_command(cmd, **vals) if aid else cmd
             try:
                 r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
                 code, lines = r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()]
             except subprocess.TimeoutExpired:
                 code, lines = 124, ["timed out"]
-            summary = [ln for ln in lines if re.search(x["parse"], ln)][:6] if x.get("parse") else []
-            summary = summary or lines[-1:]  # parse matched nothing: the last line, as documented
-            lvl = "pass" if code == 0 else ("note" if x.get("level") == "note" else "deviation")
+            matched = [ln for ln in lines if re.search(x["parse"], ln)] if x.get("parse") else []
+            summary = matched[:6] or lines[-1:]  # parse matched nothing: the last line, as documented
+            # with parse, a matched line that counts something (a number other than 0) is a finding even at exit 0
+            counted = [ln for ln in matched if re.search(r"(?<![\w.])0*[1-9]\d*(?:[.,]\d+)?(?![\w.])", ln)]
+            lvl = "pass" if code == 0 and not counted else ("note" if x.get("level") == "note" else "deviation")
             out[aid].append({"name": x["name"], "command": line, "exit": code, "summary": summary, "level": lvl})
     return out
 
@@ -794,7 +846,7 @@ def selftest():
                                    {"name": "Per app", "command": py + " -c \"import sys; print('bad', sys.argv[1]); sys.exit(2)\" {app}"}]}}))
     ctx = Ctx(d)
     ex = run_extra(ctx, ["acme-vue"])
-    assert ex[None][0]["summary"] == ["flags: 3 off"] and ex[None][0]["level"] == "pass", ex[None]
+    assert ex[None][0]["summary"] == ["flags: 3 off"] and ex[None][0]["level"] == "deviation", "a parsed line with a count is a finding"
     assert ex["acme-vue"][0]["exit"] == 2 and ex["acme-vue"][0]["summary"] == ["bad acme-vue"], ex["acme-vue"]
     r = audit_app(ctx, ctx.apps()["acme-vue"], ds_facts(ctx))
     assert r["dsvue"]["rebuilt"] == ["apps/acme-vue/src/components/local/AcmeDialog.vue"], r["dsvue"]
@@ -814,6 +866,36 @@ def selftest():
     assert lib["roots"] == {"acme-btn"} and lib["roots_from"] == "catalog.json", lib["roots"]
     assert not declared_versions(ctx, app_files(ctx, ctx.apps()["acme-vue"])), "no version labels from scripts"
     assert r["dsvue"]["shadcn"] == ["apps/acme-vue/src/App.vue"] and r["dsvue"]["components"] == 2, r["dsvue"]
+    # 0.10: version label only as visible text, meta wins; multi-line LOCAL headers; generated copies and identical rules
+    # count once; non-empty line count; {platform}; a parsed line with a count is not a Pass; genericClasses; css.load link
+    web = d / "apps" / "web"
+    (web / "shared").mkdir(parents=True)
+    (web / "index.html").write_text('<meta name="ds-version" content="1.0.0"><footer>acme 1.0.0</footer>'
+                                    '<script>/* acme 0.5.0 era */ var a = "acme 0.4.0";</script>'
+                                    '<style>/* acme 0.3.0 */\n/* LOCAL: Chip list\n * for tags (.x-*) */ .x-chip{color:#123456}\n'
+                                    '.acme-btn{border-color:red}</style><link rel="stylesheet" href="ds.css">')
+    (web / "_shell.html").write_text("<style>.x-shell{color:#abcdef}</style>")
+    (web / "shared" / "shell.css").write_text(".x-shell { color: #abcdef }\n")
+    (web / "ds.css").write_text(":root{--acme-bg:#fff}.acme-btn{color:red}")
+    cfgj["apps"] = [{"id": "web", "path": "apps/web", "stack": "html", "platform": "desktop", "generated": ["apps/web/shared/**"],
+                     "css": {"load": "link", "linkPath": "ds.css"}}]
+    cfgj["review"]["extraChecks"] = [{"name": "Plat", "command": py + " -c \"import sys; print('small targets: 0 on', sys.argv[1])\" {platform}",
+                                      "parse": "targets"}]
+    (d / "kit.config.json").write_text(json.dumps(cfgj))
+    dsj = json.loads((d / "ds" / "acme" / "ds.json").read_text())
+    dsj["review"] = {"genericClasses": ["acme-btn"]}
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps(dsj))
+    ctx = Ctx(d)
+    files = app_files(ctx, ctx.apps()["web"])
+    assert not [f for f in files if f.name == "shell.css"], "apps[].generated skipped"
+    r = audit_app(ctx, ctx.apps()["web"], ds_facts(ctx))
+    assert r["version"]["app"] == "1.0.0" and not r["version"]["inconsistent"], r["version"]
+    assert r["local"]["blocks"] == ["Chip list for tags (.x-*)"], r["local"]["blocks"]
+    assert r["hard"]["hex"] == 2 and r["tokens"]["embedded"] == 1, (r["hard"]["hex"], r["tokens"])
+    assert r["override"]["rules"] == 0, "genericClasses are not overrides"
+    assert r["css_lines"] == 3, r["css_lines"]
+    ex = run_extra(ctx, ["web"])
+    assert ex["web"][0]["command"].endswith(" desktop") and ex["web"][0]["level"] == "pass", ex
     shutil.rmtree(d, ignore_errors=True)
     print("audit_app.py selftest OK")
 
@@ -839,7 +921,13 @@ def main():
         if k not in apps:
             die("app '%s' is not declared in kit.config.json > apps (declared: %s)" % (k, ", ".join(apps) or "none"))
     lib = ds_facts(ctx, a.min_rules)
-    out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ctx.label(), bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack + ("".join(sorted({", %s: %s" % (k, apps[k]["stack"]) for k in keys if apps[k].get("stack") and apps[k]["stack"] != ctx.stack})))), ""], []
+    labels = {}
+    for k in keys:
+        c_ = load(a.project, app=k)
+        if c_.get("_ds"):
+            labels.setdefault("%s %s" % (c_["_ds"]["label"], c_["_ds"]["version"]), []).append(k)
+    ds_text = ctx.label() if len(labels) <= 1 else "; ".join("%s (%s)" % (lb, ", ".join(ids)) for lb, ids in labels.items())
+    out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ds_text, bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack + ("".join(sorted({", %s: %s" % (k, apps[k]["stack"]) for k in keys if apps[k].get("stack") and apps[k]["stack"] != ctx.stack})))), ""], []
     project_stack = ctx.stack
     extra = {} if a.no_extra else run_extra(ctx, keys)
     for x in ([] if a.no_rules else rule_rows(ctx, keys)):

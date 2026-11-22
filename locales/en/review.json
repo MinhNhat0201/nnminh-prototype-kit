@@ -7,6 +7,7 @@
  "review.col.level": "Level",
  "review.level.pass": "Pass",
  "review.level.note": "Note",
+ "review.level.skipped": "Skipped",
  "review.level.deviation": "Deviation",
  "review.legend": "Levels: Pass = no finding; Note = waits for a decision; Deviation = breaks a hard rule of the DS (`rules.md`, stack rules).",
  "review.unknown": "unknown",

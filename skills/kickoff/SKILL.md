@@ -50,7 +50,7 @@ Run `python3 <kit>/skills/kickoff/scripts/scaffold.py --app <id> --name "<name>"
 
 | Stack | Template | Then |
 |---|---|---|
-| `html` | `<kit>/templates/html/` | Embed `ds.json > css.bundle` between `/* @ds:begin */` and `/* @ds:end */`; set theming attributes on `<html>` from `ds.json > theming` defaults; version label in footer and `<meta>` |
+| `html` | `<kit>/templates/html/` | Embed `ds.json > css.bundle` between `/* @ds:begin */` and `/* @ds:end */` (or, with `css.load: "link"`, write it once to the app's `css.linkPath` file and link it from every page); set theming attributes on `<html>` from `ds.json > theming` defaults; version label in footer and `<meta>` |
 | `html`, type `multi` | `<kit>/templates/html-multi/` | One file per feature; shared shell in `_shell/` (`shell.json` lists pages); after editing the shell run `python3 _shell/build.py build`, and `check` before a handoff. Set `apps[].build`/`check` to those commands |
 | `react` | `<kit>/templates/react/` | `npm install`; import the DS CSS once in `src/index.css`; map Tailwind theme to DS tokens; version label in `index.html` and footer |
 | `vue` | `<kit>/templates/vue/` | Same as React |

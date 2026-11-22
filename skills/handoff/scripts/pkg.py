@@ -22,6 +22,15 @@ Commands:
       and write <shots>/changed.json (new screens, changed screens). Only these need a visual check and a Figma update.
       --only captures just those screens (and runs the earlier screens of their flow that set up the state).
 
+      --baseline <screens.json | image folder of the previous package> compares with that package instead of the last run
+      (new = not in its screens.json; changed = route or a pin style differs, or the image differs; images at another
+      scale are resized first), so the first kit run on an older board still lists what changed. changed.json says why.
+
+  pkg.py proto    --pages index.html notes/index.html --into "<package>/prototype" (--root <app folder> | --app <id>)
+      Copy the pages and only the files they load (href, src, srcset, url(), @import, file names quoted in scripts,
+      followed through CSS, JS and JSON), keeping relative paths. Linked pages not in --pages are left out (NOTE: lock or
+      hide every way in); references not found are listed (paths built at run time).
+
   pkg.py finalize --pkg "<package folder>" --shots shots --config pkg.json [--zip [<zip path>]] [--allow-missing-figma]
       Finish the package after spec/*.md, requirements/ and README.md are written:
       1. screens/screens.json, slim: route, how to reach (text and runnable steps), pins, exits, Figma link.
@@ -50,7 +59,8 @@ pkg.json (one per work item, kept in <handoff.dir>/<pbi>/):
    "treatment": "lock", "prototype": "prototype", "figma_file": "<file link>", "figma_board": "<node id>",
    "figma": {"S01": "<node id>"}, "codes": "...", "archive": [], "changelog_keep": 2, "agents_note": "",
    "ds_label": "<DS label of the packaged prototype, e.g. Acme DS 1.4.0; empty = see handoff.dsLabel>",
-   "lock": {...}, "hide": {...}}
+   "lock": {...}, "hide": {...}, "csv": {"feature": ..., "qc": ...}}
+  csv (optional) overrides kit.config.json > handoff.csv for this package (headers kept from its earlier versions).
 Generated text comes from locales/<language>/handoff.json. Messages on the console are English.
 """
 import argparse, json, os, re, shlex, shutil, subprocess, sys, tempfile
@@ -325,12 +335,18 @@ def cmd_layer(a):
 
 
 # ---------------- capture ----------------
-def diff_ratio(a, b):
-    from PIL import Image, ImageChops
+def diff_ratio(a, b, rescale=False):
+    from PIL import Image, ImageChops, ImageFilter
     A, B = Image.open(a).convert("L"), Image.open(b).convert("L")
+    cut = 24
+    if rescale:   # an earlier package (another scale, lossy WebP): compare at the smaller size, softened, with a wider margin
+        if A.size != B.size and B.size[0] and abs(A.size[0] / B.size[0] - A.size[1] / B.size[1]) < 0.02:
+            A = A.resize(B.size, Image.LANCZOS) if A.size[0] > B.size[0] else A
+            B = B.resize(A.size, Image.LANCZOS) if B.size != A.size else B
+        A, B, cut = A.filter(ImageFilter.GaussianBlur(1)), B.filter(ImageFilter.GaussianBlur(1)), 48
     if A.size != B.size:
         return 1.0
-    d = ImageChops.difference(A, B).point(lambda v: 255 if v > 24 else 0)
+    d = ImageChops.difference(A, B).point(lambda v: 255 if v > cut else 0)
     return sum(d.histogram()[255:]) / (A.size[0] * A.size[1])
 
 
@@ -359,13 +375,29 @@ def cmd_capture(a):
         die("capture.js failed")
     ref = prev if prev.exists() else None
     scr = read_json(shots / "screens.json")
-    changed, new, missing = [], [], []
+    base_ids, base_img, base_scr = baseline_of(a.baseline) if a.baseline else (None, {}, {})
+    changed, new, missing, why = [], [], [], {}
     for s in scr:
         if only and s["id"] not in only:
             continue
         p = shots / (s["id"] + ".png")
         if not p.exists():
             missing.append(s["id"])
+            continue
+        if a.baseline:   # compare with the previous package (its screens.json and/or images), not with the last run
+            if base_ids is not None and s["id"] not in base_ids:
+                new.append(s["id"])
+                continue
+            r = screen_change(s, base_scr.get(s["id"])) if base_scr else ""
+            q = base_img.get(s["id"])
+            if not r and q and diff_ratio(p, q, rescale=True) > a.threshold:
+                r = "pixels"
+            if not r and not q and base_ids is None:
+                new.append(s["id"])
+                continue
+            if r:
+                changed.append(s["id"])
+                why[s["id"]] = r
             continue
         q = ref / (s["id"] + ".png") if ref else None
         if not q or not q.exists():
@@ -375,9 +407,128 @@ def cmd_capture(a):
     lost = [f"{s['id']}:{p['sel']}" for s in scr for p in s.get("pins", []) if not p.get("found")]
     errs = [f"{s['id']}: {e}" for s in scr for e in s.get("errors", [])]
     out = {"new": new, "changed": changed, "missing": missing, "pins_not_found": lost, "errors": errs}
+    if a.baseline:
+        out.update(baseline=str(a.baseline), why=why)
     (shots / "changed.json").write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
     print(f"New: {len(new)} · changed: {len(changed)} · no image: {len(missing)} · pins not found: {len(lost)} · console errors: {len(errs)}")
     print("Check by eye and update on Figma:", ", ".join(new + changed) or "(none)")
+    if a.baseline:
+        print("Compared with the baseline %s: %s" % (a.baseline, ", ".join("%s (%s)" % (k, v) for k, v in why.items()) or "no changed screen"))
+
+
+IMG_EXT = (".png", ".webp", ".jpg", ".jpeg")
+STYLE_PROPS = ("color", "backgroundColor", "borderColor", "borderWidth", "borderRadius", "fontSize", "fontWeight",
+               "lineHeight", "padding", "gap", "boxShadow")
+
+
+def baseline_of(path):
+    """(screen ids or None, {id: image path}, {id: screen entry}) of an earlier package: its screens.json (file), or a
+    folder with screens.json and/or <id>.png|webp|jpg images (a package's screens/ folder, or an old capture)."""
+    p = Path(path)
+    if not p.exists():
+        die(f"baseline not found: {p}")
+    folder = p if p.is_dir() else p.parent
+    js = p if p.is_file() else (p / "screens.json" if (p / "screens.json").is_file() else None)
+    scr = {x["id"]: x for x in read_json(js)} if js else {}
+    imgs = {}
+    for f in sorted(folder.iterdir()):
+        if f.suffix.lower() in IMG_EXT and re.fullmatch(SCREEN, f.stem):
+            imgs.setdefault(f.stem, f)
+    return (set(scr) if scr else None), imgs, scr
+
+
+def screen_change(cur, old):
+    """Why a screen differs from its baseline entry: "route", "style" (a pin style both captures recorded), or ""."""
+    if old is None:
+        return ""
+    if (cur.get("page"), cur.get("hash")) != (old.get("page", cur.get("page")), old.get("hash", cur.get("hash"))):
+        return "route"
+    olds = {(p.get("sel") or p.get("selector")): p for p in old.get("pins") or []}
+    for p in cur.get("pins") or []:
+        o = olds.get(p.get("sel"))
+        a_, b_ = ((p.get("style") or {}).get("props") or {}), (((o or {}).get("style") or {}).get("props") or {})
+        if any(k in a_ and k in b_ and a_[k] != b_[k] for k in STYLE_PROPS):
+            return "style"
+    return ""
+
+
+# ---------------- prototype copy ----------------
+REF_ATTR = re.compile(r"""\b(?:href|src|poster|data-src|srcset)\s*=\s*["']([^"']+)["']""", re.I)
+CSS_URL = re.compile(r"""url\(\s*["']?([^"')]+?)["']?\s*\)|@import\s+["']([^"']+)["']""", re.I)
+# any relative path with a file extension, anywhere in the text (quoted, escaped, after "+ROOT+"): only files that exist
+# under the app folder are copied, so a word that only looks like a path costs nothing
+ASSET_STR = re.compile(r"""(?<![\w/.%-])((?:\.\.?/)*[\w@%-][\w@.%-]*(?:/[\w@.%-]+)*\.(?:png|jpe?g|webp|gif|svg|avif|ico|bmp|css|js|mjs|json|woff2?|ttf|otf|eot|mp4|webm|mp3|wav|pdf))(?![\w-])""", re.I)
+TEXT_EXT = {".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg"}
+
+
+def refs_of(f, text):
+    """Relative file references of one HTML, CSS, JS, JSON or SVG file: href/src/srcset, url() and @import, and quoted
+    strings that name a file (paths built in scripts). External URLs, data: URIs and anchors are skipped."""
+    out = []
+    if f.suffix.lower() in (".html", ".htm", ".svg"):
+        for m in REF_ATTR.finditer(text):
+            out += [x.strip().split(" ")[0] for x in m.group(1).split(",")] if "srcset" in m.group(0).lower() else [m.group(1)]
+    out += [m.group(1) or m.group(2) for m in CSS_URL.finditer(text)]
+    out += [m.group(1) for m in ASSET_STR.finditer(text)]
+    keep = []
+    for r in out:
+        r = re.sub(r"^(?:\$\{[^}]*\}|\{\{[^}]*\}\})+", "", r.strip())   # ${ROOT}assets/x.png, {{ROOT}}assets/x.png
+        r = re.split(r"[?#]", r, maxsplit=1)[0]
+        if r and not re.match(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", r, re.I) and "${" not in r and "{{" not in r:
+            keep.append(r)
+    return keep
+
+
+def proto_files(root, pages):
+    """(files to copy, linked pages left out, references not found): the pages plus every file they load, followed
+    through CSS, scripts and JSON (relative to the file, else to the app root). Other pages are never pulled in."""
+    root = root.resolve()
+    want = {(root / p).resolve() for p in pages}
+    for p in want:
+        if not p.is_file():
+            die(f"page not found: {p}")
+    todo, files, left, missing = list(want), set(want), set(), set()
+    while todo:
+        f = todo.pop()
+        if f.suffix.lower() not in TEXT_EXT:
+            continue
+        for r in refs_of(f, f.read_text(encoding="utf-8", errors="replace")):
+            hit = next((c for c in ((f.parent / r).resolve(), (root / r.lstrip("/")).resolve()) if c.is_file() and root in c.parents), None)
+            if not hit:
+                if not r.lower().endswith((".html", ".htm")):
+                    missing.add(r)
+                continue
+            if hit.suffix.lower() in (".html", ".htm") and hit not in want:
+                left.add(hit.relative_to(root).as_posix())
+                continue
+            if hit not in files:
+                files.add(hit)
+                todo.append(hit)
+    return sorted(files), sorted(left), sorted(missing)
+
+
+def cmd_proto(a):
+    root = Path(a.root) if a.root else None
+    if not root:
+        cfg = load()
+        root = Path(cfg["_root"]) / kitconf.app(cfg, a.app)["path"] if a.app else die("proto needs --root <app folder> or --app <id>")
+    files, left, missing = proto_files(root, a.pages)
+    into = Path(a.into)
+    if into.exists() and any(into.iterdir()) and not a.force:
+        die(f"{into} is not empty (use --force to add to it)")
+    size = 0
+    for f in files:
+        dst = into / f.relative_to(root.resolve())
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(f, dst)
+        size += f.stat().st_size
+    print(f"Copied {len(a.pages)} page(s) and {len(files) - len(a.pages)} file(s) they load ({size / 1048576:.2f} MB) into {into}")
+    if left:
+        print(f"NOTE {len(left)} linked page(s) left out (not in --pages; lock or hide every way in): " + ", ".join(left[:12])
+              + (" …" if len(left) > 12 else ""))
+    if missing:
+        print(f"NOTE {len(missing)} reference(s) not found in {root} (built at run time, or missing): " + ", ".join(missing[:12])
+              + (" …" if len(missing) > 12 else ""))
 
 
 # ---------------- finalize ----------------
@@ -402,6 +553,16 @@ def how_map(cfg, spec):
     return out
 
 
+def last_query(steps):
+    """Query string ("?a=1") of the last goto step, or ""."""
+    q = ""
+    for st in steps or []:
+        if isinstance(st, dict) and st.get("goto"):
+            m = re.search(r"\?[^#]*", str(st["goto"]))
+            q = m.group(0) if m else ""
+    return q
+
+
 def slim_screens(cfg, pkg, shots, pc):
     full = read_json(Path(shots) / "screens.json")
     how = how_map(cfg, pkg / "spec")
@@ -409,7 +570,8 @@ def slim_screens(cfg, pkg, shots, pc):
     single = proto.endswith(".html")
     out, last = [], {}
     for s in full:
-        route = f"{proto}{s.get('hash', '')}" if single else f"{proto}/{s.get('page', '')}{s.get('hash', '')}"
+        q = s.get("search") or last_query(s.get("steps"))   # ?demo=1 of the last goto stays in the route
+        route = f"{proto}{q}{s.get('hash', '')}" if single else f"{proto}/{s.get('page', '')}{q}{s.get('hash', '')}"
         e = {"id": s["id"], "name": s.get("name", ""), "route": route}
         if how.get(s["id"]):
             e["how"] = how[s["id"]]
@@ -558,8 +720,9 @@ def trim_changelog(cfg, pkg, keep):
 
 
 def grep_labels(cfg):
-    keys = ("annotate.label.needsConfirm", "annotate.label.deviation", "annotate.label.outOfScope", "annotate.label.notVerified")
-    words = [t(cfg, k) for k in keys] + t(cfg, "handoff.archive.status").split("|")
+    keys = ("annotate.label.needsConfirm", "annotate.label.deviation", "annotate.label.outOfScope", "annotate.label.notVerified",
+            "annotate.label.intentional", "annotate.label.noScreen")
+    words = [t(cfg, k).rstrip(".") for k in keys] + t(cfg, "handoff.archive.status").split("|")
     words += [w for w in cfg["handoff"].get("grepLabels") or [] if isinstance(w, str)]
     return ", ".join(f'"{w}"' for w in dict.fromkeys(words) if w and not re.fullmatch(r"[a-z]+(\.[A-Za-z]+)+", w))
 
@@ -628,9 +791,20 @@ def csv_issues(cfg, pkg):
     return out
 
 
+def with_pkg_csv(cfg, pc):
+    """pkg.json > csv {"feature": ..., "qc": ...} overrides kit.config.json > handoff.csv for this package (a package that
+    keeps the headers of its earlier versions)."""
+    over = pc.get("csv") if isinstance(pc.get("csv"), dict) else {}
+    if not over:
+        return cfg
+    out = dict(cfg)
+    out["handoff"] = dict(cfg["handoff"], csv=dict(cfg["handoff"].get("csv") or {}, **{k: v for k, v in over.items() if v}))
+    return out
+
+
 def cmd_finalize(a):
     pc = read_json(a.config)
-    cfg = load(app=pc.get("app") or None)  # the app's own DS profile (apps[].ds): DS label, version meta
+    cfg = with_pkg_csv(load(app=pc.get("app") or None), pc)  # the app's DS profile (apps[].ds); pkg.json > csv headers
     pkg = Path(a.pkg)
     if not pkg.is_dir():
         die(f"package folder not found: {pkg}")
@@ -770,6 +944,28 @@ def selftest():
     (pkg / "README.md").write_text("See `spec/luu-tru.md`.\n")
     assert special_name(cfg, pkg, "crossPage") == "old-cross.md" and special_name(cfg, pkg, "archive") == "luu-tru.md"
     shutil.rmtree(d, ignore_errors=True)
+    # 0.10: route keeps the query of the last goto; pkg.json > csv; grep labels; proto copy; baseline comparison
+    assert last_query([{"goto": "index.html"}, {"goto": "index.html?demo=1#/x"}, {"click": "#a"}]) == "?demo=1"
+    c2 = with_pkg_csv(cfg, {"csv": {"qc": "Old ID,Old steps"}})
+    assert csv_header(c2, "qc")[0] == "Old ID,Old steps" and csv_header(cfg, "qc")[0] == "ID,Steps", "pkg.json > csv overrides"
+    assert t(cfg, "annotate.label.intentional") in grep_labels(cfg), grep_labels(cfg)
+    app = d / "app"
+    (app / "assets").mkdir(parents=True)
+    (app / "notes").mkdir()
+    (app / "index.html").write_text('<link rel="stylesheet" href="ds.css"><img src="assets/a.png" srcset="assets/a2.png 2x">'
+                                    '<script src="app.js"></script><a href="notes/index.html">n</a>')
+    (app / "ds.css").write_text(".x{background:url('assets/bg.webp')}")
+    (app / "app.js").write_text('el.innerHTML = "<img src=\\"" + ROOT + "assets/js.webp\\">"; var u = `${ROOT}assets/t.svg`;')
+    for f in ("a.png", "a2.png", "bg.webp", "js.webp", "t.svg", "unused.png"):
+        (app / "assets" / f).write_text("x")
+    (app / "notes" / "index.html").write_text("<p>other page</p>")
+    files, left, _miss = proto_files(app, ["index.html"])
+    names = sorted(f.relative_to(app.resolve()).as_posix() for f in files)
+    assert names == ["app.js", "assets/a.png", "assets/a2.png", "assets/bg.webp", "assets/js.webp", "assets/t.svg", "ds.css", "index.html"], names
+    assert left == ["notes/index.html"], left
+    old = {"id": "S01", "page": "a.html", "hash": "#/", "pins": [{"sel": "#b", "style": {"props": {"color": "rgb(0, 0, 0)"}}}]}
+    assert screen_change(dict(old, hash="#/x"), old) == "route" and screen_change(old, old) == ""
+    assert screen_change({"id": "S01", "page": "a.html", "hash": "#/", "pins": [{"sel": "#b", "style": {"props": {"color": "red"}}}]}, old) == "style"
     print("pkg.py selftest OK")
 
 
@@ -779,7 +975,7 @@ def main():
         return
     ap = argparse.ArgumentParser(description="Handoff package pipeline (see the module docstring for details).",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{init,name,layer,capture,finalize}")
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{init,name,layer,capture,proto,finalize}")
     i = sub.add_parser("init", help="create pkg.json and CSV headers for a work item")
     i.add_argument("--pbi", required=True, help="work-item code")
     i.add_argument("--title", required=True, help="feature or app title")
@@ -805,6 +1001,13 @@ def main():
     c.add_argument("--app", default="", help="app id: token names from its DS profile (apps[].ds); default manifest.app")
     c.add_argument("--threshold", type=float, default=0.001,
                    help="share of different pixels that marks a screen as changed (default 0.1%%)")
+    c.add_argument("--baseline", default="", help="screens.json or image folder of the previous package: list screens changed since it")
+    pr = sub.add_parser("proto", help="copy pages and only the shared files they load into the package prototype folder")
+    pr.add_argument("--pages", nargs="+", required=True, help="pages relative to the app folder (index.html notes/index.html)")
+    pr.add_argument("--into", required=True, help="target folder, e.g. <package>/prototype")
+    pr.add_argument("--root", default="", help="app folder (default: apps[].path of --app)")
+    pr.add_argument("--app", default="")
+    pr.add_argument("--force", action="store_true", help="copy into a folder that is not empty")
     f = sub.add_parser("finalize", help="slim screens.json, drop images, archive, AGENTS.md, check, zip")
     f.add_argument("--pkg", required=True)
     f.add_argument("--shots", required=True)
@@ -812,7 +1015,7 @@ def main():
     f.add_argument("--zip", nargs="?", const="auto", default="", help="zip path; no value = <zipName>.zip next to the package")
     f.add_argument("--allow-missing-figma", action="store_true", help="only when the user accepts a draft without a wireflow")
     a = ap.parse_args()
-    {"init": cmd_init, "name": cmd_name, "layer": cmd_layer, "capture": cmd_capture, "finalize": cmd_finalize}[a.cmd](a)
+    {"init": cmd_init, "name": cmd_name, "layer": cmd_layer, "capture": cmd_capture, "proto": cmd_proto, "finalize": cmd_finalize}[a.cmd](a)
 
 
 if __name__ == "__main__":

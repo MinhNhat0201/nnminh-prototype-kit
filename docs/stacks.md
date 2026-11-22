@@ -4,7 +4,7 @@
 
 | | `html` (default) | `react` | `vue` |
 |---|---|---|---|
-| App skeleton (`kickoff`) | `apps/<app>/index.html` with the DS bundle embedded between `/* @ds:begin */` and `/* @ds:end */` | Vite + React + TypeScript + Tailwind, components from shadcn/ui; without Tailwind see below | Vite + Vue 3 + TypeScript + Tailwind, components from shadcn-vue; DS Vue layer or no Tailwind: see below |
+| App skeleton (`kickoff`) | `apps/<app>/index.html` with the DS bundle embedded between `/* @ds:begin */` and `/* @ds:end */`, or linked from one file (`css.load: "link"`, below) | Vite + React + TypeScript + Tailwind, components from shadcn/ui; without Tailwind see below | Vite + Vue 3 + TypeScript + Tailwind, components from shadcn-vue; DS Vue layer or no Tailwind: see below |
 | Tokens | Custom properties from `ds.json > css.bundle` | Same custom properties, imported once in `src/index.css`; Tailwind theme maps to them | Same as React |
 | Components (`prototype`) | DS classes from `catalog.md` | Components named in `catalog.md > components.map` (React column) | Components named in `components.map` (Vue column) |
 | Routing | Hash router per page (`#/…`); `multi` apps have one file per feature | Framework router with hash history (the static build works from a folder); pages in `src/pages/<Name>.tsx` | Same; pages in `src/pages/<Name>.vue` |
@@ -24,6 +24,17 @@ Two keys of `ds.json` change the `react` and `vue` stacks. Both are off by defau
 | `"components": {"vue": {"package": "…", "propsMap": "…"}}` (vue only) | `templates/vue-plain` with the alias `@ds-vue` to the package folder (or the npm package `name@version` in `package.json`); README names the props map | only the DS Vue components, props named as in the props map; never rebuilt in the app, never shadcn-vue; a missing one goes through the component gate | row "DS Vue components": local `.vue` files named like a DS component, shadcn-vue imports |
 
 A DS Vue layer is source the developers copy, so the prototype uses it as is; when it lacks CSS for a case, report it for the DS instead of styling it in the app.
+
+## How html pages load the DS CSS
+
+`ds.json > css.load` (per app: `apps[].css.load`), off by default:
+
+| `css.load` | Pages | `sync` (built-in) | `review` | `handoff` |
+|---|---|---|---|---|
+| `embed` (default) | the bundle between the `css.marker` comments in each page | replaces the marked block | the marked region is DS CSS | pages carry their CSS |
+| `link` | one `<link rel="stylesheet">` to `css.linkPath` (relative to the app folder, default the bundle's file name); pages in sub-folders use `../` | rewrites the whole linked file | the linked file is DS CSS | `pkg.py proto` copies the linked file with the pages |
+
+A project whose own build writes the linked file keeps it: set `sync.command` and the kit runs that instead.
 
 ## Rules that hold for every stack
 

@@ -66,5 +66,7 @@
  "rules.import.colSection": "Section",
  "rules.import.colTitle": "Title",
  "rules.import.colConfirm": "To confirm",
- "rules.readme": "# Project rules\n\nOne Markdown file per rule, in a folder per category (`<category>/<ID>-<slug>.md`). Create them with `rules.py add`, list the rules for an app and a skill with `rules.py list --app <app> --skill <skill>`. Format and commands: the kit's `docs/rules.md`.\n"
+ "rules.import.mustWords": "must, never, do not, don't, forbidden, not allowed, required, mandatory",
+ "rules.readme": "# Project rules\n\nOne Markdown file per rule, in a folder per category (`<category>/<ID>-<slug>.md`). Create them with `rules.py add`, list the rules for an app and a skill with `rules.py list --app <app> --skill <skill>`. Format and commands: the kit's `docs/rules.md`.\n",
+ "rules.check.skipWords": "SKIPPED, SKIP"
 }

@@ -19,7 +19,7 @@ sys.path.insert(0, str(HERE.parents[2] / "scripts"))
 from kitconf import load, t  # noqa: E402
 
 TEMPLATE = HERE.parent / 'assets' / 'spec-audit.js'
-IMG_SUFFIX = ' · image'  # must match IMG_SUFFIX in skills/wireflow/scripts/figma_wireflow.py
+IMG_SUFFIX = ' · image'  # default; the wireflow suffixes (figma.imageSuffix, locale, English) are all accepted
 ICON_PREFIXES = ['Icon', 'Logo']
 
 
@@ -61,7 +61,8 @@ def cmd_render(a):
         'wireflowId': (a.wireflow_id or '').replace('-', ':'),
         'libraries': [l['name'] for l in libs if l.get('name')],
         'collections': [v for v in cols.values() if v],
-        'imageSuffix': IMG_SUFFIX,
+        'imageSuffix': list(dict.fromkeys([((cfg.get('figma') or {}).get('imageSuffix')) or IMG_SUFFIX,
+                                           t(cfg, 'wireflow.imageSuffix'), IMG_SUFFIX])),
         'exemptPrefix': t(cfg, 'mockup.exemptPrefix'),
         'iconPrefixes': ICON_PREFIXES,
         'issueMax': 30,

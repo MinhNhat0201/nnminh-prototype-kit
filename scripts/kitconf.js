@@ -14,8 +14,10 @@ const DEFAULTS = {
     csv: { feature: null, qc: null }, pre: null, post: null, specFields: {} },
   email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3, demoLinks: true, maxItems: 12, template: null },
   deploy: { type: 'none', site: null },
-  sync: { command: null, check: null },
+  sync: { command: null, check: null, prepare: null, post: null },
   review: { extraChecks: [] },
+  prototype: { post: null },
+  figma: { imageSuffix: null },
   validate: { touchTarget: { default: 44, desktop: 24 } },
   skills: {},
   rules: { categories: {} },
@@ -23,11 +25,11 @@ const DEFAULTS = {
 };
 const DS_DEFAULTS = {
   label: null, version: '0.0.0', platforms: ['web'],
-  tokens: { prefix: '--ds-', roles: {}, scale: {}, file: 'tokens.json' },
-  css: { bundle: null, sources: [], marker: { begin: '@ds:begin', end: '@ds:end' } },
+  tokens: { prefix: '--ds-', roles: {}, scale: {}, file: 'tokens.json', ignorePrefixes: [] },
+  css: { bundle: null, sources: [], marker: { begin: '@ds:begin', end: '@ds:end' }, load: 'embed', linkPath: null },
   version_label: { text: '{label} {version}', meta: 'ds-version' },
   theming: {}, breakpoints: { compact: 0, medium: 600, expanded: 840 }, icons: {},
-  catalog: 'catalog.md', catalog_json: 'catalog.json', rules: 'rules.md', library: {},
+  catalog: 'catalog.md', catalog_json: 'catalog.json', rules: 'rules.md', changelog: null, review: { genericClasses: [] }, library: {},
   figma: { libraries: [], collections: {}, modes: {} }, preset: {},
 };
 
@@ -99,4 +101,14 @@ function t(cfgOrLang, key, kw = {}) {
   return fmt(locale(lang)[key] || locale('en')[key] || key, kw);
 }
 
-module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, KIT_ROOT };
+// How an app loads the DS CSS (same as kitconf.py css_load): ds.json > css.load / linkPath, apps[].css overrides.
+function cssLoad(cfg, appId) {
+  const css = (cfg && cfg._ds && cfg._ds.css) || {};
+  let load = css.load || 'embed', link = css.linkPath || null;
+  const a = ((cfg && cfg.apps) || []).find(x => x.id === appId);
+  if (a && a.css && typeof a.css === 'object') { load = a.css.load || load; link = a.css.linkPath || link; }
+  if (load === 'link' && !link && css.bundle && !css.bundle.includes('://')) link = path.basename(css.bundle);
+  return { load, linkPath: load === 'link' ? link : null };
+}
+
+module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, cssLoad, KIT_ROOT };

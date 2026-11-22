@@ -39,6 +39,9 @@ SELFTESTS = [
     [PY, S / "kickoff/scripts/scaffold.py", "--selftest"],
     [PY, KIT / "scripts/rules.py", "--selftest"],
     [PY, S / "share/scripts/draft_email.py", "--selftest"],
+    [PY, S / "review/scripts/audit_map_tokens.py", "--selftest"],
+    [PY, S / "annotate/scripts/spec_md.py", "--selftest"],
+    [PY, S / "document/scripts/catalog.py", "--selftest"],
     ["node", S / "annotate/scripts/capture.js", "--selftest"],
 ]
 OK = []
@@ -455,6 +458,102 @@ def main():
     out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
                "--page-root", "prototype"], d)
     check("/apps/acme-web/settings/#/" in out, "demo links keep the page folder", out)
+
+    # ---------- 0.10 ----------
+    # rules: skipped checks (server down, exit 77, SKIP line), activity groups, rules.from inheritance, import-md --layer ds
+    cfg = json.loads((d / "kit.config.json").read_text())
+    run(R + ["add", "--title", "Accessibility script", "--category", "a11y", "--severity", "should", "--decision", "D-001",
+             "--skills", "review,validate", "--check", "curl -s http://127.0.0.1:9/apps/{app}/", "--body", "Run the a11y script."], d)
+    run(R + ["add", "--title", "Html apps only", "--category", "build", "--severity", "must", "--decision", "D-001", "--skills", "review",
+             "--check", PY + " -c \"import sys; print('SKIPPED - not an html app') if sys.argv[1] == 'acme-vue' else None\" {app}",
+             "--body", "Only html apps."], d)
+    run(R + ["add", "--title", "Branch per change", "--category", "process", "--severity", "must", "--decision", "D-001", "--skills", "pr",
+             "--body", "One branch per change."], d)
+    out = run(R + ["check", "--app", "acme-vue", "--skill", "review"], d, expect=None)
+    check("skip A11Y-001" in out and "not reachable" in out and "skip BLD-001" in out and "not an html app" in out
+          and "skipped" in out.splitlines()[-1], "rules check: skipped status with the reason (server down, SKIP line)", out)
+    js = json.loads(run(R + ["check", "--app", "acme-web", "--id", "A11Y-001", "--json", "-"], d))
+    check(js and js[0]["status"] == "skipped" and js[0]["ok"] is True, "rules check --json: status skipped, ok true", json.dumps(js))
+    out = run(R + ["coverage"], d)
+    check("need a running server" in out, "rules coverage: checks that need a server", out)
+    out_p, out_pr = run(R + ["list", "--skill", "prototype", "--brief"], d), run(R + ["list", "--skill", "pr", "--brief"], d)
+    check("PRC-001" not in out_p and "PRC-001" in out_pr, "rules: activity group pr stays out of list --skill prototype", out_p + out_pr)
+    write(d / "ds/acme/rules/styling/STY-500-radius-tokens.md", "---\nid: STY-500\ntitle: Radius tokens\ncategory: styling\nlayer: ds\n"
+          "severity: should\nstatus: active\nsince: 2026-01-01\n---\nUse radius tokens.\n")
+    mob = json.loads((d / "ds/acme-mobile/ds.json").read_text())
+    mob["rules"] = {"file": "rules.md", "from": "../acme"}
+    write(d / "ds/acme-mobile/ds.json", json.dumps(mob, indent=1))
+    out = run(R + ["list", "--app", "acme-mobile", "--brief"], d)
+    out2 = run(R + ["conflicts"], d, expect=None)   # earlier steps left a deprecated draft with Unconfirmed dates on purpose
+    check("STY-500" in out and "STY-500" not in out2 and "duplicate" not in out2, "rules.from: the mobile profile inherits the DS rules, no duplicate ids", out + out2)
+    write(d / "docs/ds-rules.md", "# DS rules\n\n## Styling\n\n- Never set `FLAG_NAME` by hand: the `/* LOCAL: x */` block owns it.\n")
+    out = run(R + ["import-md", "docs/ds-rules.md", "--layer", "ds"], d)
+    drafts = list((d / "ds/acme/rules/styling").glob("STY-501-*.md"))
+    check(drafts and "severity: must" in drafts[0].read_text() and "FLAG_NAME" in drafts[0].read_text()
+          and "/* LOCAL: x */" in drafts[0].read_text(), "rules import-md --layer ds: DS folder, must inferred, code spans kept", out)
+    drafts[0].unlink()
+
+    # css.load link: kickoff links one DS file, review treats it as DS, built-in sync rewrites the file
+    cfg["apps"].append({"id": "acme-link", "name": "Acme Link", "path": "apps/acme-link", "css": {"load": "link", "linkPath": "acme-ds.css"}})
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    out = run([PY, S / "kickoff/scripts/scaffold.py", "--app", "acme-link", "--name", "Acme Link"], d)
+    lh = (d / "apps/acme-link/index.html").read_text()
+    check('<link rel="stylesheet" href="acme-ds.css">' in lh and "@ds:begin" not in lh and (d / "apps/acme-link/acme-ds.css").is_file(),
+          "css.load link: kickoff writes one DS file and links it", lh[:600])
+    write(d / "apps/acme-link/acme-ds.css", "/* stale */\n")
+    out = run([PY, S / "sync/scripts/sync_ds.py", "apply", "--app", "acme-link", "--builtin"], d)
+    check("acme-ds.css" in out and len((d / "apps/acme-link/acme-ds.css").read_text()) > 1000, "css.load link: built-in sync rewrites the linked file", out)
+    out = run([PY, S / "review/scripts/audit_app.py", "acme-link", "--json", d / "audit-link.json", "--no-extra", "--no-rules"], d)
+    al = json.loads((d / "audit-link.json").read_text())[0]
+    check(al["tokens"]["embedded"] > 0 and al["hard"]["hex"] == 0 and al["override"]["rules"] == 0, "css.load link: review treats the linked file as DS CSS", out)
+
+    # sync.prepare / sync.post around sync.command, and the change report (files, LOCAL blocks)
+    edit = "import pathlib; p=pathlib.Path('apps/acme-web/index.html'); p.write_text(p.read_text().replace('display: grid','display: flex'))"
+    cfg["sync"] = {"prepare": PY + " -c \"open('order.txt','a').write('prepare ')\"",
+                   "command": PY + " -c \"open('order.txt','a').write('sync '); " + edit.replace("'", "\\'").replace("\\'", "'") + "\"",
+                   "post": PY + " -c \"open('order.txt','a').write('post')\""}
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    out = run([PY, S / "sync/scripts/sync_ds.py", "apply", "--app", "acme-web"], d)
+    check((d / "order.txt").read_text() == "prepare sync post" and "apps/acme-web/index.html" in out and "LOCAL block changed: Drop zone" in out,
+          "sync.prepare / sync.post run around sync.command; changed files and LOCAL blocks listed", out)
+
+    # review: apps[].generated skipped, identical rules in a source and its copy count once
+    write(d / "apps/acme-web/_shell/extra.css", ".x-gen { color: #13579b; }\n")
+    write(d / "apps/acme-web/shared/gen.css", "/* built */\n.x-gen{color:#13579b}\n.x-only-gen{color:#2468ac}\n")
+    out = run([PY, S / "review/scripts/audit_app.py", "acme-web", "--json", d / "a1.json", "--no-extra", "--no-rules"], d)
+    h1 = json.loads((d / "a1.json").read_text())[0]["hard"]
+    cfg["apps"][0]["generated"] = ["apps/acme-web/shared/**"]
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    run([PY, KIT / "scripts/kitconf.py", "check"], d)
+    run([PY, S / "review/scripts/audit_app.py", "acme-web", "--json", d / "a2.json", "--no-extra", "--no-rules"], d)
+    h2 = json.loads((d / "a2.json").read_text())[0]["hard"]
+    top1, top2 = dict(h1["top_hex"]), dict(h2["top_hex"])
+    check(top1.get("#13579b") == 1 and top1.get("#2468ac") == 1 and top2.get("#13579b") == 1 and "#2468ac" not in top2,
+          "review: identical rules count once; apps[].generated files are skipped", json.dumps([h1["top_hex"], h2["top_hex"]]))
+
+    # validate init reads the app; --dir keeps the plan outside paths.validation
+    out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-web", "--dir", d / "valdir"], d)
+    vp = json.loads((d / "valdir/plan.json").read_text())
+    check(len(vp["screens"]) >= 2 and any(s["route"].startswith("settings/") for s in vp["screens"]),
+          "validate init: starter plan read from the app, written to --dir", out)
+
+    # prototype.post through the generic hook runner; nothing set = nothing run
+    out = run([PY, KIT / "scripts/kitconf.py", "hook", "prototype.post", "--app", "acme-web"], d)
+    check("not set" in out, "kitconf hook: an unset project command runs nothing", out)
+    cfg["prototype"] = {"post": PY + " -c \"import sys; print('posted', sys.argv[1])\" {app}"}
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    out = run([PY, KIT / "scripts/kitconf.py", "hook", "prototype.post", "--app", "acme-web"], d)
+    check("posted acme-web" in out and "exit code 0" in out, "prototype.post: project command with {app}, output and exit code", out)
+
+    # handoff: pkg.py proto copies pages and only the files they load
+    write(d / "apps/acme-web/assets/used.png", "png")
+    write(d / "apps/acme-web/assets/unused.png", "png")
+    home2 = d / "apps/acme-web/index.html"
+    home2.write_text(home2.read_text().replace("</body>", '<img src="assets/used.png" alt="">\n</body>', 1))
+    out = run([PY, S / "handoff/scripts/pkg.py", "proto", "--app", "acme-web", "--pages", "index.html", "--into", d / "proto-copy"], d)
+    check((d / "proto-copy/assets/used.png").is_file() and not (d / "proto-copy/assets/unused.png").exists()
+          and not (d / "proto-copy/settings/index.html").exists() and "settings/index.html" in out,
+          "pkg.py proto: pages plus the files they load, other pages left out", out)
 
     print("\n%d checks passed." % len(OK))
     if keep:

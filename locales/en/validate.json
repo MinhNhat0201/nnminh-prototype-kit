@@ -14,6 +14,8 @@
   "validate.reviewTitle": "Needs a human",
   "validate.reviewNote": "The script cannot decide these. A designer looks at each one and either fixes it or records why it is fine.",
   "validate.skippedTitle": "Skipped",
+  "validate.outsideTitle": "Outside the scope",
+  "validate.outsideNote": "Rule checks of the whole project that failed. They are not about the screens validated here, so they do not fail this run; fix them separately or run with --rules-scope all.",
   "validate.check": "Check",
   "validate.where": "Where",
   "validate.detail": "Detail",

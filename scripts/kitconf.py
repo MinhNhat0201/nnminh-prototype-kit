@@ -14,6 +14,7 @@ Command line:
     python3 scripts/kitconf.py check     # validate; exit 1 on error
     python3 scripts/kitconf.py skills    # model and effort hints per skill (kit.config.json > skills)
     python3 scripts/kitconf.py --app acme-mobile   # the merged configuration with that app's DS profile (apps[].ds)
+    python3 scripts/kitconf.py hook prototype.post --app acme-web   # run an optional project command ({app}, {path}, {root})
     python3 scripts/kitconf.py --selftest
 """
 import json
@@ -38,8 +39,10 @@ DEFAULTS = {
     "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3, "demoLinks": True, "maxItems": 12,
               "template": None},
     "deploy": {"type": "none", "site": None},
-    "sync": {"command": None, "check": None},
+    "sync": {"command": None, "check": None, "prepare": None, "post": None},
     "review": {"extraChecks": []},
+    "prototype": {"post": None},
+    "figma": {"imageSuffix": None},
     "validate": {"touchTarget": {"default": 44, "desktop": 24}},
     "skills": {},
     "rules": {"categories": {}},
@@ -50,8 +53,8 @@ DS_DEFAULTS = {
     "label": None,
     "version": "0.0.0",
     "platforms": ["web"],
-    "tokens": {"prefix": "--ds-", "roles": {}, "scale": {}, "file": "tokens.json"},
-    "css": {"bundle": None, "sources": [], "marker": {"begin": "@ds:begin", "end": "@ds:end"}},
+    "tokens": {"prefix": "--ds-", "roles": {}, "scale": {}, "file": "tokens.json", "ignorePrefixes": []},
+    "css": {"bundle": None, "sources": [], "marker": {"begin": "@ds:begin", "end": "@ds:end"}, "load": "embed", "linkPath": None},
     "version_label": {"text": "{label} {version}", "meta": "ds-version"},
     "theming": {},
     "breakpoints": {"compact": 0, "medium": 600, "expanded": 840},
@@ -59,6 +62,8 @@ DS_DEFAULTS = {
     "catalog": "catalog.md",
     "catalog_json": "catalog.json",
     "rules": "rules.md",
+    "changelog": None,
+    "review": {"genericClasses": []},
     "library": {},
     "figma": {"libraries": [], "collections": {}, "modes": {}},
     "preset": {},
@@ -72,6 +77,8 @@ SKILLS = ("brief", "kickoff", "adopt", "define", "context", "explore", "prototyp
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DS_LABEL_SOURCES = ("auto", "pkg", "spec", "ds", "prototype")
 CHECK_LEVELS = ("off", "warn", "error")
+CSS_LOADS = ("embed", "link")
+CHANGELOG_FORMATS = ("md", "json")
 CSV_ROLES = {
     "feature": ("code", "feature", "group", "screen", "behaviour", "inputs", "expected", "status", "dependencies"),
     "qc": ("id", "unit", "preconditions", "steps", "expected", "result", "notes"),
@@ -180,6 +187,64 @@ def ds_path(cfg, rel):
     return str(Path(cfg["_ds_dir"]) / rel)
 
 
+def ds_rules(ds):
+    """(rules document name, profile path the DS-layer rules are inherited from or None) of a DS profile.
+    ds.json > rules is a file name ("rules.md") or an object {"file": "rules.md", "from": "../acme"}."""
+    r = (ds or {}).get("rules")
+    if isinstance(r, dict):
+        return r.get("file") or "rules.md", r.get("from") or None
+    return r or "rules.md", None
+
+
+def css_load(cfg, app_id=None):
+    """How an app loads the DS CSS: {"load": "embed" | "link", "linkPath": file next to the pages or None}.
+    ds.json > css.load / css.linkPath, overridden per app by apps[].css.load / apps[].css.linkPath. linkPath defaults
+    to the bundle's file name. embed (default) = the bundle between the css.marker comments of each page."""
+    css = ((cfg or {}).get("_ds") or {}).get("css") or {}
+    load_, link = css.get("load") or "embed", css.get("linkPath")
+    for a in (cfg or {}).get("apps") or []:
+        if a.get("id") == app_id and isinstance(a.get("css"), dict):
+            load_, link = a["css"].get("load") or load_, a["css"].get("linkPath") or link
+    if load_ == "link" and not link and css.get("bundle") and "://" not in css["bundle"]:
+        link = Path(css["bundle"]).name
+    return {"load": load_, "linkPath": link if load_ == "link" else None}
+
+
+def ds_changelog(cfg):
+    """(absolute path, format) of the DS changelog: ds.json > changelog {"path", "format": "md" | "json"} (path relative to
+    the profile folder, else to the project root), default CHANGELOG.md (md) in the profile folder."""
+    ch = ((cfg or {}).get("_ds") or {}).get("changelog")
+    if isinstance(ch, str):
+        ch = {"path": ch}
+    ch = ch or {}
+    rel = ch.get("path") or "CHANGELOG.md"
+    fmt = ch.get("format") or ("json" if rel.lower().endswith(".json") else "md")
+    bases = [cfg.get("_ds_dir")] + ([cfg.get("_root")] if ch.get("path") else [])
+    for b in [x for x in bases if x]:
+        if (Path(b) / rel).is_file():
+            return str((Path(b) / rel).resolve()), fmt
+    return str(Path(cfg.get("_ds_dir") or ".") / rel), fmt
+
+
+def run_command(cfg, line, title):
+    """Run a project command in the project root, print it, its output and exit code. Returns the exit code."""
+    import subprocess
+    print("%s: %s" % (title, line))
+    r = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True)
+    out = (r.stdout + r.stderr).rstrip()
+    if out:
+        print(out)
+    print("%s exit code %d" % (title, r.returncode))
+    return r.returncode
+
+
+def fill_command(cmd, **vals):
+    """Replace {key} placeholders of a project command with shell-quoted values (empty value = nothing)."""
+    import shlex
+    return re.sub(r"\{(\w+)\}", lambda m: (shlex.quote(str(vals[m.group(1)])) if vals[m.group(1)] else "")
+                  if m.group(1) in vals else m.group(0), cmd)
+
+
 def version_label(cfg):
     ds = cfg["_ds"]
     return ds["version_label"]["text"].format(label=ds["label"], version=ds["version"], name=ds.get("name"))
@@ -278,6 +343,26 @@ def t(cfg_or_lang, key, **kw):
     return s.format(**kw) if kw else s
 
 
+def _check_profile(ds, ds_dir, rel):
+    """Errors of the 0.10 keys of one DS profile (they would otherwise fail late, in review, sync or rules)."""
+    errs = []
+    if (ds["css"].get("load") or "embed") not in CSS_LOADS:
+        errs.append(f"{rel}/ds.json > css.load must be one of {', '.join(CSS_LOADS)}")
+    ch = ds.get("changelog")
+    if ch is not None and not isinstance(ch, (str, dict)):
+        errs.append(f"{rel}/ds.json > changelog must be a path or an object {{\"path\", \"format\"}}")
+    elif isinstance(ch, dict) and (ch.get("format") or "md") not in CHANGELOG_FORMATS:
+        errs.append(f"{rel}/ds.json > changelog.format must be one of {', '.join(CHANGELOG_FORMATS)}")
+    for k, v in (("tokens.ignorePrefixes", ds["tokens"].get("ignorePrefixes")),
+                 ("review.genericClasses", (ds.get("review") or {}).get("genericClasses"))):
+        if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) for x in v)):
+            errs.append(f"{rel}/ds.json > {k} must be a list of strings")
+    _f, frm = ds_rules(ds)
+    if frm and not (Path(ds_dir) / frm / "ds.json").is_file():
+        errs.append(f"{rel}/ds.json > rules.from: no DS profile at {frm} (a path relative to {rel})")
+    return errs
+
+
 def check(cfg):
     errs = []
     if cfg["stack"] not in STACKS:
@@ -302,8 +387,17 @@ def check(cfg):
             errs.append(f"app '{a.get('id')}': usedBy must be a list of file paths (where the build output is copied)")
         if a.get("type") == "page" and not ub:
             errs.append(f"app '{a.get('id')}': type page needs usedBy (the files of other apps its build output becomes)")
+        for k in ("sources", "generated"):
+            v = a.get(k)
+            if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
+                errs.append(f"app '{a.get('id')}': {k} must be a list of glob patterns (paths from the project root)")
+        ac = a.get("css")
+        if ac is not None and (not isinstance(ac, dict) or (ac.get("load") or "embed") not in CSS_LOADS):
+            errs.append(f"app '{a.get('id')}': css must be an object {{\"load\": \"embed\" | \"link\", \"linkPath\": ...}}")
         if a.get("ds"):
-            pds, _ = read_profile(cfg["_root"], a["ds"])
+            pds, pdir = read_profile(cfg["_root"], a["ds"])
+            if pds is not None:
+                errs += ["app '%s': %s" % (a.get("id"), e) for e in _check_profile(pds, pdir, a["ds"])]
             if pds is None:
                 errs.append(f"app '{a.get('id')}': ds.json not found in {a['ds']} (apps[].ds)")
             elif not pds["tokens"]["prefix"].startswith("--"):
@@ -312,6 +406,7 @@ def check(cfg):
                 errs.append(f"app '{a.get('id')}': {a['ds']}/ds.json > css.bundle not found: {pds['css']['bundle']}")
     ds = cfg["_ds"]
     if ds:
+        errs += _check_profile(ds, cfg["_ds_dir"], cfg["ds"])
         if not ds["tokens"]["prefix"].startswith("--"):
             errs.append("ds.json > tokens.prefix must start with '--'")
         b = ds["css"]["bundle"]
@@ -413,6 +508,26 @@ def selftest():
     c["email"]["template"] = "missing.md"
     c["rules"]["categories"] = {"motion": "mo"}
     assert len(check(c)) == 3, check(c)
+    # 0.10: css.load, rules.from, changelog, placeholders
+    c = load(d)
+    assert css_load(c, "web") == {"load": "embed", "linkPath": None}, "embed by default"
+    c["_ds"]["css"].update(load="link", bundle="dist/acme.css")
+    assert css_load(c, "web")["linkPath"] == "acme.css", css_load(c, "web")
+    c["apps"] = [{"id": "web", "path": "apps/web", "css": {"load": "embed"}}, {"id": "m", "path": "m", "css": {"linkPath": "shared/ds.css"}}]
+    assert css_load(c, "web")["load"] == "embed" and css_load(c, "m") == {"load": "link", "linkPath": "shared/ds.css"}
+    assert ds_rules({"rules": "rules.md"}) == ("rules.md", None) and ds_rules({"rules": {"from": "../acme"}}) == ("rules.md", "../acme")
+    assert ds_changelog(c)[1] == "md" and ds_changelog(c)[0].endswith("ds/acme/CHANGELOG.md")
+    (d / "docs").mkdir()
+    (d / "docs" / "news.json").write_text("[]")
+    c["_ds"]["changelog"] = {"path": "docs/news.json"}
+    assert ds_changelog(c) == (str((d / "docs" / "news.json").resolve()), "json"), "project-root fallback, format from the name"
+    assert fill_command("x {app} {path} {other}", app="a b", path="") == "x 'a b'  {other}"
+    c["_ds"]["css"]["load"] = "inline"
+    c["_ds"]["changelog"] = {"format": "yaml"}
+    c["_ds"]["rules"] = {"from": "../none"}
+    c["apps"][0]["generated"] = "shared/*"
+    new = [e for e in check(c) if any(k in e for k in ("generated", "css.load", "changelog.format", "rules.from"))]
+    assert len(new) == 4, check(c)
     print("kitconf selftest OK")
 
 
@@ -431,6 +546,15 @@ if __name__ == "__main__":
                 print("%-11s model=%s effort=%s" % (k, h.get("model", "-"), h.get("effort", "-")))
         print("(no skills.<name> hints in kit.config.json)" if not c.get("skills") else "")
         sys.exit(0)
+    if len(sys.argv) > 2 and sys.argv[1] == "hook":
+        # python3 scripts/kitconf.py hook prototype.post --app acme-web: run an optional project command, if set
+        cmd = project_command(c, sys.argv[2])
+        if not cmd:
+            print("%s is not set in kit.config.json: nothing to run." % sys.argv[2])
+            sys.exit(0)
+        aid = c.get("_app") or ""
+        ap = next((x for x in c.get("apps") or [] if x.get("id") == aid), {})
+        sys.exit(1 if run_command(c, fill_command(cmd, app=aid, path=ap.get("path", ""), root=c["_root"]), sys.argv[2]) else 0)
     if len(sys.argv) > 1 and sys.argv[1] == "check":
         e = check(c)
         for x in e:

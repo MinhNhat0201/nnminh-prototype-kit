@@ -197,12 +197,16 @@ def sections_html(secs, T):
     return '\n'.join(out)
 
 
-def text_to_html(text):
-    """Plain body -> simple mail HTML: paragraphs, "- " lists, **bold**, links for http(s) URLs."""
+def text_to_html(text, labels=None):
+    """Plain body -> simple mail HTML: paragraphs, "- " lists, **bold**, links for http(s) URLs. labels = {url: link
+    text} (the Figma and demo links read "Open Figma" in the project language instead of the raw URL)."""
+    lab = {html.escape(k, quote=True): v for k, v in (labels or {}).items() if k and v}
+
     def inline(s):
         s = html.escape(s, quote=True)
         s = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
-        return re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', s)
+        return re.sub(r'(https?://[^\s<]+)', lambda m: '<a href="%s">%s</a>' % (m.group(1), html.escape(lab[m.group(1)]) if m.group(1) in lab
+                                                                              else m.group(1)), s)
     out, para, items = [], [], []
     def flush():
         if para:
@@ -256,7 +260,7 @@ def from_template(cfg, tpl_path, warn, err, vals, secs, T):
     else:
         missing = []
         body = fill(tpl, dict(vals, sections=sections_text(secs, T)), missing).strip() + '\n'
-        htmlbody = text_to_html(body)
+        htmlbody = text_to_html(body, {vals['figma']: T('openFigma'), vals['demo']: T('openDemo')})
     if missing:
         warn.append('email template has unknown placeholders, left as written: ' + ', '.join('{%s}' % m for m in dict.fromkeys(missing)))
     return body, htmlbody
@@ -268,6 +272,8 @@ def selftest():
         'Hi team <style>p{margin:0}</style> {nope}' and miss == ['nope'], miss
     h = text_to_html('Hello,\n\nFigma: https://www.figma.com/x\n- one\n- **two**\nBye')
     assert '<a href="https://www.figma.com/x">' in h and '<li><b>two</b></li>' in h and h.endswith('<p>Bye</p>'), h
+    h = text_to_html('Figma: https://www.figma.com/x?a=1&b=2', {'https://www.figma.com/x?a=1&b=2': 'Open Figma'})
+    assert '<a href="https://www.figma.com/x?a=1&amp;b=2">Open Figma</a>' in h, h
     assert html_to_text('<p>Hi</p><ul><li>a</li></ul><p><a href="https://x.y/">open</a></p>') == 'Hi\n- a\nopen (https://x.y/)\n'
     T = lambda k, **kw: k + (str(kw.get('n', '')) if kw else '')
     sec = {'title': 'Changes', 'groups': [{'name': '', 'items': ['a']}], 'more': 'requirements/changelog.md'}
@@ -355,6 +361,8 @@ def main():
                 warn.append(f'zip is {mb:.1f} MB, over handoff.maxZipMB ({cfg["handoff"].get("maxZipMB", 3)} MB).')
             att = {'path': str(zpath.resolve()), 'filename': zpath.name, 'bytes': size,
                    'sha256': hashlib.sha256(zpath.read_bytes()).hexdigest(), 'mimeType': 'application/zip'}
+            warn.append('some mail connectors refuse an attachment on a draft without recipients: add To before creating the '
+                        'draft, or tell the user to attach the zip by hand (never base64 it yourself).')
     else:
         warn.append('source is a folder, there is no zip to attach: zip it with the handoff skill and run again.')
 
