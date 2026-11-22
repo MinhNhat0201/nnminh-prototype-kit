@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.3 · 2026-11-22
+Fixes from a project that ported HTML pages to Vue page apps (`apps[].type: "page"`) with `extract_rules.py`, `validate parity` and the rule checks (K1a-5…K1a-8, K4-1…K4-5, K5-1, K5-2). Every new key has a default that keeps the 0.12.2 behaviour, except that a `prepare` whose value is a promise is now awaited and a class difference adds a "To look at" row.
+
+Validate
+- A `prepare` (plan, state or flow) or `eval` step whose value is a promise, such as `(async () => { …; await new Promise(r => setTimeout(r, 1500)) })()`, is awaited: before, the wrapper added for top-level `await` dropped the promise, so the view was read and captured before the wait ended (a skeleton on a 600 ms timer differed both ways). A `prepare` that reloads or leaves the page (`location.reload()`) waits for the new page instead of failing (K4-4).
+- `expectText: [selector, ""]` means the element has no text (whitespace only); before, an empty expected text always failed. `expectText` that is not `[selector, text]` fails the step with a clear message (K5-2).
+- New `plan.settle`: a number (ms), a selector that must be hidden (a skeleton), or `{"wait": ms, "waitForHidden": sel, "waitFor": sel}`, waited for right before every view and every flow end is read and captured, after every step, prepare and reload (K4-4).
+- A state (and a flow) takes `"reload": true`: its `prepare` runs (write `localStorage`), the page is reloaded and the mode, theme values and text size are set again, then the view is checked; `plan.prepare` is not run again, so it cannot clear what the state wrote. `init` writes its sample "empty" state this way (K1a-7).
+- `parity`: `plan.normalize` takes `"ids"` (generated ids such as `#/c/umwrwh5d4`, `oneai2.conv.umwrwh5d4`, `my-mwrwl3pr`, `t15d5`: letters and digits mixed, epoch times, `Date.now().toString(36)` times of the last 90 days) and `{"pattern": "<regex>", "replace": "<text>"}` items, applied on both sides to text, names, aria states, flow URLs and `localStorage` keys and values; a bad item stops the run (K1a-6).
+- `parity`: new check "Class / structure": the tag and sorted classes of the controls (by role and name) and of the elements with text of their own (by text), n-th of a key numbered, compared for the elements both builds have. A difference is a **To look at** row (own section in `parity.md`, `review` count in `parity.json`) that does not change the exit code; `--classes differs` or `plan.classes: "differs"` makes it a Differs row, `off` skips it (K1a-8).
+- `parity --app <id>` without `--dir` writes the report to `<paths.validation>/<app>/parity` and reads `<paths.validation>/<app>/plan.json` when `--plan` is left out (also `<dir>/plan.json`), as the help said; it no longer stops on "needs --dir" (K4-1).
+- `run` and `parity` take `--artifacts <folder>` and the new `kit.config.json > validate.artifactsDir`: screenshots and diffs of a run go to `<folder>/<app>/<run>/shots` and `diffs`, the two parity runs (`a/`, `b/`) and `diffs/` to `<folder>/<app>/parity`, outside the repository; `report.md`, `report.json`, `parity.md` and `parity.json` stay in the validation folder and name the folders; `report` and `baseline` read the screenshots from there (K4-2).
+
+Rules
+- `rules.py check` and `validation.py run` for a page app: `{app}` outside a URL (`audit_app.py {app}`, `rule_checks.py hex {app}`) is the host app id, one run per host app found from `usedBy` under the `path` or `apps[].output` of an app that is not a page app; the row shows `page → host`. When no host is found, `{app}` stays the page id with a `NOTE:` (K4-3).
+- `kitconf.page_hosts`: a `usedBy` file under an app's `output` also names that app as the host.
+
+Define
+- `extract_rules.py`: a storage wrapper defined in any file of the run gives the stored key at its calls in the other files (unless the name is declared there, for example as a parameter); a wrapper may be `function x(k)`, `x = function (k)`, `x = (k) =>`, `x = k =>`, with the key `'prefix.' + k`, `` `prefix.${k}` `` or `PREFIX + k`; the prefix inside the wrapper is no longer a row of its own (`localStorage oneai2.`), a prefix outside one is a "built at run time" row, and `'prefix.' + K` with `K` a constant gives the whole key (K1a-5).
+- `extract_rules.py`: regular expression literals are blanked before strings are read (`/[&<>"']/g` no longer starts a string), and markup pieces that are code (`function(c){…}`, `=>`, braces) are not listed as text (K4-5).
+- `extract_rules.py --skip-shell` also leaves out `<!-- SHELL:BEGIN … --> … <!-- SHELL:END -->` and `/* SHELL:BEGIN */ … /* SHELL:END */` regions (the shell markers of a multi-page app whose shell is copied by a script), next to `<!-- SHELL:x --> … <!-- /SHELL:x -->` (K5-1).
+- `kitconf.py check` validates `validate.artifactsDir`.
+
 ## 0.12.2 · 2026-11-22
 Fixes from a project that ported HTML pages to Vue page apps (`apps[].type: "page"`) with `extract_rules.py` and `validate parity` (K1a-1…K1a-4, K3-1…K3-6). Every new key has a default that keeps the 0.12.1 behaviour, except that a failing `prepare` is no longer a parity match.
 

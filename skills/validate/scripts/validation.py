@@ -27,17 +27,21 @@ Commands:
       the manifest viewport, runs at that width only; route-only screens run at every width. Never overwrites a plan.
   validation.py run --app <id> [--url <entry>] [--viewports 390,768,1280] [--modes light,dark] [--threshold 0.5] [--min-pixels 100]
                     [--touch-min <px>] [--no-rules] [--axe <axe.min.js|folder>] [--waivers <file>] [--compare <run|report.json|none>]
+                    [--artifacts <folder>]
       Run validate.js (Playwright) on the app, compare screenshots with the baseline (Pillow; a screenshot counts as changed
       when at least --min-pixels pixels or --threshold percent differ; defaults plan.minPixels / plan.threshold, else
       kit.config.json > validate.minPixels / validate.threshold, else 100 px and 0.5 %), write
-      <paths.validation>/<app>/<run>/report.md and report.json. Exit 1 when anything fails.
+      <paths.validation>/<app>/<run>/report.md and report.json. Exit 1 when anything fails. Screenshots and diffs go to
+      <run>/shots and <run>/diffs, or with --artifacts (default kit.config.json > validate.artifactsDir) to
+      <artifacts>/<app>/<run>/shots and diffs, outside the repository; the report names the folders.
       A page app (apps[].type page) without --url opens an .html of apps[].output, else its first host page (usedBy).
       Also runs the check commands of the active rules for the validate skill (scripts/rules.py check --app): a failing
       must rule is a Fail, a failing should or note rule needs a human, a skipped check (server down, not applicable) is
       Skipped. --rules-scope app (default): only checks of this app ({app}/{path}) can fail the run; failing project-wide
       checks go to "Outside the scope". --rules-scope all = every check; --rules-scope STY-001,A11Y-002 = those only.
       For a page app, a check URL that names the app (http://host/apps/{app}/) opens this run's http(s) entry, else each
-      host page on that server. Every skipped check is printed as a NOTE with its reason.
+      host page on that server; {app} elsewhere in a check is the host app id (from usedBy), a NOTE when none is found.
+      Every skipped check is printed as a NOTE with its reason.
       Waivers (--waivers, default <dir>/waivers.json): findings matched by check/id + selector (+ screen) with a required
       reason go to "Known / waived", never Fail. --compare (alias --baseline; default: the previous run) marks each Fail and
       Needs-a-human row new or carried over and counts the ones no longer found; axe findings match by rule id, screen,
@@ -50,22 +54,31 @@ Every command takes --dir <folder>: plan, runs and baseline there instead of <pa
       (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
       plan.prepare (JS string or {"js": …, "reload": true}): run after every page load of every screen and flow, before
       their own steps and prepare (dismiss a shell overlay once for the whole plan). Every prepare and eval step may use
-      await at the top level (run as the body of an async function). axe runs on every state of the plan at the widest
+      await at the top level (run as the body of an async function); a script whose value is a promise (an async IIFE)
+      is awaited, and a prepare that reloads the page waits for the new page. A state or flow with "reload": true runs its
+      prepare, reloads the page, then is checked (seed localStorage, then load). plan.settle (ms, a selector that must be
+      hidden such as a skeleton, or {wait, waitForHidden, waitFor}) is waited for right before every view and flow end is
+      read and captured, after every step, prepare and reload. axe runs on every state of the plan at the widest
       width; "axe": false on a state or a screen opts out; without plan.axe.include it is limited to the first
       plan.contentRoot selector that matches. The server of an http(s) entry is checked before
       each screen and flow: when it does not answer, the run stops with one ERROR line.
-  validation.py parity --a <url> --b <url> --plan <plan.json> --dir <out> [--app <id>] [--viewports 1280] [--modes light]
-                       [--threshold 0.5] [--min-pixels 100]
+  validation.py parity --a <url> --b <url> [--plan <plan.json>] [--dir <out>] [--app <id>] [--viewports 1280] [--modes light]
+                       [--threshold 0.5] [--min-pixels 100] [--classes review|differs|off] [--artifacts <folder>]
       Run the same plan (screens, states, flows) on two builds (an HTML page and its Vue port, before and after a
       refactor) and compare per screen and state: visible text, interactive elements by role and name, aria states,
-      console errors, screenshot pixels (Pillow, when installed); per flow: result, URL after each step, localStorage at
-      the end. URLs are compared relative to each side's entry folder, path only (scheme, host and port ignored), so a
+      console errors, screenshot pixels (Pillow, when installed), and the tag and classes of the elements both builds have
+      (by role and name, or own text: a link that gained a class), a "to look at" row unless --classes differs (or
+      plan.classes "differs") counts it as a difference; per flow: result, URL after each step, localStorage at the end. URLs are compared relative to each side's entry folder, path only (scheme, host and port ignored), so a
       flow that leaves for another page of the same app matches. plan.mask (CSS selectors: clocks, timestamps) is masked
-      in screenshots and its text replaced before text compare; plan.normalize ["time"] replaces clock and relative times.
+      in screenshots and its text replaced before text compare; plan.normalize ["time"] replaces clock and relative times,
+      "ids" generated ids (#/c/umwrwh5d4, conv.umwrwh5d4, my-mwrwl3pr, t15d5: letters and digits mixed, epoch and base-36
+      times) and {"pattern": regex, "replace": text} anything else, in text, names, flow URLs and localStorage keys and values.
       A prepare that fails on either side (or a view that opens on neither) is an Error with the side and the message,
       never a Match. Pixels differ from --min-pixels (default plan.minPixels, validate.minPixels, 100) or --threshold %.
       Writes <out>/parity.md and parity.json (Errors, then Match / Differs with both values); exit 1 when anything
-      differs or fails.
+      differs or fails. --dir: the report folder (default <paths.validation>/<app>/parity with --app); --plan: default
+      <dir>/plan.json, else <paths.validation>/<app>/plan.json. The two runs (a/, b/) and diffs/ go to the report folder,
+      or with --artifacts (default validate.artifactsDir) to <artifacts>/<app>/parity, outside the repository.
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
   validation.py report --app <id> [--run <run folder>] [--waivers <file>] [--compare <run|report.json|none>]
@@ -180,17 +193,21 @@ PLAN_HELP = {
                "list empty, loading, error and success states the screen has.",
     "flows": "Flows a user goes through. Steps: {goto} (add reload: true when only the hash changes), {reload: true}, {click: selector}, "
              "{fill: [selector, text]}, {select: [selector, value]}, {press: key}, {wait: ms}, {expectVisible: selector}, "
-             "{expectHidden: selector}, {expectText: [selector, text]}, {expectUrl: part}.",
+             "{expectHidden: selector}, {expectText: [selector, text]} (text \"\" = the element has no text), {expectUrl: part}.",
     "namedStates": "A state may be a name: '<ds.json theming key>=<value>' (e.g. 'brand=ocean') or 'text=200%'. "
                    "plan.states are added to every screen; _stateHints lists the ones this DS offers.",
     "axe": "plan.axe or screen.axe {include: [selector], exclude: [selector]} limits axe to part of the page. Findings that are "
            "known or outside the work go into waivers.json (check, id, selector, screen, reason), not out of the plan. axe runs on "
            "every state; \"axe\": false on a state or screen opts out.",
     "prepare": "plan.prepare: JS (or {js, reload: true}) run after every page load of every screen and flow, before their own "
-               "steps, e.g. to dismiss a shell overlay. contentRoot: the page's own content (selectors, parity text).",
+               "steps, e.g. to dismiss a shell overlay. A state or flow with reload: true runs its prepare, reloads, then is checked "
+               "(seed localStorage, then load). plan.settle: ms, a selector that must be hidden (a skeleton) or {wait, waitForHidden, "
+               "waitFor}, waited for right before every view and flow end is read. contentRoot: the page's own content (selectors, parity text).",
     "mask": "plan.mask: CSS selectors of parts that change on every run (clocks, timestamps): masked in screenshots, and their "
             "text replaced by '▒' before parity compares text and names. plan.normalize: [\"time\"] also replaces clock times "
-            "(09:27) and relative times ('5 min ago') in parity text.",
+            "(09:27) and relative times ('5 min ago'), \"ids\" generated ids (#/c/umwrwh5d4), {\"pattern\": regex, \"replace\": text} "
+            "anything else, in parity text, URLs and localStorage. plan.classes: \"review\" (default), \"differs\" or \"off\" for "
+            "tag and class differences.",
 }
 
 
@@ -462,7 +479,7 @@ def cmd_init(cfg, a):
     plan = {
         "_help": PLAN_HELP,
         "screens": [{"id": "S01", "name": "Home", "route": "", "states": [
-            {"name": "empty", "prepare": "localStorage.clear(); location.reload();"}]}],
+            {"name": "empty", "prepare": "localStorage.clear();", "reload": True}]}],
         "flows": [{"name": "Open settings", "start": "", "viewport": 1280,
                    "steps": [{"click": "a[href='#/settings']"}, {"expectUrl": "#/settings"}]}],
     }
@@ -640,7 +657,7 @@ def classify(res, diffs, waivers=()):
         dfx = diffs.get(it.get("shot"))
         if dfx and dfx["status"] == "changed":
             add(review, "visual", where, ("%d px changed (%.2f%%)" % (dfx["px"], dfx["pct"]) if dfx.get("pct") is not None else dfx["why"])
-                + (" · diffs/%s" % dfx["diff"] if dfx.get("diff") else ""), "visual|" + where)
+                + (" · %s" % (dfx.get("diffPath") or "diffs/" + dfx["diff"]) if dfx.get("diff") else ""), "visual|" + where)
     outside = []
     for x in res.get("rules") or []:   # rules registry: a failing must rule in scope fails, others need a human
         where = "%s%s" % (x["id"], (" · " + x["app"]) if x.get("app") else "")
@@ -704,9 +721,10 @@ def write_report(cfg, app_id, run, res, diffs, waivers=(), prev=None):
         else:
             lines.append("—")
         lines.append("")
-    lines += ["## " + T("shotsTitle"), "", T("shotsNote"), ""]
-    report = {"app": app_id, "run": run.name, "fail": fail, "review": review, "known": known, "skipped": skipped,
-              "outsideScope": outside, "diffs": diffs, "compare": cmp_}
+    shots, dd = run_dirs(run, res)
+    lines += ["## " + T("shotsTitle"), "", T("shotsNote"), "", T("shotsWhere", shots=shown(cfg, shots), diffs=shown(cfg, dd)), ""]
+    report = {"app": app_id, "run": run.name, "shotsDir": shown(cfg, shots), "diffsDir": shown(cfg, dd), "fail": fail, "review": review,
+              "known": known, "skipped": skipped, "outsideScope": outside, "diffs": diffs, "compare": cmp_}
     (run / "report.md").write_text("\n".join(lines), encoding="utf-8")
     (run / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return fail, review, skipped
@@ -758,13 +776,32 @@ def pixel_limits(cfg, a, plan=None):
         die("threshold must be a number and minPixels a whole number (command line, plan or validate.*)")
 
 
-def compare_all(cfg, app_id, run, threshold, min_px=100):
+def artifacts_root(cfg, a):
+    """--artifacts, else kit.config.json > validate.artifactsDir (relative to the project root): the folder screenshots and
+    diffs go to instead of the validation folder (keep them out of the repository). None = inside the validation folder."""
+    v = getattr(a, "artifacts", None) or (cfg.get("validate") or {}).get("artifactsDir")
+    if not v:
+        return None
+    p = Path(v) if Path(v).is_absolute() or getattr(a, "artifacts", None) else Path(cfg["_root"]) / v
+    return p.resolve()
+
+
+def run_dirs(run, res=None):
+    """(shots, diffs) folders of a run: where results.json says (an artifacts folder), else <run>/shots and <run>/diffs."""
+    res = res if res is not None else json.loads((run / "results.json").read_text(encoding="utf-8"))
+    return Path(res.get("shotsDir") or run / "shots"), Path(res.get("diffsDir") or run / "diffs")
+
+
+def compare_all(cfg, app_id, run, threshold, min_px=100, res=None):
     base = vdir(cfg, app_id) / "baseline"
-    (run / "diffs").mkdir(exist_ok=True)
+    shots, dd = run_dirs(run, res)
+    dd.mkdir(parents=True, exist_ok=True)
     diffs = {}
-    for shot in sorted((run / "shots").glob("*.png")):
+    for shot in sorted(shots.glob("*.png")):
         b = base / shot.name
-        diffs[shot.name] = diff(b, shot, run / "diffs" / shot.name, threshold, min_px) if b.is_file() else {"status": "new"}
+        diffs[shot.name] = diff(b, shot, dd / shot.name, threshold, min_px) if b.is_file() else {"status": "new"}
+        if diffs[shot.name].get("diff"):
+            diffs[shot.name]["diffPath"] = shown(cfg, dd / shot.name)
     return diffs
 
 
@@ -804,7 +841,9 @@ def cmd_run(cfg, a):
     axe = axe_path(cfg, a)
     run = d / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run.mkdir(parents=True)
-    cmd = ["node", str(HERE / "validate.js"), "--url", url, "--plan", str(plan), "--out", str(run),
+    art = artifacts_root(cfg, a)
+    shots = art / a.app / run.name / "shots" if art else run / "shots"   # screenshots outside the repository (K4-2)
+    cmd = ["node", str(HERE / "validate.js"), "--url", url, "--plan", str(plan), "--out", str(run), "--shots", str(shots),
            "--viewports", a.viewports, "--modes", a.modes or ",".join(modes), "--mode-attr", attr, "--project", cfg["_root"],
            "--touch-min", str(a.touch_min or touch_min(cfg, app)), "--theming", json.dumps(theming),
            "--waive", json.dumps(sorted({w["selector"] for w in waivers if w.get("selector")}))]
@@ -821,16 +860,21 @@ def cmd_run(cfg, a):
         sys.stdout.write(p.stderr[-2000:])
         die("browser run failed")
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    if art:
+        res.update(shotsDir=str(shots), diffsDir=str(shots.parent / "diffs"))
+        (run / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
     if not a.no_rules:   # a page app: a check URL that names the app opens this run's http entry, else its host pages
         res["rules"] = rules_in_scope(RULES.run_checks(cfg, app=a.app, skill="validate", url=url if re.match(r"https?:", url) else None),
                                       a.rules_scope)
         (run / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
         for x in res["rules"]:
+            if x.get("note"):
+                print("NOTE: rule %s · %s: %s" % (x["id"], x.get("app") or "", x["note"]))
             if x["status"] == "skipped":
                 print("NOTE: rule %s%s skipped: %s" % (x["id"], (" · " + x["app"]) if x.get("app") else "", x.get("reason") or "?"))
     else:
         print("NOTE: --no-rules: the rule checks of the rules registry were not run")
-    diffs = compare_all(cfg, a.app, run, *pixel_limits(cfg, a, json.loads(plan.read_text(encoding="utf-8"))))
+    diffs = compare_all(cfg, a.app, run, *pixel_limits(cfg, a, json.loads(plan.read_text(encoding="utf-8"))), res=res)
     fail, review, skipped = write_report(cfg, a.app, run, res, diffs, waivers, previous_report(cfg, a.app, run, a.compare))
     print("Report: %s · %d fail · %d to review · %d skipped" % (
         shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
@@ -842,7 +886,7 @@ def cmd_report(cfg, a):
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
     pf = vdir(cfg, a.app) / "plan.json"
     lim = pixel_limits(cfg, a, json.loads(pf.read_text(encoding="utf-8")) if pf.is_file() else None)
-    fail, review, skipped = write_report(cfg, a.app, run, res, compare_all(cfg, a.app, run, *lim),
+    fail, review, skipped = write_report(cfg, a.app, run, res, compare_all(cfg, a.app, run, *lim, res=res),
                                          load_waivers(waivers_path(cfg, a)), previous_report(cfg, a.app, run, a.compare))
     print("Report: %s · %d fail · %d to review · %d skipped" % (shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
 
@@ -852,7 +896,7 @@ def cmd_baseline(cfg, a):
     base = vdir(cfg, a.app) / "baseline"
     base.mkdir(parents=True, exist_ok=True)
     n = 0
-    for shot in (run / "shots").glob("*.png"):
+    for shot in run_dirs(run)[0].glob("*.png"):
         shutil.copy2(shot, base / shot.name)
         n += 1
     (base / "SOURCE.txt").write_text("Accepted from run %s on %s\n" % (run.name, dt.date.today().isoformat()), encoding="utf-8")
@@ -894,36 +938,85 @@ def _errs(x):
     return sorted({re.sub(r"\d+", "#", e) for e in (x.get("errors") or [])})
 
 
+ID_TOKEN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z0-9]{5,}(?![A-Za-z0-9])")
+
+
+def _is_id(tok, now=None):
+    """A generated id: letters and digits mixed (t15d5, umwrwh5d4), an epoch time in ms or s, or a base-36 time
+    (Date.now().toString(36), with up to 3 letters before it) within the last 90 days."""
+    if re.search(r"[A-Za-z]\d+[A-Za-z]|\d[A-Za-z]+\d", tok) or re.fullmatch(r"\d{10}|\d{13}", tok):
+        return True
+    now = now or __import__("time").time() * 1000
+    for i in range(0, min(4, len(tok) - 7)):
+        if tok[i:i + 8] != tok[i:i + 8].lower():
+            continue
+        try:
+            v = int(tok[i:i + 8], 36)
+        except ValueError:
+            continue
+        if now - 90 * 864e5 <= v <= now + 864e5:
+            return True
+    return False
+
+
 TIME_RX = re.compile(r"\b\d{1,2}:\d{2}(?::\d{2})?(?:\s?[AaPp][Mm])?\b"
                      r"|\b\d+\s*(?:s|secs?|seconds?|m|mins?|minutes?|h|hrs?|hours?|d|days?|w|weeks?|months?|y|years?)\s+ago\b"
                      r"|\b\d+\s*(?:giây|phút|giờ|ngày|tuần|tháng|năm)\s+trước\b", re.I)
-NORMALIZERS = {"time": lambda v: TIME_RX.sub("<time>", v)}   # plan.normalize: clock times (09:27) and relative times (5 min ago)
+# plan.normalize: "time" = clock times (09:27) and relative times (5 min ago); "ids" = generated ids (#/c/umwrwh5d4,
+# conv.umwrwh5d4, my-mwrwl3pr, t15d5) and epoch times; {"pattern": regex, "replace": text} = any other run-to-run value
+NORMALIZERS = {"time": lambda v: TIME_RX.sub("<time>", v),
+               "ids": lambda v: ID_TOKEN.sub(lambda m: "<id>" if _is_id(m.group(0)) else m.group(0), v)}
 
 
-def normalize_snap(snap, names):
-    """A parity snapshot with plan.normalize applied to its text lines and to the names of roles and aria states."""
-    fs = [NORMALIZERS[n] for n in names if n in NORMALIZERS]
-    if not fs or not snap:
+def normalizer(items):
+    """One function str -> str for plan.normalize (names and {pattern, replace} items, in order); stops on a bad item."""
+    fs = []
+    for n in items or ():
+        if isinstance(n, dict) and isinstance(n.get("pattern"), str):
+            try:
+                rx = re.compile(n["pattern"])
+            except re.error as e:
+                die("plan.normalize: %r is no regular expression (%s)" % (n["pattern"], e))
+            fs.append(lambda v, rx=rx, r=str(n.get("replace", "")): rx.sub(r, v))
+        elif isinstance(n, str) and n in NORMALIZERS:
+            fs.append(NORMALIZERS[n])
+        else:
+            die("plan.normalize: unknown %s (known: %s, or {\"pattern\": regex, \"replace\": text})"
+                % (json.dumps(n, ensure_ascii=False), ", ".join(NORMALIZERS)))
+    return (lambda v: __import__("functools").reduce(lambda x, g: g(x), fs, v)) if fs else None
+
+
+def _norm_keys(d, f, add=False):
+    out = {}
+    for k, v in (d or {}).items():
+        out[f(k)] = out.get(f(k), 0) + v if add else v
+    return out
+
+
+def normalize_snap(snap, f):
+    """A parity snapshot with plan.normalize applied to its text lines and to the names of roles, aria states and classes."""
+    if not f or not snap:
         return snap
-    f = lambda v: __import__("functools").reduce(lambda x, g: g(x), fs, v)
-    roles = {}
-    for k, v in (snap.get("roles") or {}).items():
-        roles[f(k)] = roles.get(f(k), 0) + v
-    return dict(snap, text=[f(x) for x in snap.get("text") or []], roles=roles,
-                aria={f(k): v for k, v in (snap.get("aria") or {}).items()})
+    return dict(snap, text=[f(x) for x in snap.get("text") or []], roles=_norm_keys(snap.get("roles"), f, True),
+                aria={f(k): f(v) for k, v in (snap.get("aria") or {}).items()}, classes=_norm_keys(snap.get("classes"), f))
 
 
-def parity_compare(ra, rb, diffs=None, normalize=()):
-    """Rows {where, check, status: match|differs, a, b} for two results.json of the same plan (validate.js --parity).
-    Views match on screen, state, width and mode; flows on name. diffs = {shot: diff()} of A vs B screenshots.
-    normalize = plan.normalize names (["time"]): applied to text and names on both sides before they are compared."""
+CLASS_MODES = ("review", "differs", "off")
+
+
+def parity_compare(ra, rb, diffs=None, normalize=(), classes="review"):
+    """Rows {where, check, status: match|differs|review|error, a, b} for two results.json of the same plan (validate.js
+    --parity). Views match on screen, state, width and mode; flows on name. diffs = {shot: diff()} of A vs B screenshots.
+    normalize = plan.normalize (["time", "ids", {"pattern", "replace"}]): applied on both sides to text, names, flow URLs
+    and localStorage keys and values before they are compared. classes: the tag and classes of the elements both builds
+    have (by role and name, or own text) that differ are a "review" row (default), a "differs" row, or not compared (off)."""
     rows, diffs = [], diffs or {}
-    bad = [n for n in normalize if n not in NORMALIZERS]
-    if bad:
-        die("plan.normalize: unknown %s (known: %s)" % (", ".join(bad), ", ".join(NORMALIZERS)))
+    f = normalizer(normalize)
+    if classes not in CLASS_MODES:
+        die("classes must be one of %s" % ", ".join(CLASS_MODES))
 
-    def add(where, check, d, same_a="", same_b=None):
-        rows.append({"where": where, "check": check, "status": "differs" if d else "match",
+    def add(where, check, d, same_a="", same_b=None, status="differs"):
+        rows.append({"where": where, "check": check, "status": status if d else "match",
                      "a": _short(d[0]) if d else same_a, "b": _short(d[1]) if d else (same_a if same_b is None else same_b)})
 
     def broken(where, x, y, both_fatal=False):
@@ -937,10 +1030,15 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
         return True
 
     def snap_rows(where, x, y):
-        sx, sy = normalize_snap(x.get("snap") or {}, normalize), normalize_snap(y.get("snap") or {}, normalize)
+        sx, sy = normalize_snap(x.get("snap") or {}, f), normalize_snap(y.get("snap") or {}, f)
         add(where, "text", _cmp_lines(sx.get("text"), sy.get("text")), "%d lines" % len(sx.get("text") or []))
         add(where, "roles", _cmp_dict(sx.get("roles"), sy.get("roles")), "%d elements" % sum((sx.get("roles") or {}).values()))
         add(where, "aria", _cmp_dict(sx.get("aria"), sy.get("aria")), "%d states" % len(sx.get("aria") or {}))
+        ca, cb = sx.get("classes"), sy.get("classes")
+        if classes != "off" and ca is not None and cb is not None:   # only the elements both builds have (K1a-8)
+            both = set(ca) & set(cb)
+            add(where, "classes", _cmp_dict({k: ca[k] for k in both}, {k: cb[k] for k in both}), "%d elements" % len(both),
+                status=classes)
 
     def pixels(where, x):
         dfx = diffs.get(x.get("shot"))
@@ -950,7 +1048,7 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
             rows.append({"where": where, "check": "pixels", "status": "skipped", "a": dfx.get("why", ""), "b": ""})
         else:
             d = None if dfx["status"] == "same" else (dfx.get("why") or "%s px (%s%%)" % (dfx.get("px"), dfx.get("pct")),
-                                                      "diffs/" + dfx["diff"] if dfx.get("diff") else "")
+                                                      (dfx.get("diffPath") or "diffs/" + dfx["diff"]) if dfx.get("diff") else "")
             add(where, "pixels", d, "%s%% px differ" % dfx.get("pct", 0), "")
 
     key = lambda it: (it["screen"], it["state"], it["vp"], it["mode"])
@@ -981,12 +1079,12 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
             continue
         res = lambda f: "passed" if f["ok"] else "step %s: %s" % (f.get("failedStep") or "-", f.get("error") or "; ".join(f.get("errors") or []))
         add(where, "result", None if res(x) == res(y) else (res(x), res(y)), res(x))
-        ua, ub = x.get("urls") or [], y.get("urls") or []
+        ua, ub = [f(u) for u in x.get("urls") or []] if f else x.get("urls") or [], [f(u) for u in y.get("urls") or []] if f else y.get("urls") or []
         steps = [i for i in range(max(len(ua), len(ub))) if (ua[i:i + 1] or ["—"]) != (ub[i:i + 1] or ["—"])]
         add(where, "urls", ("; ".join("step %d: %s" % (i + 1, (ua[i:i + 1] or ["—"])[0]) for i in steps[:6]),
                             "; ".join("step %d: %s" % (i + 1, (ub[i:i + 1] or ["—"])[0]) for i in steps[:6])) if steps else None,
             ua[-1] if ua else "—")
-        stamp = lambda st: {k: re.sub(r"\b\d{10,13}\b", "<time>", str(v)) for k, v in (st or {}).items()}   # epoch times differ per run
+        stamp = lambda st: {(f(k) if f else k): re.sub(r"\b\d{10,13}\b", "<time>", f(str(v)) if f else str(v)) for k, v in (st or {}).items()}   # epoch times differ per run
         add(where, "storage", _cmp_dict(stamp(x.get("storage")), stamp(y.get("storage"))), "%d keys" % len(x.get("storage") or {}))
         snap_rows(where, x, y)
         ea, eb = _errs(x), _errs(y)
@@ -995,15 +1093,18 @@ def parity_compare(ra, rb, diffs=None, normalize=()):
     return rows
 
 
-def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None):
+def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None, shots=None):
     T = lambda k, **kw: t(cfg, "validate.parity." + k, **kw)
     diff_rows = [r for r in rows if r["status"] == "differs"]
     err_rows = [r for r in rows if r["status"] == "error"]
+    rev_rows = [r for r in rows if r["status"] == "review"]
     n_match = sum(1 for r in rows if r["status"] == "match")
     checks = list(dict.fromkeys(r["check"] for r in rows))
-    lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path) + (" · " + T("pixelsMeta", **limits) if limits else ""), "",
-             T("summary", match=n_match, differs=len(diff_rows), skipped=len(rows) - n_match - len(diff_rows) - len(err_rows)) +
-             (" " + T("errorsSummary", n=len(err_rows)) if err_rows else ""), ""]
+    lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path) + (" · " + T("pixelsMeta", **limits) if limits else ""), ""]
+    if shots:
+        lines += [T("shotsMeta", dir=shots), ""]
+    lines += [T("summary", match=n_match, differs=len(diff_rows), skipped=len(rows) - n_match - len(diff_rows) - len(err_rows) - len(rev_rows)) +
+              (" " + T("reviewSummary", n=len(rev_rows)) if rev_rows else "") + (" " + T("errorsSummary", n=len(err_rows)) if err_rows else ""), ""]
     if err_rows:
         lines += ["## %s (%d)" % (T("errorsTitle"), len(err_rows)), "", T("errorsNote"), "",
                   "| %s | %s | %s | A | B |" % (T("where"), T("check"), T("side")), "|---|---|---|---|---|"]
@@ -1016,6 +1117,11 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None):
                   for r in diff_rows]
     else:
         lines.append("—")
+    if rev_rows:   # class and structure differences: a look, not a failure (unless --classes differs)
+        lines += ["", "## %s (%d)" % (T("reviewTitle"), len(rev_rows)), "", T("reviewNote"), "",
+                  "| %s | %s | A | B |" % (T("where"), T("check")), "|---|---|---|---|"]
+        lines += ["| %s | %s | %s | %s |" % (r["where"], T("check." + r["check"]), r["a"].replace("|", "/"), r["b"].replace("|", "/"))
+                  for r in rev_rows]
     lines += ["", "## " + T("allTitle"), "", "| %s | %s |" % (T("where"), " | ".join(T("check." + c) for c in checks)),
               "|---|" + "---|" * len(checks)]
     by = {}
@@ -1026,22 +1132,30 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None):
     lines.append("")
     (out / "parity.md").write_text("\n".join(lines), encoding="utf-8")
     (out / "parity.json").write_text(json.dumps({"a": a_url, "b": b_url, "plan": str(plan_path), "match": n_match,
-                                                 "differs": len(diff_rows), "errors": len(err_rows), "pixels": limits, "rows": rows},
+                                                 "differs": len(diff_rows), "errors": len(err_rows), "review": len(rev_rows),
+                                                 "pixels": limits, "shots": shots, "rows": rows},
                                                 ensure_ascii=False, indent=2), encoding="utf-8")
     return n_match, len(diff_rows), len(err_rows)
 
 
 def cmd_parity(cfg, a):
-    if not a.dir:
-        die("parity needs --dir <folder> for the two runs and the report")
-    plan = Path(a.plan)
+    """--app without --dir: the plan <paths.validation>/<app>/plan.json and the report in <paths.validation>/<app>/parity/
+    (K4-1); --artifacts or validate.artifactsDir: the two runs (a/, b/ with their screenshots) and diffs/ go there (K4-2)."""
+    if not a.dir and not a.app:
+        die("parity needs --dir <folder> for the report, or --app <id> (report in <paths.validation>/<app>/parity)")
+    if not a.dir and not cfg.get("paths"):
+        die("parity --app needs a kit.config.json (paths.validation): pass --dir")
+    out = Path(a.dir) if a.dir else vdir(cfg, a.app) / "parity"
+    plan = Path(a.plan) if a.plan else (Path(a.dir) if a.dir and (Path(a.dir) / "plan.json").is_file() else vdir(cfg, a.app) if a.app else Path(a.dir)) / "plan.json"
     if not plan.is_file():
-        die("plan not found: %s" % a.plan)
-    out = Path(a.dir)
+        die("plan not found: %s%s" % (plan, "" if a.plan else " (pass --plan)"))
+    art = artifacts_root(cfg, a)
+    work = art / (a.app or out.name) / "parity" if art else out   # a/, b/ and diffs/: outside the repository when set
+    out.mkdir(parents=True, exist_ok=True)
     attr, modes, theming = mode_setup(cfg)
     res = {}
     for side, url in (("a", a.a), ("b", a.b)):
-        d = out / side
+        d = work / side
         if d.exists():
             shutil.rmtree(d)
         d.mkdir(parents=True)
@@ -1060,20 +1174,25 @@ def cmd_parity(cfg, a):
             sys.stdout.write(p.stderr[-2000:])
             die("browser run failed on %s" % url)
         res[side] = json.loads((d / "results.json").read_text(encoding="utf-8"))
-    (out / "diffs").mkdir(exist_ok=True)
+    (work / "diffs").mkdir(exist_ok=True)
     diffs = {}
     pl = json.loads(plan.read_text(encoding="utf-8"))
     thr, min_px = pixel_limits(cfg, a, pl)
-    for shot in sorted((out / "a" / "shots").glob("*.png")):
-        b = out / "b" / "shots" / shot.name
+    for shot in sorted((work / "a" / "shots").glob("*.png")):
+        b = work / "b" / "shots" / shot.name
         if b.is_file():
-            diffs[shot.name] = diff(shot, b, out / "diffs" / shot.name, thr, min_px)
-    rows = parity_compare(res["a"], res["b"], diffs, pl.get("normalize") or ())
-    m, n, e = write_parity(cfg, out, a.a, a.b, a.plan, rows, {"threshold": thr, "minPixels": min_px})
+            diffs[shot.name] = diff(shot, b, work / "diffs" / shot.name, thr, min_px)
+            if diffs[shot.name].get("diff"):
+                diffs[shot.name]["diffPath"] = shown(cfg, work / "diffs" / shot.name) if art else "diffs/" + shot.name
+    rows = parity_compare(res["a"], res["b"], diffs, pl.get("normalize") or (), a.classes or pl.get("classes") or "review")
+    m, n, e = write_parity(cfg, out, a.a, a.b, shown(cfg, plan), rows, {"threshold": thr, "minPixels": min_px},
+                           shown(cfg, work) if art else None)
     for r in rows:
         if r["status"] == "error":
             print("ERROR: %s · %s failed on %s: A: %s · B: %s" % (r["where"], r["check"], r["side"], r["a"], r["b"]))
-    print("Parity: %s · %d match · %d differ%s" % (shown(cfg, out / "parity.md"), m, n, " · %d error(s)" % e if e else ""))
+    nr = sum(1 for r in rows if r["status"] == "review")
+    print("Parity: %s · %d match · %d differ%s%s" % (shown(cfg, out / "parity.md"), m, n, " · %d to look at (classes)" % nr if nr else "",
+                                                    " · %d error(s)" % e if e else ""))
     sys.exit(1 if n or e else 0)
 
 
@@ -1242,6 +1361,56 @@ def selftest():
     assert page_entry(pc2, pc2["apps"][1]) == d / "host" / "pg" / "index.html"
     pc2["apps"][1]["output"] = "dist/x.js"
     assert page_entry(pc2, pc2["apps"][1]) is None
+    # 0.12.3 (K1a-6): plan.normalize "ids" and {"pattern", "replace"} on text, names, flow URLs and localStorage keys and values
+    import time as _t
+
+    def b36(n):   # Date.now().toString(36)
+        n, o = int(n), ""
+        while n:
+            n, o = n // 36, "0123456789abcdefghijklmnopqrstuvwxyz"[n % 36] + o
+        return o
+    now = int(_t.time() * 1000)
+    ida, idb = "u" + b36(now), "u" + b36(now + 98765)
+    ids = NORMALIZERS["ids"]
+    assert ids("#/c/umwrwh5d4 · oneai2.conv.umwrwh5d4 · my-mwrwl3pr · t15d5 · 1795337192295") == "#/c/<id> · oneai2.conv.<id> · my-<id> · <id> · <id>"
+    assert ids("#/p/" + ida) == "#/p/<id>" and ids("p" + b36(now - 5 * 864e5)) == "<id>", (ida, ids("#/p/" + ida))
+    for keep in ("1280px", "oneai2", "brand=blue", "Phân tích kỹ thuật", "h264", "mountain", "Settings"):
+        assert ids(keep) == keep, keep
+    fa = dict(flow, urls=["#/", "#/c/" + ida], storage={"oneai2.conv." + ida: '{"id":"%s","t":"Hi"}' % ida, "n": "item-7a1"},
+              snap=dict(snap, text=["Chat " + ida], classes={}))
+    fb = dict(flow, urls=["#/", "#/c/" + idb], storage={"oneai2.conv." + idb: '{"id":"%s","t":"Hi"}' % idb, "n": "item-7b2"},
+              snap=dict(snap, text=["Chat " + idb], classes={}))
+    raw = {r["check"]: r["status"] for r in parity_compare({"flows": [fa]}, {"flows": [fb]})}
+    assert raw["urls"] == raw["storage"] == raw["text"] == "differs", raw
+    nz = {r["check"]: r["status"] for r in parity_compare({"flows": [fa]}, {"flows": [fb]},
+                                                          normalize=["ids", {"pattern": r"item-\w+", "replace": "item-#"}])}
+    assert set(nz.values()) == {"match"}, nz
+    for bad in ([{"pattern": "("}], [{"replace": "x"}]):
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                parity_compare({"items": []}, {"items": []}, normalize=bad)
+            raise AssertionError("bad normalize accepted: %s" % bad)
+        except SystemExit:
+            pass
+    # K1a-8: tag and classes of the elements both builds have: a "review" row by default, "differs" on request, off
+    ca = dict(view, snap=dict(snap, classes={'link "Docs"': "a.lnk", 'text "New"': "span.tag", 'text "Only A"': "p"}))
+    cb = dict(view, snap=dict(snap, classes={'link "Docs"': "a.brand.lnk", 'text "New"': "span.solid.tag", 'text "Only B"': "div"}))
+    cr = [r for r in parity_compare({"items": [ca]}, {"items": [cb]}) if r["check"] == "classes"]
+    assert len(cr) == 1 and cr[0]["status"] == "review" and "a.lnk" in cr[0]["a"] and "a.brand.lnk" in cr[0]["b"] and "Only" not in cr[0]["a"], cr
+    assert [r["status"] for r in parity_compare({"items": [ca]}, {"items": [cb]}, classes="differs") if r["check"] == "classes"] == ["differs"]
+    assert not [r for r in parity_compare({"items": [ca]}, {"items": [cb]}, classes="off") if r["check"] == "classes"]
+    assert [r["status"] for r in parity_compare({"items": [ca]}, {"items": [ca]}) if r["check"] == "classes"] == ["match"]
+    n_m, n_d, n_e = write_parity({"language": "en"}, d, "http://a/", "http://b/", "plan.json", cr, None, "/tmp/art/x/parity")
+    pm = (d / "parity.md").read_text()
+    assert n_d == 0 and "## To look at (1)" in pm and "Class / structure" in pm and "/tmp/art/x/parity" in pm \
+        and json.loads((d / "parity.json").read_text())["review"] == 1, pm
+    # K4-2: --artifacts (relative to the current folder) or validate.artifactsDir (relative to the project), run folders
+    ac = {"_root": str(d), "validate": {"artifactsDir": "../art"}}
+    assert artifacts_root(ac, argparse.Namespace(artifacts=None)) == (d / "../art").resolve()
+    assert artifacts_root({"_root": str(d)}, argparse.Namespace(artifacts=None)) is None
+    assert artifacts_root(ac, argparse.Namespace(artifacts=str(d / "x"))) == (d / "x").resolve()
+    assert run_dirs(d / "r1", {"shotsDir": "/a/shots", "diffsDir": "/a/diffs"}) == (Path("/a/shots"), Path("/a/diffs"))
+    assert run_dirs(d / "r1", {}) == (d / "r1" / "shots", d / "r1" / "diffs")
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")
@@ -1274,7 +1443,10 @@ def main():
     p = sub.add_parser("parity", help="run one plan on two builds and compare them")
     p.add_argument("--a", required=True, help="URL of the first build (e.g. the HTML page)")
     p.add_argument("--b", required=True, help="URL of the second build (e.g. its Vue port)")
-    p.add_argument("--plan", required=True, help="plan.json with the screens, states and flows to run on both")
+    p.add_argument("--plan", help="plan.json with the screens, states and flows to run on both (default <dir>/plan.json, "
+                                  "else <paths.validation>/<app>/plan.json)")
+    p.add_argument("--classes", choices=CLASS_MODES, help="tag and class differences of the elements both builds have: review "
+                                                          "(default, plan.classes), differs (count as a difference) or off")
     p.add_argument("--app", help="app id: its DS profile gives the theming attributes for named states")
     p.add_argument("--viewports", default="1280"); p.add_argument("--modes", help="default: the DS's first mode")
     p.add_argument("--threshold", type=float, help="percent of pixels (default plan.threshold, validate.threshold, 0.5)")
@@ -1285,7 +1457,11 @@ def main():
     p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float)
     p.add_argument("--min-pixels", type=int)
     for sp in sub.choices.values():
-        sp.add_argument("--dir", help="folder for the plan, runs and baseline (default <paths.validation>/<app>)")
+        sp.add_argument("--dir", help="folder for the plan, runs and baseline (default <paths.validation>/<app>; parity: the report "
+                                      "folder, default <paths.validation>/<app>/parity)")
+    for k in ("run", "parity"):
+        sub.choices[k].add_argument("--artifacts", help="folder for screenshots and diffs outside the repository (default "
+                                                        "kit.config.json > validate.artifactsDir, else inside the validation folder)")
     for k in ("run", "report"):
         sp = sub.choices[k]
         sp.add_argument("--waivers", help="known or out-of-scope findings with a reason (default <dir>/waivers.json)")

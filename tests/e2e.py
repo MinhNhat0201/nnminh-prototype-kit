@@ -602,6 +602,11 @@ def main():
     check(js and "http://127.0.0.1:9/apps/acme-web/" in js[0]["command"] and "not reachable" in js[0]["reason"]
           and "http://127.0.0.1:9/x/p.html" in js2[0]["command"],
           "rules check: a page app's check URL opens its host page (or --url), not a URL with the page app id", json.dumps(js + js2))
+    # 0.12.3 (K4-3): {app} of a page app outside a URL is the host app (from usedBy), shown as "page → host"
+    js = json.loads(run(R + ["check", "--app", "acme-page", "--id", "BLD-001", "--json", "-"], d))
+    out = run(R + ["check", "--app", "acme-page", "--id", "BLD-001"], d)
+    check(js and js[0]["command"].endswith(" acme-web") and js[0]["host"] == "acme-web" and js[0]["app"] == "acme-page"
+          and "acme-page → acme-web" in out, "rules check: {app} of a page app is its host app id, not the page id (K4-3)", json.dumps(js) + out)
     out = run(R + ["coverage"], d)
     check("need a running server" in out, "rules coverage: checks that need a server", out)
     out_p, out_pr = run(R + ["list", "--skill", "prototype", "--brief"], d), run(R + ["list", "--skill", "pr", "--brief"], d)
@@ -865,6 +870,69 @@ def main():
                   out + json.dumps(rr["items"])[:2000])
         finally:
             srv6.shutdown()
+        # 0.12.3: an async IIFE prepare is awaited (K4-4); plan.settle waits for a skeleton after a state's reload, which
+        # starts from the data its prepare wrote (K1a-7); a prepare that reloads the page is no error; plan.normalize "ids"
+        # (K1a-6); a class difference is a row to look at (K1a-8); parity --app reads <paths.validation>/<app>/plan.json and
+        # writes the report in .../parity (K4-1); --artifacts keeps runs, screenshots and diffs out of it (K4-2)
+        skel = ("<!doctype html><html lang=\"en\"><head><title>Board</title></head><body><main id=\"main\"><p class=\"skel\">Loading</p>"
+                "</main><script>\nconst m = document.getElementById('main'), seed = localStorage.getItem('seed') || 'Empty';\n"
+                "setTimeout(() => { m.innerHTML = '<h1>Board</h1><p id=\"s\">' + seed + '</p><a href=\"#/x\" class=\"lnk%s\">Docs</a>"
+                "<button id=\"new\">New</button><span id=\"e\"> </span>';\n document.getElementById('new').onclick = () => { const id = 'u' + Date.now().toString(36);"
+                " localStorage.setItem('conv.' + id, id); location.hash = '#/c/' + id; }; }, 600);\n</script></body></html>\n")
+        write(d / "par4/a/index.html", skel % "")
+        write(d / "par4/b/index.html", skel % " brand")
+        srv7, base7 = serve(d / "par4")
+        try:
+            write(d / "par4/iife.json", json.dumps({"contentRoot": "main", "prepare": "(async () => { await new Promise(r => setTimeout(r, 900)) })()",
+                                                    "screens": [{"id": "S01", "route": ""}]}))
+            run([PY, S / "validate/scripts/validation.py", "parity", "--a", base7 + "a/index.html", "--b", base7 + "a/index.html",
+                 "--plan", d / "par4/iife.json", "--dir", d / "par4-iife"], d, expect=None)
+            it = json.loads((d / "par4-iife/a/results.json").read_text())["items"][0]
+            check("Board" in it["snap"]["text"] and "Loading" not in it["snap"]["text"],
+                  "validate: a prepare whose value is a promise (async IIFE) is awaited before the view is read (K4-4)", json.dumps(it)[:2000])
+            vplan = {"contentRoot": "main", "settle": ".skel", "normalize": ["ids"],
+                     "screens": [{"id": "S01", "route": "", "states": [{"name": "seeded", "prepare": "localStorage.setItem('seed', 'Seeded')", "reload": True},
+                                                                      {"name": "reloads", "prepare": "location.reload()"}]}],
+                     "flows": [{"name": "new", "steps": [{"click": "#new"}, {"expectUrl": "#/c/"}]}]}
+            write(d / "docs/validation/acme-web/plan.json", json.dumps(vplan))
+            out = run([PY, S / "validate/scripts/validation.py", "parity", "--app", "acme-web", "--a", base7 + "a/index.html",
+                       "--b", base7 + "b/index.html", "--artifacts", d / "art"], d, expect=None)
+            pdir = d / "docs/validation/acme-web/parity"
+            pj = json.loads((pdir / "parity.json").read_text()) if (pdir / "parity.json").is_file() else {"rows": []}
+            st = {(r["where"], r["check"]): r for r in pj["rows"]}
+            ra = json.loads((d / "art/acme-web/parity/a/results.json").read_text()) if (d / "art/acme-web/parity/a/results.json").is_file() else {"items": [], "flows": []}
+            sv = {it["state"]: it for it in ra["items"]}
+            check(pj.get("differs") == 0 and not pj.get("errors") and "Seeded" in sv["seeded"]["snap"]["text"]
+                  and "Board" in sv["default"]["snap"]["text"] and not sv["reloads"].get("fatal"),
+                  "validate: state reload: true starts from the data its prepare wrote; plan.settle waits for the skeleton; "
+                  "a prepare that reloads is no error (K1a-7, K4-4)", out + json.dumps(pj["rows"])[:3000])
+            fu = ra["flows"][0]["urls"] if ra["flows"] else []
+            rb = json.loads((d / "art/acme-web/parity/b/results.json").read_text())
+            check(fu and "#/c/u" in fu[-1] and fu != rb["flows"][0]["urls"] and st[("flow · new", "urls")]["status"] == "match"
+                  and st[("flow · new", "storage")]["status"] == "match",
+                  "validate parity: plan.normalize ids: generated ids in URLs and localStorage match (K1a-6)", json.dumps(pj["rows"])[:3000])
+            cl = st.get(("S01 · default · 1280px · light", "classes")) or {}
+            check(cl.get("status") == "review" and "a.brand.lnk" in cl.get("b", "") and pj.get("review", 0) >= 1 and "Parity:" in out
+                  and "## To look at (" in (pdir / "parity.md").read_text(),
+                  "validate parity: a class added to a link is a row to look at, not a difference (K1a-8)", out + json.dumps(cl))
+            check(not (pdir / "a").exists() and not (pdir / "diffs").exists() and list((d / "art/acme-web/parity/a/shots").glob("*.png"))
+                  and "art/acme-web/parity" in (pdir / "parity.md").read_text(),
+                  "validate parity --app: plan and report in <paths.validation>/<app>, runs and screenshots in --artifacts (K4-1, K4-2)",
+                  out + (pdir / "parity.md").read_text()[:1500])
+            write(d / "valdir-art/plan.json", json.dumps({"contentRoot": "main", "settle": 700, "screens": [{"id": "S01", "route": ""}],
+                                                       "flows": [{"name": "empty", "steps": [{"expectText": ["#e", ""]}]},
+                                                                 {"name": "not empty", "steps": [{"expectText": ["#s", ""]}]}]}))
+            out = run([PY, S / "validate/scripts/validation.py", "run", "--app", "acme-web", "--dir", d / "valdir-art", "--url", base7 + "a/index.html",
+                       "--viewports", "1280", "--modes", "light", "--no-rules", "--artifacts", d / "art2"], d, expect=None)
+            rr = sorted((d / "valdir-art").glob("2*/"))[-1]
+            check(not (rr / "shots").exists() and list((d / "art2/acme-web" / rr.name / "shots").glob("*.png"))
+                  and ("art2/acme-web/%s/shots" % rr.name) in (rr / "report.md").read_text(),
+                  "validate run --artifacts: screenshots outside the validation folder, the report names them (K4-2)", out)
+            fl = {f["name"]: f for f in json.loads((rr / "results.json").read_text())["flows"]}
+            check(fl["empty"]["ok"] and not fl["not empty"]["ok"] and "is not empty" in (fl["not empty"]["error"] or ""),
+                  "validate: expectText [selector, \"\"] passes on an element without text, fails on one with text (K5-2)", json.dumps(fl)[:1500])
+        finally:
+            srv7.shutdown()
         import socket
         so = socket.socket()
         so.bind(("127.0.0.1", 0))

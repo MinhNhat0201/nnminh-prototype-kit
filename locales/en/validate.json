@@ -63,5 +63,12 @@
   "validate.parity.errorsSummary": "{n} error(s): see Errors.",
   "validate.parity.side": "Failed on",
   "validate.parity.check.prepare": "Prepare script",
-  "validate.parity.pixelsMeta": "pixels differ from {minPixels} px or {threshold} %"
+  "validate.parity.pixelsMeta": "pixels differ from {minPixels} px or {threshold} %",
+  "validate.shotsWhere": "Screenshots: {shots} · diffs: {diffs}",
+  "validate.parity.shotsMeta": "Runs, screenshots and diffs: {dir}",
+  "validate.parity.review": "Look",
+  "validate.parity.reviewTitle": "To look at",
+  "validate.parity.reviewNote": "Elements both builds have, with another tag or other classes (a link that gained a brand class, a tag that became solid). Often a styling change the pixels do not show at this width: confirm it is intended. Not counted as a difference unless parity runs with --classes differs (or plan.classes \"differs\").",
+  "validate.parity.reviewSummary": "{n} to look at (classes).",
+  "validate.parity.check.classes": "Class / structure"
 }

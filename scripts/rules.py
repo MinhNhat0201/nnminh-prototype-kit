@@ -634,17 +634,23 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, 
             targets = [app] if (not app or (in_scope(r, app) and not exception_for(r, app) and not overriders(rules, r, app))) else []
         # {page}: one run per page to open (a page app: each host page, kitconf.app_pages); a page app whose check URL
         # names the app: that URL becomes url, else each host page on the same server
+        # {app} elsewhere in the command of a page app: the host app id (the page has no folder of the site and no CSS of
+        # its own; the project's checks audit the host), one run per host app found from usedBy (kitconf.page_hosts)
         runs = []
         for a in targets:
+            page_app = (apps.get(a) or {}).get("type") == "page"
             if a and "{page}" in r["check"]:
-                runs += [(a, r["check"], pg) for pg in kitconf.app_pages(cfg, a) or [""]]
-            elif (apps.get(a) or {}).get("type") == "page" and kitconf.url_names_app(r["check"]):
-                runs += [(a, c, pg) for c, pg in page_app_runs(cfg, a, r["check"], url)] or [(a, r["check"], None)]
+                runs += [(a, r["check"], pg, None) for pg in kitconf.app_pages(cfg, a) or [""]]
+            elif page_app and kitconf.url_names_app(r["check"]):
+                runs += [(a, c, pg, None) for c, pg in page_app_runs(cfg, a, r["check"], url)] or [(a, r["check"], None, None)]
+            elif page_app and "{app}" in r["check"]:
+                hosts = list(dict.fromkeys(h for h, _u in kitconf.page_hosts(cfg, a) if h))
+                runs += [(a, r["check"], None, h) for h in hosts] or [(a, r["check"], None, "")]
             else:
-                runs.append((a, r["check"], None))
-        for a, cmd, pg in runs:
+                runs.append((a, r["check"], None, None))
+        for a, cmd, pg, host in runs:
             ap = apps.get(a) or {}
-            vals = {"app": a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
+            vals = {"app": host or a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
                     "stack": (ap.get("stack") or cfg.get("stack") or "") if a else "", "page": pg or ""}
             line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", cmd)
             res = {"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
@@ -652,6 +658,11 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, 
                    "reason": "", "summary": []}
             if pg is not None:
                 res["page"] = pg
+            if host:
+                res["host"] = host
+            elif host == "":
+                res["note"] = ("page app: {app} stays the page app id, no host app found (usedBy under the path or output of an "
+                               "app that is not a page): list usedBy, or the check may skip it")
             srv = needs_server(line)
             if srv and srv not in probed:
                 probed[srv] = reachable(*srv)
@@ -1023,9 +1034,13 @@ def cmd_check(cfg, a):
         for x in res:
             tag = {"pass": "ok", "fail": "FAIL", "skipped": "skip"}[x["status"]]
             code = "" if x["exit"] is None else " · exit %d" % x["exit"]
-            print("%-4s %-9s %-6s %s%s%s%s" % (tag, x["id"], x["severity"], x["title"], (" · " + x["app"]) if x["app"] else "", code,
+            print("%-4s %-9s %-6s %s%s%s%s" % (tag, x["id"], x["severity"], x["title"], ((" · " + x["app"]) if x["app"] else "")
+                                             + ((" → " + x["host"]) if x.get("host") else ""), code,
                                              (" · " + x["reason"]) if x["status"] == "skipped" else
                                              ("\n     " + "\n     ".join(x["summary"])) if x["status"] == "fail" and x["summary"] else ""))
+        for x in res:
+            if x.get("note"):
+                print("NOTE: %s · %s: %s" % (x["id"], x.get("app") or "", x["note"]))
         must = [x for x in res if x["status"] == "fail" and x["severity"] == "must"]
         print("Rule checks: %d run, %d failed (%d must), %d skipped" % (
             sum(x["status"] != "skipped" for x in res), sum(x["status"] == "fail" for x in res), len(must),
@@ -1263,6 +1278,14 @@ def selftest():
         assert page_app_runs(pc, "notes-vue", cmd) == [("node a11y.js http://localhost:8765/apps/web/notes/ --{platform}", "apps/web/notes/")]
         assert page_app_runs(pc, "notes-vue", cmd, "http://127.0.0.1:9/x/?a=1&b=2")[0][0] == "node a11y.js 'http://127.0.0.1:9/x/?a=1&b=2' --{platform}"
         assert page_app_runs(dict(pc, apps=pc["apps"][:-1] + [dict(pc["apps"][-1], usedBy=[])]), "notes-vue", cmd) == []
+        # 0.12.3 (K4-3): {app} of a page app outside a URL is its host app (from usedBy under a path or an output), else a note
+        rh = add_rule(cfg, "Host audit", "styling", "must", decision=did, check="test {app} = web", body="x")
+        hr = run_checks(pc, app="notes-vue", rid=rh["id"])
+        assert [(x["command"], x.get("host"), x["status"]) for x in hr] == [("test web = web", "web", "pass")], hr
+        po = dict(pc, apps=[dict(pc["apps"][0], path="src/web", output="apps/web")] + pc["apps"][1:])
+        assert kitconf.page_hosts(po, "notes-vue") == [("web", "apps/web/notes/notes.js")], kitconf.page_hosts(po, "notes-vue")
+        nh = run_checks(dict(pc, apps=pc["apps"][:-1] + [dict(pc["apps"][-1], usedBy=["elsewhere/n.js"])]), app="notes-vue", rid=rh["id"])
+        assert nh[0]["command"] == "test notes-vue = web" and "no host app" in nh[0]["note"] and nh[0]["status"] == "fail", nh
         print("rules.py selftest OK")
     finally:
         shutil.rmtree(d, ignore_errors=True)

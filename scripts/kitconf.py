@@ -55,7 +55,7 @@ DEFAULTS = {
                                 "showMessage", "setCustomValidity"], "storageCalls": [], "storagePrefix": None, "skipRegions": []},
     "figma": {"imageSuffix": None},
     "validate": {"touchTarget": {"default": 44, "desktop": 24}, "axePath": None, "setTheme": None,
-                 "contentRoot": "main, #app, [role=main]", "threshold": 0.5, "minPixels": 100},
+                 "contentRoot": "main, #app, [role=main]", "threshold": 0.5, "minPixels": 100, "artifactsDir": None},
     "skills": {},
     "rules": {"categories": {}},
     "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify", "rules": "rules"},
@@ -332,8 +332,8 @@ def skill_hint(cfg, name):
 
 
 def page_hosts(cfg, app_id):
-    """[(host app id or None, usedBy file)] of a page app (type "page"): the host is the app whose path holds the file
-    (longest prefix). [] for other apps."""
+    """[(host app id or None, usedBy file)] of a page app (type "page"): the host is the app (not a page app) whose path or
+    apps[].output holds the file (longest prefix). [] for other apps."""
     apps = (cfg or {}).get("apps") or []
     a = next((x for x in apps if x.get("id") == app_id), None)
     if not a or a.get("type") != "page":
@@ -343,9 +343,9 @@ def page_hosts(cfg, app_id):
         if not isinstance(u, str):
             continue
         un = u.replace("\\", "/").strip("/") + "/"
-        hs = [x for x in apps if x.get("id") != app_id and x.get("type") != "page" and x.get("path")
-              and un.startswith(x["path"].replace("\\", "/").strip("/") + "/")]
-        h = max(hs, key=lambda x: len(x["path"]), default=None)
+        hs = [(len(r), x) for x in apps if x.get("id") != app_id and x.get("type") != "page"
+              for r in [x.get("path") or ""] + outputs(x) if r and un.startswith(r.replace("\\", "/").strip("/") + "/")]
+        h = max(hs, key=lambda x: x[0], default=(0, None))[1]
         out.append((h.get("id") if h else None, u))
     return out
 
@@ -766,6 +766,8 @@ def check(cfg):
     vd = cfg.get("validate") or {}
     if not isinstance(vd.get("minPixels", 100), int) or isinstance(vd.get("minPixels"), bool) or not isinstance(vd.get("threshold", 0.5), (int, float)):
         errs.append("validate.minPixels must be a whole number of pixels and validate.threshold a percent")
+    if vd.get("artifactsDir") is not None and not (isinstance(vd["artifactsDir"], str) and vd["artifactsDir"].strip()):
+        errs.append("validate.artifactsDir must be a folder path (screenshots and diffs, relative to the project or absolute) or null")
     for a in cfg["apps"]:
         if a.get("pageHook") is not None and not isinstance(a["pageHook"], str):
             errs.append(f"app '{a.get('id')}': pageHook must be a project command (placeholders {{id}}, {{path}}, ...) or null")
@@ -894,7 +896,10 @@ def selftest():
     assert len([e for e in check(c) if e.startswith("define.")]) == 2, check(c)
     c["define"], c["validate"] = {"skipRegions": ["<!--(", r"<nav>.*?</nav>"]}, dict(c.get("validate") or {}, minPixels="400")
     assert len([e for e in check(c) if e.startswith(("define.", "validate."))]) == 2, check(c)
-    c["define"], c["validate"] = {}, dict(c["validate"], minPixels=400)
+    c["define"], c["validate"] = {}, dict(c["validate"], minPixels=400, artifactsDir=3)
+    assert [e for e in check(c) if e.startswith("validate.artifactsDir")], check(c)
+    c["validate"]["artifactsDir"] = "../shots"
+    assert not [e for e in check(c) if e.startswith("validate.")], check(c)
     pg = d / "vue" / "notes"
     (pg / "src" / "components").mkdir(parents=True)
     (pg / "package.json").write_text(json.dumps({"name": "notes-vue", "description": "Notes page", "scripts": {}}))
