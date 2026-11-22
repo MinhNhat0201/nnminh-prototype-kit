@@ -36,8 +36,8 @@ Read `ds.json` first; paths below are its defaults (see `docs/config.md` of the 
 | `base.css`, `components.css`, `responsive.css` | reset, components (semantic tokens only), breakpoints |
 | `css.bundle` (`dist/<name>.css`) | the files above joined in `css.sources` order |
 | `tokens.json` | tokens in DTCG format |
-| `catalog.md` | components, variants, states, tokens, `components.map` (HTML class ↔ React ↔ Vue) |
-| `catalog.json` | machine-readable catalogue built from `catalog.md`, plus maintained fields: Figma mapping, status (active, experimental, deprecated + `replacedBy`), usage rules (`use`, `avoid`), accessibility notes |
+| `catalog.md` | components, variants, states, tokens, `components.map` (HTML class ↔ React ↔ Vue); page patterns and templates (master-detail, split panes, list pages) under `## Patterns` as `### <Name>` with `- Class:` and `- Use:` (a profile built by a script may list them in `ds.json > patterns` instead) |
+| `catalog.json` | machine-readable catalogue built from `catalog.md` (`components`, `patterns`; `catalog.py patterns` lists the patterns), plus maintained fields: Figma mapping, status (active, experimental, deprecated + `replacedBy`), usage rules (`use`, `avoid`), accessibility notes |
 | `rules.md` | hard rules and protected intentional deviations |
 | `CHANGELOG.md` | one entry per version |
 

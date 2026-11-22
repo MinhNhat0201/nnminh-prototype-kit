@@ -58,6 +58,11 @@
 - Risks:
 - Size: S / M / L
 
+## 6b. Parity checklist (porting an existing page only)
+<From `extract_rules.py`, completed. Old page: <file>; new page: <file or route>. Delete this section when the source is not a running page.>
+| ID | Kind | Text or value (verbatim) | Source (file:line) | Rule | Unit | Old page | New page |
+|---|---|---|---|---|---|---|---|
+
 ## 7. Traceability matrix
 | R-id | Summary | Type | Screens | Wave | Status | Questions |
 |---|---|---|---|---|---|---|

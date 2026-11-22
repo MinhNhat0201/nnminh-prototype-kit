@@ -24,5 +24,13 @@
  "share.thanks": "Cảm ơn anh/chị.",
  "share.outOfScope": "ngoài phạm vi",
  "share.statusFull": "đầy đủ",
- "share.techWords": "đổi tên biến|biến thể|bo góc|khoảng cách|cỡ chữ|màu nền|lệch có chủ đích"
+ "share.techWords": "đổi tên biến|biến thể|bo góc|khoảng cách|cỡ chữ|màu nền|lệch có chủ đích",
+ "share.kindAdded": "Thêm mới",
+ "share.kindChanged": "Thay đổi",
+ "share.kindFixed": "Sửa lỗi",
+ "share.kindRemoved": "Bỏ",
+ "share.wordsAdded": "thêm mới|thêm|bổ sung|mới",
+ "share.wordsChanged": "thay đổi|đổi tên|đổi|cập nhật|chỉnh sửa|chỉnh|cải thiện|chuyển",
+ "share.wordsFixed": "sửa lỗi|sửa|khắc phục",
+ "share.wordsRemoved": "loại bỏ|bỏ|xoá|xóa|gỡ"
 }

@@ -28,6 +28,8 @@ module.exports = {
 | `flow`, `cont` | Screens with the same `flow` and `cont: 1` continue in the same tab (keeps handed-over data). |
 | `viewport`, `scale` | Override the manifest values for this screen. `scale` applies when a new tab opens. |
 | `fullPage` | Capture the whole page; pin positions use the page height. |
+| `at` | Screenshot this many ms after the last step, before the usual 250 ms settle and before pins are measured: for short states (a skeleton shown for 500 ms). Pair it with `noWait` on the `goto` or `reload`. Recorded in `screens.json`. |
+| `neutral` | Pointer and focus reset before the screenshot (below). `false` turns it off; `{ pointer: false }` or `{ blur: false }` turns off one part. Also a manifest key (default for every screen). |
 | `steps` | Actions to reach the screen (below). |
 | `pins` | `{ ref, sel }`: rule code and element. `sel` may be `F|<selector>` for an element inside frame `F`. |
 | `next` | Exits: `{ to, action, trigger, condition }`. `action` is the exact label on screen. |
@@ -36,7 +38,9 @@ module.exports = {
 
 | Step | Does |
 |---|---|
-| `{ goto: 'path#/route' }` | Open a file relative to the base URL |
+| `{ goto: 'path#/route' }` | Open a file relative to the base URL. A goto that only changes the hash keeps the document (no reload). |
+| `{ goto: 'path#/', reload: true }` | Open, then reload: use it after an `eval` that sets `localStorage`, so the app reads the new value |
+| `{ reload: 1 }` | Reload the current page and wait for `load` (same name and meaning in `validate`) |
 | `{ reset: 1 }` | Clear `localStorage` and `sessionStorage`, reload |
 | `{ click }`, `{ hover }`, `{ waitFor }` | Act on or wait for a selector |
 | `{ fill: [sel, text] }` | Fill an input |
@@ -45,6 +49,12 @@ module.exports = {
 | `{ files: [sel, ['a.xlsx']] }` | Click `sel` and choose files from `att` |
 | `{ eval }`, `{ waitEval }` | Run a script / wait until an expression is true |
 | `{ waitUrl: 'regex' }`, `{ wait: ms }` | Wait for a URL / a delay |
+
+`goto` and `reload` take `noWait: true`: return when navigation starts instead of at `load`.
+
+Short or timed states: prefer a hold flag the prototype reads (`goto: 'index.html?hold=loading#/'` keeps the skeleton until the flag is gone), so the capture does not depend on timing. Without one, use `noWait` plus the screen's `at`.
+
+Pointer and focus reset (default on): before each screenshot the pointer moves off the page, so a click in the steps (or an earlier screen in the same tab) leaves no hover style, and a focused button, link or tab is blurred. A screen with a `hover` step keeps its pointer. Inputs, text areas, selects, editable text and anything inside an open menu, listbox, combobox, dialog or popover keep their focus. This keeps `--baseline` pixel diffs free of pointer noise.
 
 Any step may add `in: 'F'` (act inside frame `F`) and `timeout` (ms). Without it a step waits the manifest's `timeout` (default 8000 ms); `validate` uses the same value (`validation.py init --from-manifest` copies it into the plan), so a screen that captures does not fail there. The manifest may name its `app`: token names then come from that app's DS profile (`apps[].ds`).
 

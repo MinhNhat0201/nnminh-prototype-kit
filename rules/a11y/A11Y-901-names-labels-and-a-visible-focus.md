@@ -17,8 +17,9 @@ supersedes:
 exceptions:
 history:
   - 2026-11-22 · active · kit 0.9.0
+  - 2026-11-22 · contrast and touch targets moved to A11Y-903 and A11Y-902 · kit 0.11.0
 ---
 
-Every control has an accessible name, every field a label, every interactive element a visible focus indicator, and text meets the DS contrast pairs. Touch targets on phones follow `validate.touchTarget`.
+Every control has an accessible name, every field a label, and every interactive element a visible focus indicator. Contrast and touch targets: A11Y-903 and A11Y-902.
 
 Why: these fail first in audits and are cheap to get right while building.

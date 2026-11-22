@@ -24,5 +24,13 @@
  "share.thanks": "Thank you.",
  "share.outOfScope": "out of scope",
  "share.statusFull": "full",
- "share.techWords": ""
+ "share.techWords": "",
+ "share.kindAdded": "Added",
+ "share.kindChanged": "Changed",
+ "share.kindFixed": "Fixed",
+ "share.kindRemoved": "Removed",
+ "share.wordsAdded": "added|add|new",
+ "share.wordsChanged": "changed|change|updated|update|renamed|moved|improved",
+ "share.wordsFixed": "fixed|fix|bug fix",
+ "share.wordsRemoved": "removed|remove|dropped|deleted"
 }

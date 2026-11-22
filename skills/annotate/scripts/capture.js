@@ -14,7 +14,15 @@
      { app, viewport, scale (device scale factor, default 2; use 3 for phone frames), timeout (ms a step waits, default 8000),
        frames: { F: "<iframe selector>", ... }   pin and step selectors "F|<sel>" act inside that frame,
        att: "<folder of sample files for 'files' steps>",
-       screens: [ { id, name, flow, cont, viewport, scale, fullPage, steps, pins: [{ref, sel}], next: [{to, action, trigger, condition}] } ] }
+       neutral: true | false | { pointer, blur }   before each screenshot move the pointer off the page and blur a focused
+                  button or link (default on; a screen with a hover step keeps its pointer; editable fields and open
+                  menus, listboxes and dialogs keep their focus). A screen may set its own neutral.
+       screens: [ { id, name, flow, cont, viewport, scale, fullPage, at, neutral, steps, pins: [{ref, sel}], next: [{to, action, trigger, condition}] } ] }
+   Steps: goto (reload: true also reloads, for a hash-only change; noWait: true returns at the start of navigation),
+          reload (reload the page, noWait as goto), reset, click, hover, fill, type, press, eval, wait, waitFor, waitEval,
+          waitUrl, files.
+   at: <ms>   screenshot that many ms after the last step, before the usual settle and before pins are measured,
+              for short states (a skeleton shown for 500 ms). Combine with noWait on the goto or reload.
 
    Writes <id>.png and screens.json (page, search = query of the page or of the last goto, hash, steps, viewport, pins with computed style and matching DS token names,
    exits, console errors). screens.json is merged with the previous run, so --only keeps the other screens.
@@ -47,6 +55,24 @@ function normStep(st) {
     return { ...rest, [step]: st[k], in: m[1].toUpperCase() };
   }
   return st;
+}
+// Pointer and focus reset before a screenshot (K-B1): {pointer, blur}. Screen value over manifest value; a screen that
+// hovers on purpose keeps its pointer.
+function neutralOpts(M, s) {
+  const v = s.neutral !== undefined ? s.neutral : M.neutral;
+  const o = v === false ? { pointer: false, blur: false } : { pointer: true, blur: true, ...(typeof v === 'object' && v ? v : {}) };
+  if ((s.steps || []).map(normStep).some(st => st && st.hover)) o.pointer = false;
+  return o;
+}
+// Runs in the page: blur a focused button or link, never an editable field or an element inside an open popup.
+function blurSafe() {
+  const el = document.activeElement;
+  if (!el || el === document.body || !el.blur) return false;
+  if (el.isContentEditable || /^(input|textarea|select)$/i.test(el.tagName)) return false;
+  if (el.closest('[role=menu],[role=listbox],[role=dialog],[role=combobox],dialog[open],[popover]')) return false;
+  if (!el.closest('a,button,[role=button],[role=tab],summary')) return false;
+  el.blur();
+  return true;
 }
 // Every frame a selector ("F|sel") or a step ("in": "F") names must be declared in manifest.frames.
 function undeclaredFrames(M) {
@@ -101,6 +127,10 @@ if (argv.includes('--selftest')) {
   assert.strictEqual(bad.length, 2, bad.join('; '));
   assert.deepStrictEqual([...runSet(M, ['S03'])].sort(), ['S01', 'S03']);
   assert.deepStrictEqual([...runSet(M, ['S02'])], ['S02']);
+  assert.deepStrictEqual(neutralOpts({}, { steps: [{ click: '#a' }] }), { pointer: true, blur: true });
+  assert.deepStrictEqual(neutralOpts({}, { steps: [{ ehover: '#a' }] }), { pointer: false, blur: true });
+  assert.deepStrictEqual(neutralOpts({ neutral: false }, { steps: [] }), { pointer: false, blur: false });
+  assert.deepStrictEqual(neutralOpts({ neutral: false }, { neutral: { blur: false }, steps: [] }), { pointer: true, blur: false });
   console.log('capture.js selftest OK');
   process.exit(0);
 }
@@ -219,7 +249,10 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
         if (st.goto) { const q = /\?[^#]*/.exec(String(st.goto)); lastQuery = cur.lastQuery = q ? q[0] : ''; }
         const T = st.timeout || M.timeout || 8000;   // validate.js uses the same default (plan.timeout)
         const L = sel => (st.in ? scope(st.in).locator(sel).first() : locate(sel));
-        if (st.goto) await page.goto(BASE + String(st.goto).replace(/^\//, ''));
+        // noWait: return when navigation starts (K-F11); reload: a hash-only goto keeps the document, so reload it (K-F10)
+        const nav = { waitUntil: st.noWait ? 'commit' : 'load' };
+        if (st.goto) { await page.goto(BASE + String(st.goto).replace(/^\//, ''), nav); if (st.reload) await page.reload(nav); }
+        else if (st.reload) await page.reload(nav);
         else if (st.reset) { await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await page.reload(); await page.waitForTimeout(700); }
         else if (st.hover) await L(st.hover).hover({ timeout: T });
         else if (st.click) await L(st.click).click({ timeout: T });
@@ -241,7 +274,16 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
       console.log(`${s.id} FAILED at steps: ${String(e.message || e).split('\n')[0]}`);
       continue;
     }
-    await page.waitForTimeout(250);
+    const nt = neutralOpts(M, s);
+    if (nt.pointer) await page.mouse.move(-1, -1);   // off the page: no element keeps a hover style (K-B1)
+    if (nt.blur) {
+      await page.evaluate(blurSafe).catch(() => false);
+      for (const k of Object.keys(FR)) await page.frameLocator(FR[k]).locator(':root').evaluate(blurSafe, null, { timeout: 500 }).catch(() => false);
+    }
+    const shoot = !only || only.includes(s.id);
+    const shotFile = path.join(OUT, s.id + '.png');
+    if (s.at != null) { await page.waitForTimeout(+s.at || 0); if (shoot) await page.screenshot({ path: shotFile, fullPage: !!s.fullPage }); }
+    else await page.waitForTimeout(250);
     const sy = s.fullPage ? await page.evaluate(() => scrollY) : 0;
     const imgH = s.fullPage ? await page.evaluate(() => document.documentElement.scrollHeight) : vp.height;
     const where = async sel => {
@@ -267,11 +309,11 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
         leftPct: w ? pct(w.box.x + w.box.width / 2, vp.width) : null,
         topPct: w ? pct(w.box.y + sy + w.box.height / 2, imgH) : null });
     }
-    if (!only || only.includes(s.id)) {
-      await page.screenshot({ path: path.join(OUT, s.id + '.png'), fullPage: !!s.fullPage });
+    if (shoot) {
+      if (s.at == null) await page.screenshot({ path: shotFile, fullPage: !!s.fullPage });
       const u = new URL(page.url());
       const basePath = new URL(BASE).pathname.replace(/^\//, '');
-      res.push({ id: s.id, name: s.name, flow: s.flow || null, cont: !!s.cont,
+      res.push({ id: s.id, name: s.name, flow: s.flow || null, cont: !!s.cont, ...(s.at != null ? { at: +s.at } : {}),
         page: u.pathname.replace(/^\//, '').replace(basePath, ''), search: u.search || lastQuery, hash: u.hash, viewport: vp, scale: s.scale || M.scale || 2,
         steps: (s.steps || []).map(normStep), pins, exits, errors: cur.errors.slice() });
       const missing = pins.filter(p => !p.found).map(p => p.sel);

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Markdown spec (source of truth) and the HTML viewer generated from it when someone needs one.
 
-  python3 -I spec_md.py check  <spec folder>
+  python3 -I spec_md.py check  <spec folder> [--screens <screens.json>]
+  python3 -I spec_md.py notes  <spec folder> [--screens <screens.json>] [--baseline <old screens.json>] [--units FR-01,FR-02] [--check]
   python3 -I spec_md.py html   <spec folder> [--out design-spec.html] [--img <capture folder>] [--css <bundle.css>] [--no-ds]
   python3 -I spec_md.py styles <screens.json> --baseline <old screens.json> [--json <out.json>]
 
@@ -22,6 +23,18 @@ check:  every unit file is listed in index.md; linked files and images exist; ev
         the DS version in the frontmatter matches ds.json (warning). Older frontmatter keys are read through
         kit.config.json > handoff.specFields (e.g. {"ds": "acmeVersion"}; a bare version becomes the version label), and
         "app: <id>" in the frontmatter compares with that app's DS profile (apps[].ds).
+        Without screens/screens.json (a package source folder) and without --screens, the screen, pin and image
+        checks are skipped with one NOTE line. A generated "Design notes" block whose pin codes no longer match
+        screens.json is an ERROR (run notes).
+notes:  write or refresh the generated parts of each spec/<unit>.md from screens.json (and requirements/spec-map.json):
+        the screen sections ("### S01 · name", route, how to reach, Figma) and the "Design notes" table, one row per pin.
+        Only text between <!-- kit:screens:begin --> / <!-- kit:notes:begin {...} --> and their :end markers is
+        rewritten; the notes marker keeps each pin code's stable key (screen | rule | selector), so a new pin renumbers
+        the codes without losing the hand-written cells (element, DS component, states, style change). Without markers,
+        the block goes under the "Screens" / "Design notes" heading (a hand-written table there is taken over, its rows
+        matched by pin code, through --baseline numbering when given). --baseline also fills the style change column.
+        Renumbered codes still written outside the markers are listed as WARN. --check writes nothing and exits 1 when
+        a file is stale.
 html:   self-contained design-spec.html without JavaScript: wireflow with images and exit rings, unit blocks with
         pinned screenshots. The page chrome uses its own --kit-* variables; the DS bundle (ds.json > css.bundle)
         is embedded in a low-priority cascade layer. Images come from --img (PNG/WebP named by screen id, path
@@ -180,13 +193,24 @@ def natural(p):
     return [int(x) if x.isdigit() else x for x in re.split(r"(\d+)", p.stem)]
 
 
-def read_folder(root):
+def screens_file(root, override=None):
+    """screens.json to read: --screens, else screens/screens.json of the folder; None when there is none."""
+    if override:
+        f = Path(override)
+        if not f.is_file():
+            fail("screens.json not found: " + str(override))
+        return f
+    f = Path(root) / "screens" / "screens.json"
+    return f if f.is_file() else None
+
+
+def read_folder(root, screens_override=None):
     root = Path(root)
     spec = root / "spec"
     if not (spec / "index.md").exists():
         fail("spec/index.md not found in " + str(root))
-    scr = root / "screens" / "screens.json"
-    screens = {s["id"]: s for s in json.loads(scr.read_text(encoding="utf-8"))} if scr.exists() else {}
+    scr = screens_file(root, screens_override)
+    screens = {s["id"]: s for s in json.loads(scr.read_text(encoding="utf-8"))} if scr else {}
     fl = root / "requirements" / "flows.json"
     flows = json.loads(fl.read_text(encoding="utf-8")) if fl.exists() else {"flows": []}
     units = sorted([p for p in spec.glob("*.md") if p.stem not in special(config(root))], key=natural)
@@ -201,9 +225,15 @@ def section(md, titles):
 
 
 def check(a):
-    root, spec, screens, flows, units = read_folder(a.root)
+    root, spec, screens, flows, units = read_folder(a.root, getattr(a, "screens", None))
     cfg = config(root)
     err, warn = [], []
+    scr_file = screens_file(root, getattr(a, "screens", None))
+    has_screens = scr_file is not None
+    if not has_screens:   # a package source folder keeps screens.json in the capture folder (K-F13)
+        print(f"NOTE: no screens/screens.json in {root} (a package source folder?): screen, pin and image checks skipped. "
+              "Pass --screens <capture folder>/screens.json to run them.")
+    img_dirs = [scr_file.parent] if has_screens else []
     index = (spec / "index.md").read_text(encoding="utf-8")
     meta, _ = frontmatter(index)
     if cfg:  # app: in the frontmatter -> that app's DS profile; handoff.specFields -> older key names
@@ -222,7 +252,10 @@ def check(a):
             continue
         s = p.read_text(encoding="utf-8")
         for img in re.findall(r"!\[[^\]]*\]\(([^)\s]+)\)", s):
-            if not (p.parent / img).exists():
+            shot = "screens/" in img
+            if shot and not has_screens:
+                pass
+            elif not (p.parent / img).exists() and not (shot and any((d / Path(img).name).exists() for d in img_dirs)):
                 err.append(f"{p.relative_to(root)}: image not found: {img}")
             m = re.search(r"([^/]+)\.(webp|png|jpg)$", img)
             if m and p in units:
@@ -234,7 +267,9 @@ def check(a):
             used.update(re.findall(r"^#{3}\s+(S\d+[a-z]?)\s+·", s, re.M))
             if f"({p.name}" not in index and f"{p.name})" not in index:
                 err.append(f"spec/index.md does not list {p.name}.")
-            for pin_s, pin_n in re.findall(r"\|\s*(S\d+[a-z]?)-(\d+)\s*\|", s):
+            if has_screens:
+                err += stale_notes(p.name, s, screens)
+            for pin_s, pin_n in re.findall(r"\|\s*(S\d+[a-z]?)-(\d+)\s*\|", s) if has_screens else []:
                 sc = screens.get(pin_s)
                 if not sc:
                     err.append(f"{p.name}: pin {pin_s}-{pin_n} points to a screen that is not in screens.json.")
@@ -242,7 +277,7 @@ def check(a):
                     err.append(f"{p.name}: pin {pin_s}-{pin_n} exceeds the pin count of the screen ({len(sc.get('pins', []))}).")
     heads = {t(lang(cfg), "annotate.h.unmatched"), t("en", "annotate.h.unmatched")}
     unmatched = section(index, heads)
-    for sid in screens:
+    for sid in screens if has_screens else []:
         if sid not in used and not (unmatched and re.search(r"\b%s\b" % re.escape(sid), unmatched)):
             in_flow = any(sid == it[1] for f in flows.get("flows", []) for r in f.get("rows", [])
                           for it in r.get("items", []) if it[0] == "n")
@@ -251,7 +286,7 @@ def check(a):
     for f in flows.get("flows", []):
         for r in f.get("rows", []):
             for it in r.get("items", []):
-                if it[0] in ("n", "chip") and it[1] not in screens:
+                if has_screens and it[0] in ("n", "chip") and it[1] not in screens:
                     err.append(f"flows.json {f.get('id')}: screen {it[1]} is not in screens.json.")
     if flows.get("flows"):
         if not (spec / "flows.md").exists():
@@ -517,13 +552,338 @@ def styles(a):
         Path(a.json).write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+# ---------------- generated screen sections and design notes (notes) ----------------
+MARK = re.compile(r"<!-- kit:(screens|notes):begin(?: (.*?))? -->\n?(.*?)<!-- kit:\1:end -->\n?", re.S)
+NOTE_COLS = ("pin", "rule", "element", "component", "token", "states", "styleChange")
+
+
+def owns(ref, uid):
+    """A pin belongs to unit uid when its rule code is uid or uid.<n>."""
+    ref = str(ref or "")
+    return ref.split(".")[0] == uid or ref.startswith(uid + ".")
+
+
+def pin_keys(screens):
+    """{stable key: pin code} for a screens.json list. Key = screen|rule|selector (a repeat gets #2, #3)."""
+    out = {}
+    for s in screens:
+        for n, p in enumerate(s.get("pins", []), 1):
+            k = "%s|%s|%s" % (s["id"], p.get("ref", ""), p.get("sel") or p.get("selector") or "")
+            base, i = k, 2
+            while k in out:
+                k, i = "%s#%d" % (base, i), i + 1
+            out[k] = "%s-%d" % (s["id"], n)
+    return out
+
+
+def mark_json(d):
+    """Marker payload: JSON with no "--", so the HTML comment cannot end early."""
+    return json.dumps(d, ensure_ascii=False, separators=(",", ":")).replace("--", "-\\u002d")
+
+
+def blocks(md):
+    """{name: (payload dict, body, match)} of the generated blocks of a file."""
+    out = {}
+    for m in MARK.finditer(md):
+        try:
+            payload = json.loads(m.group(2)) if m.group(2) else {}
+        except ValueError:
+            payload = {}
+        out[m.group(1)] = (payload, m.group(3), m)
+    return out
+
+
+def cell(x):
+    """One Markdown table cell: one line, escaped pipes (multi-line pin text broke tables)."""
+    return re.sub(r"(?<!\\)\|", r"\\|", re.sub(r"\s+", " ", str(x or "")).strip())   # an escaped pipe stays as it is
+
+
+def table_rows(md):
+    """Rows of the first Markdown table in md as lists of cells (header and separator dropped)."""
+    rows = []
+    for ln in md.split("\n"):
+        if not ln.lstrip().startswith("|"):
+            if rows:
+                break
+            continue
+        cells = [c.strip() for c in re.split(r"(?<!\\)\|", ln.strip().strip("|"))]
+        if all(re.fullmatch(r":?-{2,}:?", c) for c in cells if c):
+            continue
+        rows.append(cells)
+    return rows[1:] if rows else []
+
+
+def token_cell(cfg, style):
+    toks = (style or {}).get("tokens") or {}
+    parts = []
+    for k in TOKEN_KEYS + ("padding",):
+        names = toks.get(k) or []
+        if names:
+            parts.append("%s %s" % (t(lang(cfg), "annotate.style.p." + k), " / ".join("`%s`" % n for n in names)))
+    return "; ".join(parts)
+
+
+def stale_notes(name, md, screens):
+    """ERROR lines when a generated notes block names a pin by a code that screens.json now gives another pin."""
+    b = blocks(md).get("notes")
+    if not b or not b[0]:
+        return []
+    now = pin_keys(list(screens.values()))
+    bad = ["%s → %s" % (code, now.get(key, "gone")) for code, key in b[0].items() if now.get(key) != code]
+    return ["%s: design notes are stale (%s): run spec_md.py notes." % (name, ", ".join(bad))] if bad else []
+
+
+def section_span(md, titles):
+    """(start, end) of the body of the first '## <title>' section, or None."""
+    pat = "|".join(re.escape(x) for x in titles)
+    m = re.search(r"^##\s+(?:%s)\s*$\n?" % pat, md, re.M)
+    if not m:
+        return None
+    nxt = re.search(r"^##\s", md[m.end():], re.M)
+    return m.end(), m.end() + nxt.start() if nxt else len(md)
+
+
+def put_block(md, name, payload, body, titles, title, before_titles):
+    """Replace the block between the markers, or place it under its heading (taking over a hand-written table for
+    notes), or add the heading before one of before_titles (else at the end)."""
+    head = "<!-- kit:%s:begin%s -->\n" % (name, (" " + mark_json(payload)) if payload else "")
+    blk = head + body + "<!-- kit:%s:end -->\n" % name
+    b = blocks(md).get(name)
+    if b:
+        m = b[2]
+        return md[:m.start()] + blk + md[m.end():]
+    span = section_span(md, titles)
+    if span:
+        a, z = span
+        sec = md[a:z]
+        if name == "notes":
+            tm = re.search(r"(^[ \t]*\|.*\n?)+", sec, re.M)
+            if tm:
+                return md[:a] + sec[:tm.start()] + blk + sec[tm.end():] + md[z:]
+        sec = sec.rstrip("\n")
+        return md[:a] + (sec + "\n\n" if sec.strip() else "\n") + blk + "\n" + md[z:].lstrip("\n")
+    add = "## %s\n\n%s\n" % (title, blk)
+    nb = section_span(md, before_titles) if before_titles else None
+    if nb:
+        h = md.rfind("\n##", 0, nb[0]) + 1
+        return md[:h] + add + md[h:]
+    return md.rstrip("\n") + "\n\n" + add
+
+
+def screens_body(cfg, ids, screens, old_body):
+    """Screen sections of the generated block; lines other than the heading and the route survive a refresh."""
+    L = lambda k: t(lang(cfg), "annotate." + k)
+    route_l, reach_l = L("line.route"), L("line.reach")
+    route_all = {route_l, t("en", "annotate.line.route")}
+    old = {}
+    for m in re.finditer(r"^###\s+(S\d+[a-z]?)\s+·[^\n]*\n(.*?)(?=^###\s|\Z)", old_body, re.S | re.M):
+        old[m.group(1)] = [ln for ln in m.group(2).split("\n") if ln.strip()
+                           and not any(ln.startswith(x + ":") for x in route_all)]
+    if not ids:
+        return L("label.noScreen") + "\n"
+    out = []
+    for sid in ids:
+        s = screens[sid]
+        route = s.get("route") or ((s.get("page") or "") + (s.get("search") or "") + (s.get("hash") or ""))
+        keep = old.get(sid, [])
+        reach_keys = (reach_l + ":", t("en", "annotate.line.reach") + ":")
+        if not any(ln.startswith(reach_keys) for ln in keep):
+            keep.append("%s: %s" % (reach_l, L("label.needsConfirm")))
+        fig = [i for i, ln in enumerate(keep) if ln.startswith("Figma:")]
+        if s.get("figma"):
+            line = "Figma: [%s](%s)" % (sid, s["figma"])
+            if fig:
+                keep[fig[0]] = line
+            else:
+                keep.append(line)
+        elif not fig:
+            keep.append("Figma: " + L("label.needsConfirm"))
+        out.append("### %s · %s\n%s: `%s`\n%s\n" % (sid, s.get("name", ""), route_l, route, "\n".join(keep)))
+    return "\n".join(out)
+
+
+def notes_body(cfg, uid, order, screens, old_body, old_keys, baseline):
+    """(table text, {code: key}, [(old code, new code)]) for the pins of unit uid."""
+    L = lambda k: t(lang(cfg), "annotate." + k)
+    keys = pin_keys([screens[i] for i in order])
+    code_key = {v: k for k, v in keys.items()}
+    old_rows = {}
+    for r in table_rows(old_body):
+        if r and old_keys.get(r[0]):
+            old_rows[old_keys[r[0]]] = (r[0], r + [""] * (len(NOTE_COLS) - len(r)))
+    base_pin = {}
+    if baseline is not None:
+        for s in baseline:
+            for p in s.get("pins", []):
+                base_pin[(s["id"], p.get("sel") or p.get("selector"))] = p
+    base_ids = {s["id"] for s in baseline or []}
+    rows, payload, moved = [], {}, []
+    for sid in order:
+        for n, p in enumerate(screens[sid].get("pins", []), 1):
+            if not owns(p.get("ref"), uid):
+                continue
+            code = "%s-%d" % (sid, n)
+            key = code_key[code]
+            payload[code] = key
+            oc, o = old_rows.get(key, (None, [""] * len(NOTE_COLS)))
+            if oc and oc != code:
+                moved.append((oc, code))
+            st = p.get("style") or {}
+            elem = o[2] or (cell(st.get("text"))[:60] if st.get("text") else "`%s`" % cell(p.get("sel") or ""))
+            comp = o[3] or (" ".join("`%s`" % c for c in str(st.get("cls") or "").split()[:3]))
+            tok = L("label.needsConfirm") if p.get("found") is False else (token_cell(cfg, st) or o[4])
+            if baseline is None:
+                ch = o[6]
+            elif sid not in base_ids:
+                ch = L("style.newScreen")
+            elif p.get("found") is False:
+                ch = L("label.needsConfirm")
+            else:
+                ch = "; ".join(style_changes(cfg, sid, p, base_pin.get((sid, p.get("sel") or p.get("selector")))))
+            rows.append([code, cell(p.get("ref")), cell(elem), cell(comp), cell(tok), cell(o[5]), cell(ch)])
+    head = "| %s |\n|%s\n" % (" | ".join(L("col." + c) for c in NOTE_COLS), "---|" * len(NOTE_COLS))
+    return head + "".join("| %s |\n" % " | ".join(r) for r in rows), payload, moved
+
+
+def notes(a):
+    root = Path(a.root)
+    _r, spec, screens, _f, units = read_folder(root, a.screens)
+    if not screens_file(root, a.screens):
+        fail("no screens.json: pass --screens <capture folder>/screens.json (written by capture.js).")
+    cfg = config(root) or {"language": "en"}
+    order = list(screens)
+    baseline = json.loads(Path(a.baseline).read_text(encoding="utf-8")) if a.baseline else None
+    smap = root / "requirements" / "spec-map.json"
+    mapped = {}
+    for e in (json.loads(smap.read_text(encoding="utf-8")) if smap.exists() else []):
+        mapped.setdefault(e.get("unit"), []).extend(e.get("screens") or [])
+    want = set(a.units.split(",")) if a.units else None
+    for u in mapped:
+        if (not want or u in want) and not (spec / f"{u}.md").exists():
+            print(f"NOTE: spec-map.json names {u} but spec/{u}.md does not exist: write the unit (BA text) first.")
+    h_scr = {t(lang(cfg), "annotate.h.screens"), t("en", "annotate.h.screens")}
+    h_not = {t(lang(cfg), "annotate.h.designNotes"), t("en", "annotate.h.designNotes")}
+    h_dev = {t(lang(cfg), "annotate.h.deviations"), t("en", "annotate.h.deviations")}
+    base_keys = {v: k for k, v in pin_keys(baseline).items()} if baseline is not None else None
+    cur_keys = {v: k for k, v in pin_keys([screens[i] for i in order]).items()}
+    stale, all_moved = [], []
+    for p in units:
+        uid = p.stem
+        if want and uid not in want:
+            continue
+        md = p.read_text(encoding="utf-8")
+        b = blocks(md)
+        outside = MARK.sub("", md)
+        hand = set(re.findall(r"^###\s+(S\d+[a-z]?)\s+·", outside, re.M))
+        ids = [i for i in order if (i in mapped.get(uid, []) or any(owns(x.get("ref"), uid) for x in screens[i].get("pins", [])))]
+        gen = [i for i in ids if i not in hand]
+        new = md
+        if gen or not hand or "screens" in b:   # every screen already has a hand-written section: no block needed
+            body = screens_body(cfg, gen, screens, b["screens"][1] if "screens" in b else "") if (gen or not hand) else ""
+            new = put_block(md, "screens", None, body, h_scr, t(lang(cfg), "annotate.h.screens"), h_not | h_dev)
+        if "notes" in b:
+            old_body, old_keys = b["notes"][1], b["notes"][0] or cur_keys
+        else:
+            span = section_span(md, h_not)
+            old_body, old_keys = (md[span[0]:span[1]] if span else ""), (base_keys or cur_keys)
+        body, payload, moved = notes_body(cfg, uid, order, screens, old_body, old_keys, baseline)
+        new = put_block(new, "notes", payload, body, h_not, t(lang(cfg), "annotate.h.designNotes"), h_dev)
+        all_moved += moved
+        n = len(payload)
+        if new != md:
+            stale.append(p.name)
+            if not a.check:
+                p.write_text(new, encoding="utf-8")
+        print("%s %s: screens %s; %d pin(s)%s" % ("STALE" if a.check and new != md else ("wrote" if new != md else "same "),
+              p.name, ", ".join(ids) or "-", n, "; renumbered " + ", ".join("%s → %s" % m for m in moved) if moved else ""))
+    if all_moved:
+        olds = {o for o, _n in all_moved}
+        for f in sorted(spec.glob("*.md")):
+            text = MARK.sub("", f.read_text(encoding="utf-8"))
+            for i, ln in enumerate(text.split("\n"), 1):
+                hit = sorted(c for c in olds if re.search(r"(?<![\w-])%s(?![\w-])" % re.escape(c), ln))
+                if hit:
+                    print(f"WARN:  {f.name}: line {i} (outside the generated blocks) mentions {', '.join(hit)}: pin codes changed.")
+    if a.check and stale:
+        print("ERROR: %d file(s) stale: run spec_md.py notes without --check." % len(stale))
+        sys.exit(1)
+
+
 def selftest():
     old = {"style": {"props": {"color": "rgb(0, 0, 0)", "fontSize": "14px"}, "tokens": {"color": ["--acme-text-main"]}}}
     new = {"style": {"props": {"color": "rgb(1, 1, 1)", "fontSize": "14px", "gap": "8px", "borderWidth": "1px"},
                      "tokens": {"color": ["--acme-text-sub"]}}}
     ch = style_changes({"language": "en"}, "S01", new, old)
     assert len(ch) == 1 and "--acme-text-main → --acme-text-sub" in ch[0] and "var(" not in ch[0] and "None" not in ch[0], ch
+    selftest_notes()
     print("spec_md.py selftest OK")
+
+
+def selftest_notes():
+    """notes: generated blocks, stable pin keys over a renumbering, hand cells kept; check without screens/."""
+    import contextlib
+    import io
+    import os
+    import tempfile
+    from types import SimpleNamespace as NS
+    pin = lambda ref, sel, text, tok: {"ref": ref, "sel": sel, "found": True, "leftPct": 1, "topPct": 1,
+                                       "style": {"props": {"color": "rgb(0, 0, 0)"}, "tokens": {"color": [tok]}, "cls": "acme-btn", "text": text}}
+    scr = [{"id": "S01", "name": "List", "page": "index.html", "hash": "#/", "pins": [
+        pin("FR-01.1", "#new", "New\ntask", "--acme-text-main"), pin("FR-01.2", "#save", "Save | now", "--acme-text-sub")]}]
+    cwd = os.getcwd()
+    with tempfile.TemporaryDirectory() as d:
+        os.chdir(d)   # no project config: English labels
+        try:
+            r = Path(d)
+            (r / "spec").mkdir()
+            (r / "screens").mkdir()
+            (r / "spec/index.md").write_text('---\npbi: "1"\ntitle: "T"\nversion: "1.0.0"\nds: "Acme DS 0.1.0"\n---\n'
+                                             "# T\n| [FR-01](FR-01.md) |\n", encoding="utf-8")
+            unit = r / "spec/FR-01.md"
+            unit.write_text("# FR-01 · List\nHand text stays.\n\n## Business rules (BA wording, verbatim)\n1. **FR-01.1** Rule.\n\n"
+                            "## Deviations from spec\n- None.\n", encoding="utf-8")
+            sj = r / "screens/screens.json"
+            sj.write_text(json.dumps(scr), encoding="utf-8")
+            run = lambda **kw: notes(NS(**{"root": d, "screens": None, "baseline": None, "units": None, "check": False, **kw}))
+            with contextlib.redirect_stdout(io.StringIO()):
+                run()
+            md = unit.read_text(encoding="utf-8")
+            assert "Hand text stays." in md and "<!-- kit:screens:begin -->" in md and "### S01 · List" in md, md
+            assert "Page · route: `index.html#/`" in md and "How to reach: needs confirmation" in md, md
+            assert md.index("## Design notes") < md.index("## Deviations from spec"), md
+            assert "| S01-2 | FR-01.2 | Save \\| now |" in md and "New task" in md and "text colour `--acme-text-main`" in md, md
+            assert "--acme" not in md.split("kit:notes:begin")[1].split("-->")[0], "marker payload must not hold --"
+            # hand edits inside the blocks: a state for FR-01.2 and a how-to-reach line
+            md = md.replace("| S01-2 | FR-01.2 | Save \\| now | `acme-btn` | text colour `--acme-text-sub` |  |",
+                            "| S01-2 | FR-01.2 | Save \\| now | `acme-btn` | text colour `--acme-text-sub` | Disabled until valid |")
+            md = md.replace("How to reach: needs confirmation", 'How to reach: click "New task".') + "\nSee S01-2.\n"
+            unit.write_text(md, encoding="utf-8")
+            scr[0]["pins"].insert(0, pin("FR-01.0", "#title", "Tasks", "--acme-text-main"))
+            sj.write_text(json.dumps(scr), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.suppress(SystemExit):
+                check(NS(root=d, screens=None))
+            assert "design notes are stale (S01-1 → S01-2, S01-2 → S01-3)" in out.getvalue(), out.getvalue()
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                run()
+            md = unit.read_text(encoding="utf-8")
+            assert "| S01-3 | FR-01.2 | Save \\| now | `acme-btn` | text colour `--acme-text-sub` | Disabled until valid |" in md, md
+            assert 'How to reach: click "New task".' in md and md.count("<!-- kit:notes:begin") == 1, md
+            assert "renumbered S01-1 → S01-2, S01-2 → S01-3" in out.getvalue() and "mentions S01-2" in out.getvalue(), out.getvalue()
+            with contextlib.redirect_stdout(io.StringIO()):
+                run(check=True)   # fresh: no exit
+            # a package source folder: no screens/ -> one NOTE, no screen errors
+            sj.unlink()
+            (r / "screens").rmdir()
+            unit.write_text(md + "\n![S01](../screens/S01.png)\n", encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.suppress(SystemExit):
+                check(NS(root=d, screens=None))
+            o = out.getvalue()
+            assert o.count("NOTE: no screens/screens.json") == 1 and "ERROR" not in o, o
+        finally:
+            os.chdir(cwd)
 
 
 def main():
@@ -531,10 +891,18 @@ def main():
         selftest()
         return
     ap = argparse.ArgumentParser(description="Markdown spec checker, HTML viewer and style diff for the annotate skill.",
-                                 epilog="Commands: check, html, styles. Run '<command> --help' for options.")
+                                 epilog="Commands: check, notes, html, styles. Run '<command> --help' for options.")
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("check", help="validate the spec folder")
     c.add_argument("root", help="folder that holds spec/, screens/, requirements/")
+    c.add_argument("--screens", help="screens.json to check against (default <root>/screens/screens.json; without one, "
+                   "screen, pin and image checks are skipped)")
+    n = sub.add_parser("notes", help="write or refresh the generated screen sections and design notes of spec/<unit>.md")
+    n.add_argument("root", help="folder that holds spec/ (and requirements/spec-map.json)")
+    n.add_argument("--screens", help="screens.json from capture.js (default <root>/screens/screens.json)")
+    n.add_argument("--baseline", help="screens.json of the previous version: fills the style change column")
+    n.add_argument("--units", help="only these units, e.g. FR-01,FR-02")
+    n.add_argument("--check", action="store_true", help="write nothing; exit 1 when a file is stale")
     h = sub.add_parser("html", help="generate the self-contained HTML viewer")
     h.add_argument("root")
     h.add_argument("--out", help="output file (default <root>/design-spec.html)")
@@ -546,7 +914,7 @@ def main():
     s.add_argument("--baseline", required=True, help="screens.json of the previous version")
     s.add_argument("--json", help="also write the rows to this JSON file")
     a = ap.parse_args()
-    {"check": check, "html": render, "styles": styles}[a.cmd](a)
+    {"check": check, "notes": notes, "html": render, "styles": styles}[a.cmd](a)
 
 
 if __name__ == "__main__":

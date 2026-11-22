@@ -25,9 +25,9 @@ Scripts: `S=skills/wireflow/scripts` (inside the kit). Every script has `--help`
 ## Step 0. Inputs
 1. **Images and `screens.json`:** the capture output of `annotate`. Reuse an existing capture (for example from a handoff package); do not capture again. No capture yet: run `annotate` up to the capture review first. The feature is not in the prototype (search screen names, labels, routes under the app path and recent branches): stop and ask for the source, or offer `prototype`. Never build a board from guessed screens.
 2. **`flows.json`:** the flows of the board (format below). A handoff package has it at `requirements/flows.json`. None: write it from the flow agreed with the user. Never infer flows.
-3. **Target Figma file (required for a handoff):** the designer gives a link to a Design file they can edit.
+3. **Target Figma file (required for a handoff):** always ask first for the link of an existing Design file the designer can edit (for example the team's handoff file). Ask before any `create_new_file`: guests of a team cannot create files there, and the call fails late.
    - Link with `node-id`: call `get_metadata` on it (cheap). A page (`canvas`): build on it with `--page-id` (`-` becomes `:`). A frame or section: ask whether to use its page or a new page.
-   - No file: create one with `create_new_file` following `figma-create-new-file` (ask which team when there are several).
+   - Only when the designer has no file and asks for a new one: `create_new_file` following `figma-create-new-file` (ask which team when there are several). It fails (no permission): ask for a file link again; never retry in another team.
    - Page name: `[<work-item code>] <feature>` (locale key `wireflow.page`). Board title: `Wireflow · <feature> v<version>`.
 4. **Before the first `use_figma` call:** load the `figma-use` skill (mandatory) and pass `skillNames: "figma-use"`. Call `create_session` with the file key once and reuse the session id.
 
@@ -65,6 +65,7 @@ python3 -I $S/demo_links.py fill --screens <screens.json> --flows <flows.json> -
 - `--site` defaults to `kit.config.json > deploy.site`. No site at all: skip; the board has no buttons, and say so in the report.
 - Link = site + page path + hash route of the first screen. A flow with a hand-set `url` keeps it. Links must be https on the site, else ERROR.
 - With `--manifest`: a REMINDER lists flows whose first screen needs steps and has no `start`. Fill `start` with the exact on-screen label; never guess.
+- `fill` also writes each link into `spec/flows.md` (the "Open demo" line under each flow heading; `--md <file>`, `--no-md` to skip).
 - Links open the page and route only; they do not replay the steps. A site behind sign-in needs an account for that app. The site is the live build and can be newer than the captures.
 - A scope-locked handoff build is not on the site: links open the full app. Say so in the report.
 
@@ -81,7 +82,7 @@ python3 $S/figma_wireflow.py build --spec <folder with screens.json> --flows <fl
 ## Step 2. Build the board (one call)
 - One `use_figma` call with `code` = the content of `code.js` **verbatim** (read the file and paste it; never rewrite or shorten it).
 - The template uses the page from `--page-id`, or creates/reuses the page named `--page`. It removes an older board with the same title and places the new one to the right of existing content.
-- It returns `rootId`, `imageNodeIds`, `imageScreens` (same order), `edges`. Keep the two arrays for step 3; no canvas read needed.
+- It returns `rootId`, `imageNodeIds`, `imageScreens` (same order), `edges` and `map` (screen → card, `_imgs` image frames, `_flows` rows and edges with node ids). Save the whole return value as `<out>/map.json`: `setmap`, `update` and `images --map` read it, so no `mapjs` call is needed after a first build.
 
 ## Step 3. Attach the images
 - `upload_assets` with `count` = number of screens (at most 60 per call; split in order) and `nodeIds` = `imageNodeIds`, `scaleMode: "FILL"`.
@@ -90,14 +91,18 @@ python3 $S/figma_wireflow.py build --spec <folder with screens.json> --flows <fl
 - URLs are single-use: on a failed upload, request new URLs for the failed screens only.
 
 ## Step 3b. Update an existing board (next package version)
-Never rebuild a board that was already sent: new nodes break the links.
-1. Get the ids: `python3 $S/figma_wireflow.py mapjs --root <board id>` prints code for `use_figma`. It returns `{"S01": "<card node>", …, "_imgs": {"S01": "<image frame>"}, "_board", "_page", …}`. Save it as JSON.
-2. Replace only changed screens (`<shots>/changed.json`, written by `handoff`'s `pkg.py capture`; none: ask): `upload_assets` with `nodeIds` = their `_imgs` frames, then `upload` as in step 3.
-3. Rename the board and sync repeated images: `python3 $S/figma_wireflow.py retitlejs --root <board id> --title "Wireflow · <feature> v<new version>"`, send the printed code through `use_figma`.
-4. New screens: add a card to the right flow by hand, or rebuild the board only when the user agrees.
+Never rebuild a board that was already sent: new nodes break the links. Card and image frame ids stay through every step below.
+1. **Map:** use `map.json` saved at the build (or the last update). None, or made by an older kit (no `_flows`): `python3 $S/figma_wireflow.py mapjs --root <board id>` prints code for `use_figma`; save its result as `map.json`.
+2. **Flows changed** (new screen, edge label, new row or flow, row label, flow name):
+   `python3 $S/figma_wireflow.py update --map map.json --spec <shots> --flows <flows.json> --out <out> --png <PNGs> [--app <app>]`
+   - Prints `DIFF` lines: added screens (placed in their row, after the item before them: usually after the last card of that flow), moved screens, edge labels changed, added and removed edges, new rows and flows, removed ones. Show them to the user before sending.
+   - Removed edges, chips, rows and flows stay on the board (reported as stale). `--prune` removes them; cards are never deleted (cards of screens in no flow move to the off-flow section).
+   - Send `update.js` verbatim in one `use_figma` call; save the return value as the new `map.json`. Its `imageNodeIds`/`imageScreens` are the new cards: upload their images as in step 3 (the images are already in `<out>/images`).
+3. **Images changed:** `python3 $S/figma_wireflow.py images --spec <shots> --png <PNGs> --out <out> --changed <shots>/changed.json --map map.json` (`changed.json` from `handoff`'s `pkg.py capture`; or `--screens S01,S02`; none: ask). It writes `<out>/images/` and `pending.json` (image frame ids). `upload_assets` with `nodeIds` from it, write `{"urls": [...]}` to `<out>/urls.json` (order of `pending.json`), then `upload` as in step 3.
+4. Rename the board and sync repeated images: `python3 $S/figma_wireflow.py retitlejs --root <board id> --title "Wireflow · <feature> v<new version>"`, send the printed code through `use_figma`.
 5. Map screens to Figma in the package config, so each screen in the package links to Figma instead of an image:
-   `python3 $S/figma_wireflow.py setmap --config <package>/pkg.json --json <mapjs result> --file <Figma file link>`
-   It writes `figma_file`, `figma_board`, `figma_page` and `figma` (screen id → card node). Run it after a first build too.
+   `python3 $S/figma_wireflow.py setmap --config <package>/pkg.json --json map.json --file <Figma file link>`
+   It writes `figma_file`, `figma_board`, `figma_page` and `figma` (screen id → card node). Run it after a first build too. A package finalized as awaiting Figma: then `pkg.py relink` of `handoff`, before `share`.
 
 ## Step 4. Check (cheap)
 - One `get_screenshot` of `rootId` (default 1024px): all flows, images shown, nothing overlaps. Do not capture each screen.
@@ -110,6 +115,6 @@ Figma link with the board `node-id`; number of flows, screens, edges (page chang
 
 ## Rules
 - Never read HTML into the context. Never embed base64 images in code. Never write per-package Figma code; change data only.
-- Template change (layout, symbols): edit `assets/wireflow-template.js` in the kit; it applies to every later board. Layer names (`<id> · image`, `Board title`) are matched by scripts: keep them. `mapjs`, `retitlejs` and the `mockup` audit also accept the locale suffix (`wireflow.imageSuffix`, e.g. a board built in another language or by another tool) and `kit.config.json > figma.imageSuffix`, which is also the suffix new boards are built with.
+- Template change (layout, symbols): edit `assets/wireflow-lib.js` (drawing, shared by build and update), `wireflow-template.js` (board) or `wireflow-update.js` in the kit; it applies to every later board. `wireflow-read.js` reads a board back by layer names; `scripts/figma_mock.js` runs the generated code in `--selftest` (no Figma needed). Layer names (`<id> · image`, `Board title`) are matched by scripts: keep them. `mapjs`, `retitlejs` and the `mockup` audit also accept the locale suffix (`wireflow.imageSuffix`, e.g. a board built in another language or by another tool) and `kit.config.json > figma.imageSuffix`, which is also the suffix new boards are built with.
 - Never edit the prototype or the images. A wrong screen: recapture with `annotate`.
 - The Figma file belongs to the user: never delete pages or nodes outside the board this skill made (the board is found by its title).

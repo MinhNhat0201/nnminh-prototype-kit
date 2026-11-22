@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.11.0 · 2026-11-22
+Fixes from a full trial run (one feature from requirement to handoff email, then one BA feedback round) and a side-by-side comparison with a project's own skills (K-F1…K-F20, K-B1…K-B10). Every new key has a default that keeps the 0.10 behaviour.
+
+Validate
+- `validate init --page <file> [--routes …] [--url <served URL>]`: plan for one page or a built bundle; parameter routes listed under `_paramRoutes`, named states under `_stateHints` (K-F5).
+- Named states `"<theming key>=<value>"` and `"text=200%"` (root font size; px sizes and mobile system text scaling are not covered), `plan.states` for every screen; dark mode and theme states can go through the app's own switch (`validate.setTheme`) (K-F6, K-F19).
+- axe scope (`plan.axe {include, exclude}`) and `waivers.json` (check or id + selector + required reason): known or out-of-scope findings go to "Known / waived" and never fail the run; every row is marked new or carried over against the previous run (`--compare`) (K-F7, K-B7).
+- Contrast findings show the ratio, the required ratio and both colours; axe-core from `--axe`, `KIT_AXE_PATH` or `validate.axePath`, never installed into a project without `package.json` (K-F8, K-F9).
+- `reload` step, and `goto` with `reload: true`, for hash-only routes after seeding storage (K-F10).
+
+Annotate
+- `capture.js`: `reload` step and `goto` with `reload: true` (K-F10); `noWait` on goto/reload and screen key `at: <ms>` capture short states such as a skeleton (K-F11).
+- `capture.js`: before each screenshot the pointer leaves the page and a focused button or link is blurred, so `--baseline` pixel diffs no longer flag hover leftovers (K-B1); `neutral: false` turns it off.
+- `spec_md.py notes`: writes and refreshes the screen sections and the Design notes table of `spec/<unit>.md` from screens.json and spec-map.json between `<!-- kit:…:begin/end -->` markers; rows keyed by screen, rule and selector, so a new pin renumbers codes without losing hand cells; `--check` reports out-of-date files (K-F12, K-B6).
+- `spec_md.py check`: a folder without `screens/` skips screen, pin and image checks with one NOTE instead of false errors; `--screens <json>` runs them there (K-F13).
+
+Handoff
+- `pkg.json > status` (`final` / `awaiting-figma`) and `pkg.py relink`: a draft packaged with `--allow-missing-figma` gets its Figma links and a new zip without repackaging; order is handoff → wireflow → relink → share (K-B5).
+- `finalize` refreshes the "Figma:" lines of `spec/*.md` and the Figma column of `spec/index.md` (K-B4).
+- `pkg.py smoke <zip|folder>` runs the unpacked package in Chromium at `handoff.smokeWidths`: page and console errors, 4xx, broken images, horizontal scroll, blocked files (K-B9). Routes in `screens.json` no longer get a double `prototype/` prefix.
+- Lock `nav_functions` take `{name, base: "page"|"app"}` (and `lock.nav_base`) (K-F15). `pkg.py proto` only counts bare file names in scripts (`--verbose` lists them) and lists pages reached only through a script registry (K-F16).
+
+Wireflow and share
+- `demo_links.py fill` also writes the demo links into `spec/flows.md` (`--md`, `--no-md`) (K-F14).
+- The board build returns `map` (cards, image frames, flows, rows, edges with node ids): save it as `map.json`, no `mapjs` call needed after a first build. `figma_wireflow.py images` prepares `images/` and `pending.json` for an in-place update (K-B2).
+- `figma_wireflow.py update --map --flows`: adds new screen cards in their row, relabels changed edges, adds rows and flows, prints `DIFF` lines; removed items are reported and kept unless `--prune` (K-B3). Template split into `wireflow-lib.js`, `wireflow-read.js`, `wireflow-update.js`; `--selftest` runs generated code against `figma_mock.js` (not yet run in real Figma).
+- `wireflow` asks for an existing Figma file link before `create_new_file` (K-F20).
+- `draft_email.py`: group names from `spec/index.md` instead of codes; changelog lines grouped Added / Changed / Fixed / Removed and an Added line is never folded into "UI refinements"; a first release says "Key features" (K-F17, K-B10). A package with status `awaiting-figma` is an ERROR unless `--allow-draft`.
+
+Define and prototype
+- `define`: the requirement source can be an existing running page; `extract_rules.py` drafts a parity checklist (visible text, messages, input constraints, limits, routes, storage keys, with `file:line`); porting ends with a parity check in `prototype` step 6 (K-F1).
+- `docs/stacks.md`, `prototype`: pattern "Vue page inside a multi-page html app" (K-F2); the DS Vue layer folder needs `npm ci` first, `kickoff` prints a note (K-F3).
+- New keys `apps[].pageContract` (printed by `kitconf.py contract --app <id>`, rule PAG-903) (K-F4) and `local.vueStyle` (`sfc` | `css-file`) with `local.vueCss` for projects that forbid CSS in `.vue` (K-F18).
+- `catalog.py patterns`: page patterns from a `## Patterns` section of catalog.md or `ds.json > patterns`, searched by `find`; `define` step 5 checks patterns before writing "Missing" (K-B8).
+- `prototype` step 6 runs `validate` instead of hand-written Playwright (K-B9).
+
+Review checklists
+- References: `validate/references/a11y-web.md` (W-codes, WCAG 2.2, how to write findings), `a11y-mobile.md` (M-codes, HIG and Material 3), `prototype/references/states-and-edge-data.md` (S- and D-codes), `review/references/motion.md` (C-codes) and `heuristics-rubric.md` (H1–H10 scored 0–4, also for `explore`). Credits kept: platform-design-skills (MIT), impeccable (Apache-2.0), emilkowalski/skills (MIT).
+- New kit rules: A11Y-902 touch targets, A11Y-903 contrast in every mode, A11Y-904 reduced motion, A11Y-905 keyboard, CNT-902 empty/loading/error states (must), CNT-903 messages name the problem and the fix (should). A11Y-901 now covers names, labels and focus only.
+
 ## 0.10.0 · 2026-11-22
 Fixes and extension points from three trial runs on a real project (handoff, rules and prototype, review and sync). Every new key has a default that keeps the 0.9 behaviour; behaviour changes only where 0.9 was wrong (listed under Fixes).
 

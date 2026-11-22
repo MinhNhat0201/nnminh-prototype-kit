@@ -119,21 +119,26 @@
 
   /* Fallback: navigation by code. Wrap the app's global navigation functions (pkg.json > lock.nav_functions,
      e.g. "routeOpen" or "appNav.go"); the first argument is a page key (pkg.json > lock.page_keys maps keys to
-     files) or a URL. */
-  function targetOk(target) {
+     files) or a URL. base "app": a relative path is relative to the app root (the package prototype folder),
+     not to the current page, e.g. nav('chat/index.html#/c/1') called from notes/index.html. */
+  function targetOk(target, base) {
     if (!PAGES.length || typeof target !== 'string') return true;
     if (Object.prototype.hasOwnProperty.call(KEYS, target)) return PAGES.indexOf(KEYS[target]) >= 0;
     if (PAGES.indexOf(target) >= 0) return true;   /* page keys listed in pages (before page_keys existed) */
+    if (base === 'app' && ROOT !== null && !/^(?:[a-z][a-z0-9+.-]*:|\/|#|\?)/i.test(target)) {
+      return inPackage(location.origin + ROOT + target.replace(/^\.\//, ''));
+    }
     return inPackage(target);
   }
   function wrap() {
-    (C.navFunctions || []).forEach(function (path) {
+    (C.navFunctions || []).forEach(function (f) {
+      var path = typeof f === 'string' ? f : f.name, base = typeof f === 'string' ? 'page' : f.base;
       var parts = path.split('.'), name = parts.pop(), obj = window;
       parts.forEach(function (p) { obj = obj && obj[p]; });
       if (!obj || typeof obj[name] !== 'function' || obj[name]._xScope) return;
       var fn = obj[name];
       obj[name] = function (target) {
-        if (!targetOk(target)) { notice(); return; }
+        if (!targetOk(target, base)) { notice(); return; }
         return fn.apply(this, arguments);
       };
       obj[name]._xScope = 1;

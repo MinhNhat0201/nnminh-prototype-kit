@@ -142,6 +142,22 @@ def ds_vue_values(cv, root, app_dir):
             "PAGE_NOTE": "Replace this content with DS Vue components from %s." % where.replace("`", "")}, dep
 
 
+def ds_vue_install(cv, root):
+    """Pre-build note for a DS Vue layer kept as a project folder with its own package.json and no node_modules:
+    its tsconfig usually extends installed packages (@vue/tsconfig), so the app build fails until `npm ci` runs there."""
+    folder = (Path(root) / cv["package"]).resolve()
+    for d in [folder, *folder.parents]:
+        if (d / "package.json").is_file():
+            if (d / "node_modules").is_dir():
+                return None
+            rel = Path(os.path.relpath(d, root)).as_posix()
+            return ("NOTE: the DS Vue layer has its own package.json without node_modules. Before the first app build run: "
+                    "npm ci --prefix %s (its tsconfig extends installed packages; without it vite build stops with a tsconfig error)" % rel)
+        if d == Path(root).resolve():
+            return None
+    return None
+
+
 def fill(text, values, src):
     missing = sorted({m for m in PLACEHOLDER.findall(text) if m not in values})
     if missing:
@@ -177,6 +193,11 @@ def selftest():
     assert '"../../pk/vue/"' in v["EXTRA_ALIASES"] and dep is None and "pk/props.csv" in v["DS_VUE_README"], v
     v, dep = ds_vue_values({"package": "@acme/vue@1.2.0"}, d, d / "apps" / "a")
     assert dep == ("@acme/vue", "1.2.0") and v["EXTRA_ALIASES"] == "", (v, dep)
+    assert ds_vue_install({"package": "pk/vue"}, d) is None, "no package.json: nothing to install"
+    (d / "pk" / "package.json").write_text("{}")
+    assert "npm ci --prefix pk " in ds_vue_install({"package": "pk/vue"}, d), "package.json above the components folder"
+    (d / "pk" / "node_modules").mkdir()
+    assert ds_vue_install({"package": "pk/vue"}, d) is None, "installed"
     assert "app-top" in shell_css({"BP_MEDIUM": "600"})
     print("scaffold.py selftest OK")
 
@@ -347,6 +368,9 @@ def main():
     print("Created %s (%s, %s) from templates/%s: %d file(s)." % (rel, stack, app_type, tdir.name, len(plan) - (1 if write_claude else 0)))
     if ds_vue(ds) and stack == "vue":
         print("DS Vue layer: %s (props map: %s)" % (ds_vue(ds)["package"], ds_vue(ds).get("propsMap") or "none"))
+        note = None if dep else ds_vue_install(ds_vue(ds), root)
+        if note:
+            print(note)
     print("DS: %s, bundle %s" % (version_label(cfg), bundle))
     print("CLAUDE.md: " + ("written from templates/CLAUDE.md" if write_claude else "exists, left unchanged"))
     if not declared:

@@ -3,11 +3,20 @@
 //
 //   node validate.js --url <file:// or http:// entry> --plan plan.json --out <run dir>
 //                    [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44]
+//                    [--theming '{"brand":"data-brand"}'] [--set-theme '<JS body using key, value>'] [--axe <axe.min.js or folder>]
+//                    [--waive '["#shell"]']
 //
 // Screens may carry steps (same vocabulary as flows and as the capture manifest: goto, reset, click, hover, fill,
-// type, select, press, eval, wait, waitFor, waitEval, waitUrl, files, expect*; "in": "F" or "F|sel" act inside the
+// type, select, press, eval, reload, wait, waitFor, waitEval, waitUrl, files, expect*; "in": "F" or "F|sel" act inside the
 // iframe plan.frames.F) and viewports (only these widths). A step without "timeout" waits plan.timeout, else 8000 ms
 // (the capture.js default). Not reported: text for screen readers only, hidden file inputs, links inside a sentence.
+// "reload" (or goto with reload: true) reloads the page and waits for load: a goto that only changes the hash does not.
+//
+// States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: true} or named strings:
+// "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2).
+// plan.states are added to every screen. Theme values (and dark mode) are set with --set-theme when given (a JS body run
+// in the page with key and value), else by setting the theming attribute on <html>. axe runs on the default state and on
+// theme states, at the widest viewport; plan.axe / screen.axe {include: [sel], exclude: [sel]} limit it.
 //
 // For every screen x state x viewport x mode: page errors and console errors, horizontal overflow,
 // accessibility (axe-core, when installed), keyboard focus visibility, touch targets on phones, clipped text,
@@ -29,7 +38,7 @@ function args() {
 }
 const A = args();
 if (A.help || !A.url || !A.plan || !A.out) {
-  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44] [--project <dir>]');
+  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44] [--project <dir>] [--theming <json>] [--set-theme <js>] [--axe <path>] [--waive <json>]');
   process.exit(A.help ? 0 : 1);
 }
 const plan = JSON.parse(fs.readFileSync(A.plan, 'utf8'));
@@ -38,13 +47,30 @@ const modes = String(A.modes || plan.modes || 'light').split(',').filter(Boolean
 const modeAttr = A['mode-attr'] || plan.modeAttr || 'data-mode';
 const touchMin = Number(A['touch-min'] || plan.touchMin || 44);
 const FRAMES = plan.frames || {};
+const THEMING = Object.assign({ mode: modeAttr }, A.theming ? JSON.parse(A.theming) : {});
+const SET_THEME = A['set-theme'] || plan.setTheme || null;
+const WAIVE = A.waive ? JSON.parse(A.waive) : [];
 const out = path.resolve(A.out);
 fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
 
-// axe-core is optional: look in the project, the kit, and the current folder.
+// axe-core is optional: --axe (a file or a folder that holds it), else the project, the kit, and the current folder.
 let axePath = null, axeVersion = null;
-for (const base of [A.project, path.resolve(__dirname, '../../..'), process.cwd()].filter(Boolean)) {
-  try { axePath = require.resolve('axe-core/axe.min.js', { paths: [base] }); axeVersion = require(require.resolve('axe-core/package.json', { paths: [base] })).version; break; } catch (e) { /* next */ }
+function axeVer(f) {
+  try { const pj = JSON.parse(fs.readFileSync(path.join(path.dirname(f), 'package.json'), 'utf8')); if (pj.name === 'axe-core') return pj.version; } catch (e) { /* header */ }
+  const m = /axe v?(\d+\.\d+\.\d+)/.exec(fs.readFileSync(f, 'utf8').slice(0, 400));
+  return m ? m[1] : 'unknown';
+}
+if (A.axe) {
+  const p = path.resolve(String(A.axe));
+  const cands = fs.existsSync(p) && fs.statSync(p).isDirectory()
+    ? [path.join(p, 'axe.min.js'), path.join(p, 'axe-core', 'axe.min.js'), path.join(p, 'node_modules', 'axe-core', 'axe.min.js')] : [p];
+  axePath = cands.find(f => fs.existsSync(f) && fs.statSync(f).isFile()) || null;
+  if (!axePath) { console.log('ERROR: axe-core not found at ' + p + ' (give axe.min.js or a folder with axe-core)'); process.exit(1); }
+  axeVersion = axeVer(axePath);
+} else {
+  for (const base of [A.project, path.resolve(__dirname, '../../..'), process.cwd()].filter(Boolean)) {
+    try { axePath = require.resolve('axe-core/axe.min.js', { paths: [base] }); axeVersion = axeVer(axePath); break; } catch (e) { /* next */ }
+  }
 }
 
 const IGNORE_CONSOLE = /fonts\.(googleapis|gstatic)\.com|Failed to load resource.*(font|woff)|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED/i;
@@ -110,7 +136,10 @@ async function runStep(page, s) {
     const inner = m && FRAMES[m[1]] ? m[2] : sel;
     return (key ? page.frameLocator(FRAMES[key]) : page).locator(inner).first();
   };
-  if (s.goto !== undefined) { await page.goto(urlFor(s.goto)); await page.waitForTimeout(150); }
+  if (s.goto !== undefined) {   // a goto that only changes the hash keeps the document: reload: true forces a fresh load
+    await page.goto(urlFor(s.goto)); if (s.reload) await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(150);
+  }
+  else if (s.reload) { await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(150); }
   else if (s.reset) { await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await page.reload(); await page.waitForTimeout(300); }
   else if (s.click) await loc(s.click).click({ timeout: T });
   else if (s.hover) await loc(s.hover).hover({ timeout: T });
@@ -159,16 +188,42 @@ async function focusCheck(page) {
   return { tabStops: seen.size, missing: missing.slice(0, 10) };
 }
 
-async function axeCheck(page) {
+// axe-core on the page. scope {include, exclude}: CSS selectors. Each node keeps its target, the waiver selectors it is
+// inside (closest), and for color-contrast the colours and ratio axe measured.
+async function axeCheck(page, scope) {
   if (!axePath) return null;
   try {
-    await page.addScriptTag({ path: axePath });
-    const res = await page.evaluate(async () => {
-      const r = await window.axe.run(document, { resultTypes: ['violations'] });
-      return r.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length, target: (v.nodes[0] && v.nodes[0].target || []).join(' ') }));
-    });
+    if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: axePath });
+    const res = await page.evaluate(async ({ scope, waive }) => {
+      const inc = (scope && scope.include) || [], exc = (scope && scope.exclude) || [];
+      const ctx = inc.length || exc.length ? Object.assign(inc.length ? { include: inc.map(s => [s]) } : {}, exc.length ? { exclude: exc.map(s => [s]) } : {}) : document;
+      const r = await window.axe.run(ctx, { resultTypes: ['violations'] });
+      const inside = t => { let el = null; try { el = t.length === 1 ? document.querySelector(t[0]) : null; } catch (e) { /* bad selector */ }
+        return el ? waive.filter(s => { try { return !!el.closest(s); } catch (e) { return false; } }) : []; };
+      return r.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length, target: (v.nodes[0] && v.nodes[0].target || []).join(' '),
+        list: v.nodes.slice(0, 20).map(n => { const d = ((n.any || []).concat(n.all || [], n.none || []).find(c => c.data && c.data.contrastRatio) || {}).data;
+          const o = { target: (n.target || []).join(' '), inside: inside(n.target || []) };
+          if (d) Object.assign(o, { ratio: d.contrastRatio, expected: d.expectedContrastRatio, fg: d.fgColor, bg: d.bgColor });
+          return o; }) }));
+    }, { scope: scope || null, waive: WAIVE });
     return res;
   } catch (e) { return [{ id: 'axe-error', impact: 'minor', help: String(e.message || e).slice(0, 160), nodes: 0, target: '' }]; }
+}
+
+// Theme values go through --set-theme (the app's own switch) when given, else the theming attribute on <html>.
+async function setTheme(page, key, value) {
+  if (SET_THEME) return page.evaluate(({ code, key, value }) => new Function('key', 'value', code)(key, value), { code: SET_THEME, key, value });
+  if (!THEMING[key]) throw new Error('theming key "' + key + '" is not in ds.json > theming');
+  return page.evaluate(({ a, v }) => document.documentElement.setAttribute(a, v), { a: THEMING[key], v: value });
+}
+
+// Named states: "brand=ocean" (any ds.json theming key) and "text=200%" (root font size); objects pass through.
+function normState(st) {
+  if (typeof st !== 'string') return st;
+  const m = /^([\w-]+)\s*=\s*(.+)$/.exec(st);
+  if (!m) return { name: st, error: 'unknown named state "' + st + '" (use <theming key>=<value> or text=200%)' };
+  if (m[1] === 'text') { const v = m[2].trim(); return { name: st, textScale: parseFloat(v) / (v.endsWith('%') ? 100 : 1) }; }
+  return { name: st, theme: { [m[1]]: m[2].trim() } };
 }
 
 async function openPage(ctx, route, mode, prepare, errors) {
@@ -177,7 +232,7 @@ async function openPage(ctx, route, mode, prepare, errors) {
   page.on('console', m => { if (m.type() === 'error' && !IGNORE_CONSOLE.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); });
   await page.goto(urlFor(route), { waitUntil: 'load' });
   await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; });
-  if (mode) await page.evaluate(({ a, m }) => document.documentElement.setAttribute(a, m), { a: modeAttr, m: mode });
+  if (mode) await setTheme(page, 'mode', mode);
   if (prepare) await page.evaluate(code => (0, eval)(code), prepare);
   await page.waitForTimeout(250);
   return page;
@@ -212,10 +267,10 @@ async function runFlow(browser, flow) {
 (async () => {
   const browser = await chromium.launch();
   const results = { url: A.url, started: new Date().toISOString(), viewports, modes, modeAttr,
-    axe: { available: !!axePath, version: axeVersion }, items: [], flows: [] };
+    axe: { available: !!axePath, version: axeVersion, path: axePath, scope: plan.axe || null }, items: [], flows: [] };
   const screens = plan.screens && plan.screens.length ? plan.screens : [{ id: 'S01', name: 'Entry', route: '' }];
   for (const sc of screens) {
-    const states = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || []);
+    const states = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || [], plan.states || []).map(normState);
     const vps = sc.viewports && sc.viewports.length ? sc.viewports.map(Number) : viewports;
     for (const st of states) {
       for (const vp of vps) {
@@ -228,12 +283,15 @@ async function runFlow(browser, flow) {
             for (let i = 0; i < (sc.steps || []).length; i++) {
               try { await runStep(page, sc.steps[i]); } catch (e) { throw new Error('step ' + (i + 1) + ': ' + String(e.message || e).split('\n')[0]); }
             }
-            if (modes.length > 1 || mode !== 'light') await page.evaluate(({ a, m }) => document.documentElement.setAttribute(a, m), { a: modeAttr, m: mode });
+            if (st.error) throw new Error(st.error);
+            if (modes.length > 1 || mode !== 'light') await setTheme(page, 'mode', mode);
+            for (const [k, v] of Object.entries(st.theme || {})) await setTheme(page, k, v);
+            if (st.textScale) await page.evaluate(x => { const h = document.documentElement; h.style.fontSize = (parseFloat(getComputedStyle(h).fontSize) * x) + 'px'; }, st.textScale);
             if (st.prepare) await page.evaluate(code => (0, eval)(code), st.prepare);
             await page.waitForTimeout(150);
             Object.assign(item, await pageChecks(page, vp));
             if (st.name === 'default' && mode === modes[0]) item.focus = await focusCheck(page);
-            if (st.name === 'default' && vp === vps[vps.length - 1]) item.axe = await axeCheck(page);
+            if ((st.name === 'default' || st.theme || st.axe) && vp === vps[vps.length - 1]) item.axe = await axeCheck(page, sc.axe || plan.axe);
             const shot = [slug(sc.id), slug(st.name), vp, mode].join('__') + '.png';
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.screenshot({ path: path.join(out, 'shots', shot), fullPage: true });

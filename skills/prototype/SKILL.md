@@ -25,6 +25,7 @@ Decide this before anything else, per app; never assume the project-wide one.
 | DS profile | `apps[].ds` of the target app, else the top-level `ds` (`python3 <kit>/scripts/kitconf.py --app <app>` prints the merged one) | the tokens, components, version label and rules of that profile; a web and a mobile app may use different profiles |
 | Design source note | `apps[].designSource` (free text, optional), e.g. "screens follow the Figma library <name>; the DS covers tokens only" | where layouts and components come from when it is not the DS catalogue alone; follow it, and still use only tokens of the profile |
 | How the DS CSS loads | `ds.json > css.load` / `apps[].css.load` (`embed` or `link`, see step 5) | where the DS CSS of a page lives |
+| Page contract | `python3 <kit>/scripts/kitconf.py contract --app <app>` (`apps[].pageContract`; for a page app also the contract of each host app in `usedBy`) | what every page must do for the app shell (call a ready hook, load shared scripts first, keep a mount element). Follow every line on each page you build or edit; a missed line often fails silently (icons or nav missing, no console error), so step 6 checks it |
 
 The note and the profile disagree, or neither covers the request: ask which one wins before building.
 
@@ -32,6 +33,7 @@ The note and the profile disagree, or neither covers the request: ask which one 
 - Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` only when the output says so). The rules override everything else here. The user states a new rule while you build → record it through `context` (decision, then `rules.py add`), never only in the app.
 - Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`; read UX principles, business rules, constraints and the `approved` decisions in scope. Building against an approved decision → stop and ask; never silently override it.
 - Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
+- Porting an existing page (to another stack, or from one app to another): the parity checklist of the `define` plan is the requirement (no plan: `python3 <kit>/skills/define/scripts/extract_rules.py <page and its scripts>` and complete it first). Keep every business rule: flow, conditions, limits, input checks, visible text, messages, shared storage, routes. Only the way it is built changes. A rule the new build cannot keep → say so before building; never drop or change it silently.
 - Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.
 - **Reference images give layout, order, behaviour and ideas only.** Never copy colours, fonts, radii, shadows or icons from them.
 - Write an image breakdown: every region and element you see (nav, card, table, form, dialog, empty state…), and the anatomy of unfamiliar patterns (parts, arrangement, relations).
@@ -40,7 +42,7 @@ The note and the profile disagree, or neither covers the request: ask which one 
 
 ## Step 2. Load the DS sources
 
-- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`catalog.py find <words>` to look a role up, `catalog.py show <id>` for details). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Follow each component's `usage.use` / `usage.avoid` rules. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
+- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`catalog.py find <words>` to look a role up, `catalog.py show <id>` for details, `catalog.py patterns` for page layouts such as master-detail or split panes). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Follow each component's `usage.use` / `usage.avoid` rules. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
 - Icons from `ds.json > icons`.
 - Never write a token, class, component name or version from memory. Source unreadable → stop and say so; never invent styles.
 
@@ -139,28 +141,30 @@ Rules for every stack:
 
 Per stack (see `<kit>/docs/stacks.md`):
 
-| | `html` | `react` | `vue` |
-|---|---|---|---|
-| Where | `apps/<app>/index.html` (or the page file chosen in 4b) | `apps/<app>/src/pages/<Page>.tsx` + route | `apps/<app>/src/pages/<Page>.vue` + route |
-| DS CSS | `css.load` `embed` (default): the bundle between the `ds.json > css.marker` comments of each page. `link`: one `<link rel="stylesheet">` to the app's DS file (`css.linkPath`, relative to the app folder; a page in a sub-folder uses `../`). Never edit inside either | Imported once in `src/index.css`; do not re-import | Same as React |
-| Components | DS classes from `catalog.md` | React column of `components.map` | Vue column of `components.map`; with `ds.json > components.vue`, only the DS Vue components (props from its props map) |
-| Styling | Tokens via `var(...)` in the app's CSS | Tailwind classes mapped to tokens; no arbitrary values (`bg-[#fff]`, `p-[13px]`), no inline `style={{…}}` for colour or spacing | Same as React; no `:style` for colour or spacing |
-| Local blocks | `/* LOCAL: <name> */` block in the app CSS | `src/components/local/<Name>.tsx` with the header comment; classes keep `x-` | `src/components/local/<Name>.vue`, same |
-| After editing | `multi`: run the app's `build` then `check` | `npm run build` (or `apps[].build`) must pass | Same as React |
+| | `html` | `react` | `vue` | `vue` page in an `html` app (`type: "page"`) |
+|---|---|---|---|---|
+| Where | `apps/<app>/index.html` (or the page file chosen in 4b) | `apps/<app>/src/pages/<Page>.tsx` + route | `apps/<app>/src/pages/<Page>.vue` + route | `<page app path>/src/` (`main.ts` mounts into the host page); built to one JS file (`apps[].output`) that becomes the files in `usedBy` |
+| DS CSS | `css.load` `embed` (default): the bundle between the `ds.json > css.marker` comments of each page. `link`: one `<link rel="stylesheet">` to the app's DS file (`css.linkPath`, relative to the app folder; a page in a sub-folder uses `../`). Never edit inside either | Imported once in `src/index.css`; do not re-import | Same as React | None in the JS: the host page loads the DS CSS the way its app does |
+| Components | DS classes from `catalog.md` | React column of `components.map` | Vue column of `components.map`; with `ds.json > components.vue`, only the DS Vue components (props from its props map) | Same as `vue` |
+| Styling | Tokens via `var(...)` in the app's CSS | Tailwind classes mapped to tokens; no arbitrary values (`bg-[#fff]`, `p-[13px]`), no inline `style={{…}}` for colour or spacing | Same as React; no `:style` for colour or spacing | DS classes and tokens; no Tailwind unless the host app has it |
+| Local blocks | `/* LOCAL: <name> */` block in the app CSS | `src/components/local/<Name>.tsx` with the header comment; classes keep `x-` | `local.vueStyle`: `sfc` (default) `src/components/local/<Name>.vue`, same header; `css-file` a `/* LOCAL: <name> */` block in `local.vueCss`, no `<style>` in `.vue` | In the host app CSS (`/* LOCAL: <name> */` block), so every host page gets it |
+| After editing | `multi`: run the app's `build` then `check` | `npm run build` (or `apps[].build`) must pass | Same as React | The page app's `build` (and `check`), then each host app's `build` and `check` |
 
-DS with its own Vue component layer (`ds.json > components.vue`): import the components from the alias `@ds-vue` (or the npm package `components.vue.package`), set props as the props map names them, never copy or rewrite a DS component into the app, never add shadcn-vue. A component the layer lacks goes through the component gate. No Tailwind (`ds.json > tailwind: false`): style only with DS classes and tokens in the app CSS.
+DS with its own Vue component layer (`ds.json > components.vue`): import the components from the alias `@ds-vue` (or the npm package `components.vue.package`), set props as the props map names them, never copy or rewrite a DS component into the app, never add shadcn-vue. A component the layer lacks goes through the component gate. The layer is a folder with its own `package.json` (its `tsconfig` extends packages such as `@vue/tsconfig`): run `npm ci` in that folder once before the first app build, or `vite build` / `vue-tsc` stop with a tsconfig error. No Tailwind (`ds.json > tailwind: false`): style only with DS classes and tokens in the app CSS.
+
+Vue page in an `html` app: the host page keeps the shell (header, nav, DS CSS, shared scripts) and an empty mount element; it sets the page config (a global such as `window.__PAGE__`), loads the shell scripts, then the page JS. The page JS mounts only into that element, reads shell services (toast, router, storage) through one small adapter file, and never touches the shell's markup. The page contract lines of every host app apply. See `<kit>/docs/stacks.md`.
 
 ## Step 6. Test
 
-Run `validate` for the screens, states and flows of this wave (`validation.py run --app <id>`; add them to its `plan.json` first). It covers errors, overflow, accessibility, focus, touch targets and visual changes at 390, 768 and 1280 px in each mode; the build is not done until its report shows **Fail (0)**. Also check by hand (Playwright with the installed Chromium; never run `playwright install`):
-- No `pageerror`; no console errors (blocked web fonts in a sandbox are acceptable).
-- No horizontal scroll at 400, 768 and 1280 px.
-- Light and dark mode; at least two brands if `theming.brand.values` has several.
-- Mobile or responsive screens: system text size 200% (at 390 px, root font size 200%). Everything still visible: no clipped text, no overlap, no lost buttons or inputs; text wraps and frames grow.
-- No hard-coded values left (grep the changed code for hex, `rgb(`, px colour/spacing, and per-stack patterns above).
+Run `validate` for the screens, states and flows of this wave (`V=<kit>/skills/validate/scripts/validation.py`; `python3 $V run --app <id>`; add them to its `plan.json` first). It covers page and console errors, horizontal overflow, accessibility, focus, touch targets and visual changes at 390, 768 and 1280 px in each mode; the build is not done until its report shows **Fail (0)**. Never write your own Playwright script for these checks.
+- Quick run while building (no plan yet, or a trial): `python3 $V init --app <id> --dir <scratch folder>` (`--page <file>` for one page), keep the screens of this wave, then `python3 $V run --app <id> --dir <scratch folder>`. Move the plan to `paths.validation` when the wave is done.
+- Brands and text size 200%: list them as named plan states (`brand=<value>` for at least two brands if `theming.brand.values` has several; `text=200%` for mobile or responsive screens). Everything must stay visible: no clipped text, no overlap, no lost buttons or inputs.
+- Page contract (`kitconf.py contract --app <app>`): each line has a check in the plan (a flow step `expectVisible` on what the contract makes appear, or a state), so a missed call fails instead of passing silently.
+- Porting a page: run the parity check. Same steps on the old and the new page (a flow per row group of the parity checklist, run against both entries with `--url`); compare visible text, messages, states and stored data (`localStorage` keys and values). Every row of the checklist ends "same" or a difference the user accepted.
+- No hard-coded values left: `python3 <kit>/skills/review/scripts/audit_app.py <app>` (hex, `rgb(`, px colour and spacing, per-stack patterns above) shows nothing new in the changed files.
 - Local blocks added or changed: `python3 <kit>/skills/contribute/scripts/registry.py check` passes, and every new or changed entry has its notes filled.
 - Capture the new screen next to the reference image and compare layout, order and behaviour (not style).
-- Open every main state in the flow: empty, error, loading, and edge data (long names, many items, none, a missing image). The request rarely names them; build them with DS components (empty and error patterns from the catalogue) and list the ones you could not build.
+- Open every main state in the flow: empty, error, loading, and edge data (long names, many items, none, a missing image). The request rarely names them; build them with DS components (empty and error patterns from the catalogue) and list the ones you could not build. Which states and which edge data: `references/states-and-edge-data.md` (S- and D-codes). A screen that adds animation: `<kit>/skills/review/references/motion.md`.
 
 ## Step 7. Save and report
 

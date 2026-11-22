@@ -1,4 +1,5 @@
 {
+ "handoff.spec.figmaPending": "not on the Figma board yet (package awaiting Figma)",
  "handoff.spec.colImage": "Image",
  "handoff.archive.status": "Removed|Removed in|Replaced in",
  "handoff.archive.title": "# Archive: replaced or removed units",

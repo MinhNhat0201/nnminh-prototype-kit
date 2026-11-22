@@ -30,5 +30,11 @@
   "validate.kind.flow": "Flow",
   "validate.shotsTitle": "Screenshots",
   "validate.shotsNote": "Screenshots are in shots/, highlighted differences in diffs/. After a human has looked at them, accept them as the new baseline with: validation.py baseline --app <app>.",
-  "validate.kind.rule": "Project rule (rules registry)"
+  "validate.kind.rule": "Project rule (rules registry)",
+  "validate.knownTitle": "Known / waived",
+  "validate.knownNote": "Findings matched by a waiver (waivers.json) with its reason: known issues or outside the work validated here. They never fail the run; review the waivers when the work changes.",
+  "validate.compareNote": "Compared with run {run}: {new} new, {carried} carried over, {fixed} no longer found.",
+  "validate.since": "Since the previous run",
+  "validate.new": "new",
+  "validate.carried": "carried over"
 }

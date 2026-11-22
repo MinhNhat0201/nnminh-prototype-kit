@@ -55,6 +55,9 @@ node skills/annotate/scripts/capture.js <manifest.js> <shots dir> http://localho
 - Screens of one flow with `cont: 1` run in the same tab, so data handed between pages survives.
 - Each pin stores `style.props` (computed style) and `style.tokens` (DS token names with the same value, grouped by role; several names when several match: list them, do not pick for the designer).
 - `next` gives the exits (edges) of a screen; their positions become the rings on the wireflow.
+- After an `eval` that sets storage, a hash-only `goto` does not reload: add `reload: true` to the goto, or a `{ reload: 1 }` step.
+- Short states (skeleton, spinner): a hold flag the prototype reads is best; otherwise `noWait: true` on the goto/reload and `at: <ms>` on the screen.
+- Before each screenshot the pointer leaves the page and a focused button or link is blurred (`neutral: false` turns it off); a screen with a `hover` step keeps its pointer.
 - Chromium and Playwright must already be installed. Never run `playwright install`. If capture is impossible, stop and tell the user; never draw a substitute image.
 
 ## 4. Review every capture
@@ -89,6 +92,17 @@ From the DOM and CSS in the captured state, one row per pin:
 - Spec says A, screen does B: a "Deviation from spec" line. Do not fix either side.
 No vague notes ("friendly UI"). Every note must be checkable on the screen.
 
+Generate the skeleton, then fill the hand cells:
+
+```
+python3 -I skills/annotate/scripts/spec_md.py notes <folder> --screens <shots>/screens.json [--baseline <old screens.json>] [--units FR-01] [--check]
+```
+
+- Writes the screen sections and the "Design notes" table of each `spec/<unit>.md` between `<!-- kit:screens:begin/end -->` and `<!-- kit:notes:begin/end -->`. Text outside the markers is never touched; never edit the marker lines.
+- Pins belong to a unit by rule code (`FR-01`, `FR-01.2`); screens also come from `requirements/spec-map.json`. A screen that already has a hand-written `### Sxx ·` section is not generated again.
+- Rows are keyed by screen, rule and selector, so a new pin renumbers the codes (S01-5 → S01-6) and the hand cells (element, DS component, states, style change) move with their pin. Generated each time: pin code, rule, token. `--baseline` fills the style change column.
+- Renumbered codes still written outside the markers are printed as `WARN:`; fix them by hand. `check` reports a notes block whose codes no longer match `screens.json` as an ERROR.
+
 ## 8. Write the Markdown spec (source of truth)
 One file per unit, readable alone, grep-able by code. No CSS, no images. Layout and templates: [references/spec-format.md](references/spec-format.md).
 
@@ -108,7 +122,7 @@ screens/screens.json requirements/flows.json requirements/spec-map.json
 
 **Cross-page contract** (multi-page): four tables in `spec/cross-page.md` (pages and routes; data handed between pages; direct open; shared state), all values from code and a real run. Unverified values: "Not verified". Mock data is marked as mock.
 
-Check: `python3 -I skills/annotate/scripts/spec_md.py check <folder>` must show no `ERROR:`. Handle every `WARN:` (add the screen to a unit or to "Not matched"; note a DS version mismatch).
+Check: `python3 -I skills/annotate/scripts/spec_md.py check <folder>` must show no `ERROR:`. A folder without `screens/` (the package source folder) skips the screen, pin and image checks with one NOTE; pass `--screens <shots>/screens.json` to run them there. Handle every `WARN:` (add the screen to a unit or to "Not matched"; note a DS version mismatch).
 
 ## 9. HTML viewer (only when someone asks)
 Default: do not make it. When BA, QC or the user wants pinned screenshots and an image wireflow:
