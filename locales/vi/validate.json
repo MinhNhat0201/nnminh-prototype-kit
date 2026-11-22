@@ -30,5 +30,11 @@
   "validate.kind.flow": "Luồng",
   "validate.shotsTitle": "Ảnh chụp",
   "validate.shotsNote": "Ảnh chụp nằm trong shots/, phần khác biệt được tô trong diffs/. Sau khi người đã xem, chấp nhận chúng làm ảnh chuẩn mới bằng lệnh: validation.py baseline --app <app>.",
-  "validate.kind.rule": "Quy tắc dự án (sổ quy tắc)"
+  "validate.kind.rule": "Quy tắc dự án (sổ quy tắc)",
+  "validate.knownTitle": "Đã biết / miễn trừ",
+  "validate.knownNote": "Lỗi khớp một mục miễn trừ (waivers.json) kèm lý do: lỗi đã biết hoặc ngoài phạm vi việc đang kiểm. Không làm lượt chạy thất bại; rà lại danh sách miễn trừ khi phạm vi đổi.",
+  "validate.compareNote": "So với lượt {run}: {new} mới, {carried} còn từ lượt trước, {fixed} không còn thấy.",
+  "validate.since": "So với lượt trước",
+  "validate.new": "mới",
+  "validate.carried": "còn từ lượt trước"
 }

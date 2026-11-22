@@ -15,6 +15,7 @@ Command line:
     python3 scripts/kitconf.py skills    # model and effort hints per skill (kit.config.json > skills)
     python3 scripts/kitconf.py --app acme-mobile   # the merged configuration with that app's DS profile (apps[].ds)
     python3 scripts/kitconf.py hook prototype.post --app acme-web   # run an optional project command ({app}, {path}, {root})
+    python3 scripts/kitconf.py contract --app acme-web   # the page contract of the app (apps[].pageContract), one line each
     python3 scripts/kitconf.py --selftest
 """
 import json
@@ -31,11 +32,12 @@ DEFAULTS = {
     "ds": None,
     "apps": [],
     "local": {"prefix": "x-", "marker": "LOCAL", "registry": "docs/local-components.json",
-              "command": {"update": None, "check": None}, "fields": {}},
+              "command": {"update": None, "check": None}, "fields": {}, "vueStyle": "sfc", "vueCss": "src/styles/local.css"},
     "handoff": {"dir": "docs/handover", "zipName": "Design - {pbi}", "maxZipMB": 3, "figmaRequired": True,
                 "itemLabel": "", "grepLabels": [], "dsLabel": "auto", "dsLabelCheck": "warn",
                 "specFiles": {"archive": "archive.md", "crossPage": "cross-page.md", "legacy": []},
-                "csv": {"feature": None, "qc": None}, "pre": None, "post": None, "specFields": {}},
+                "csv": {"feature": None, "qc": None}, "pre": None, "post": None, "specFields": {},
+                "smokeWidths": [400, 768, 1280]},
     "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3, "demoLinks": True, "maxItems": 12,
               "template": None},
     "deploy": {"type": "none", "site": None},
@@ -43,7 +45,7 @@ DEFAULTS = {
     "review": {"extraChecks": []},
     "prototype": {"post": None},
     "figma": {"imageSuffix": None},
-    "validate": {"touchTarget": {"default": 44, "desktop": 24}},
+    "validate": {"touchTarget": {"default": 44, "desktop": 24}, "axePath": None, "setTheme": None},
     "skills": {},
     "rules": {"categories": {}},
     "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify", "rules": "rules"},
@@ -67,6 +69,7 @@ DS_DEFAULTS = {
     "library": {},
     "figma": {"libraries": [], "collections": {}, "modes": {}},
     "preset": {},
+    "patterns": [],
 }
 
 STACKS = ("html", "react", "vue")
@@ -78,6 +81,7 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 DS_LABEL_SOURCES = ("auto", "pkg", "spec", "ds", "prototype")
 CHECK_LEVELS = ("off", "warn", "error")
 CSS_LOADS = ("embed", "link")
+VUE_STYLES = ("sfc", "css-file")
 CHANGELOG_FORMATS = ("md", "json")
 CSV_ROLES = {
     "feature": ("code", "feature", "group", "screen", "behaviour", "inputs", "expected", "status", "dependencies"),
@@ -317,10 +321,20 @@ def skill_hint(cfg, name):
     return {k: h[k] for k in ("model", "effort") if h.get(k)}
 
 
+def page_contract(cfg, app_id):
+    """Lines of apps[].pageContract: what every page of the app must do for its shell (a string is one line). Default []."""
+    for a in (cfg or {}).get("apps") or []:
+        if a.get("id") == app_id:
+            v = a.get("pageContract") or []
+            return [v] if isinstance(v, str) else [str(x) for x in v]
+    return []
+
+
 def app(cfg, app_id):
     for a in cfg["apps"]:
         if a.get("id") == app_id:
-            return _merge({"type": "single", "entry": "index.html", "build": None, "check": None, "stack": cfg["stack"]}, a)
+            return _merge({"type": "single", "entry": "index.html", "build": None, "check": None, "stack": cfg["stack"],
+                           "pageContract": []}, a)
     sys.exit(f"ERROR: app '{app_id}' is not declared in kit.config.json > apps.")
 
 
@@ -391,6 +405,9 @@ def check(cfg):
             v = a.get(k)
             if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
                 errs.append(f"app '{a.get('id')}': {k} must be a list of glob patterns (paths from the project root)")
+        pc = a.get("pageContract")
+        if pc is not None and not isinstance(pc, str) and (not isinstance(pc, list) or not all(isinstance(x, str) and x for x in pc)):
+            errs.append(f"app '{a.get('id')}': pageContract must be a list of lines (what every page must do for the shell)")
         ac = a.get("css")
         if ac is not None and (not isinstance(ac, dict) or (ac.get("load") or "embed") not in CSS_LOADS):
             errs.append(f"app '{a.get('id')}': css must be an object {{\"load\": \"embed\" | \"link\", \"linkPath\": ...}}")
@@ -424,6 +441,9 @@ def check(cfg):
         errs.append("handoff.dsLabelCheck must be one of " + ", ".join(CHECK_LEVELS))
     if not isinstance(h.get("grepLabels"), list):
         errs.append("handoff.grepLabels must be a list of strings")
+    sw = h.get("smokeWidths")
+    if not isinstance(sw, list) or not sw or not all(isinstance(x, int) and x >= 200 for x in sw):
+        errs.append("handoff.smokeWidths must be a non-empty list of widths in px (at least 200), e.g. [400, 768, 1280]")
     for kind in ("feature", "qc"):
         v = (h.get("csv") or {}).get(kind)
         if isinstance(v, dict):
@@ -444,6 +464,8 @@ def check(cfg):
             errs.append("skills.%s.effort must be one of %s" % (k, ", ".join(EFFORTS)))
     if not isinstance((cfg.get("local") or {}).get("fields"), dict):
         errs.append("local.fields must be an object {kit field: project field}")
+    if (cfg.get("local") or {}).get("vueStyle", "sfc") not in VUE_STYLES:
+        errs.append("local.vueStyle must be one of " + ", ".join(VUE_STYLES))
     sf = h.get("specFields")
     if not isinstance(sf, dict) or any(k not in SPEC_KEYS or not isinstance(v, (str, list)) for k, v in sf.items()):
         errs.append("handoff.specFields must be an object {kit key: old key or list of old keys}; kit keys: " + ", ".join(SPEC_KEYS))
@@ -528,6 +550,18 @@ def selftest():
     c["apps"][0]["generated"] = "shared/*"
     new = [e for e in check(c) if any(k in e for k in ("generated", "css.load", "changelog.format", "rules.from"))]
     assert len(new) == 4, check(c)
+    # apps[].pageContract, local.vueStyle
+    c = load(d)
+    assert c["local"]["vueStyle"] == "sfc" and page_contract(c, "web") == [], "defaults keep the earlier behaviour"
+    c["apps"] = [{"id": "web", "path": "w", "pageContract": ["Call Shell.ready() after the first render"]},
+                 {"id": "one", "path": "o", "pageContract": "Load shared/shell.js first"}]
+    assert page_contract(c, "web") == ["Call Shell.ready() after the first render"] and page_contract(c, "one") == ["Load shared/shell.js first"]
+    new = lambda: [e for e in check(c) if "pageContract" in e or "vueStyle" in e]  # earlier cases leave other errors
+    assert app(c, "web")["pageContract"] and app(c, "one")["type"] == "single" and new() == [], check(c)
+    c["apps"][0]["pageContract"] = [1]
+    c["local"]["vueStyle"] = "scoped"
+    assert len(new()) == 2, check(c)
+    c["local"]["vueStyle"] = "sfc"  # c["local"] may be the DEFAULTS object
     print("kitconf selftest OK")
 
 
@@ -545,6 +579,14 @@ if __name__ == "__main__":
             if h:
                 print("%-11s model=%s effort=%s" % (k, h.get("model", "-"), h.get("effort", "-")))
         print("(no skills.<name> hints in kit.config.json)" if not c.get("skills") else "")
+        sys.exit(0)
+    if len(sys.argv) > 1 and sys.argv[1] == "contract":
+        # python3 scripts/kitconf.py contract --app acme-web: what every page of the app must do for its shell
+        if not c.get("_app"):
+            print("ERROR: contract needs --app <id>")
+            sys.exit(1)
+        lines = page_contract(c, c["_app"])
+        print("\n".join("- " + x for x in lines) if lines else "No page contract (kit.config.json > apps[].pageContract is empty).")
         sys.exit(0)
     if len(sys.argv) > 2 and sys.argv[1] == "hook":
         # python3 scripts/kitconf.py hook prototype.post --app acme-web: run an optional project command, if set

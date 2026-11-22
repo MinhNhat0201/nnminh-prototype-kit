@@ -23,7 +23,7 @@ Read first: `kit.config.json` (load with `python3 <kit>/scripts/kitconf.py`; `<k
 Ask only for what is missing, all in one round:
 
 1. **Target app:** an entry of `kit.config.json > apps`, or a new app.
-2. **Source and owner:** PM or BA; where the document, ticket or notes are; version or date. Several sources → which one wins on conflict.
+2. **Source and owner:** PM or BA; where the document, ticket or notes are; version or date. Several sources → which one wins on conflict. The source can be **an existing running page** (porting it to another stack or app): then its code holds the business rules, and the owner decides only what may change.
 3. **Goal of the prototype:** who sees the demo, what it must prove (flow, idea, developer handoff). This sets the level of detail.
 4. **Constraints:** deadline, waves that must come first, parts that must not change.
 
@@ -34,6 +34,7 @@ Do not proceed without 1 and 2. Running unattended: write assumptions into the p
 - Read every requirement document. Open images and attachments with Read. A link you cannot read → say so; never guess its content.
 - Existing app: read its screens one at a time (never a large file in one go), `paths.changelog`, `local.registry`, and the DS version label in the app compared with `ds.json > version`.
 - Change to an existing plan: read the old plan in `paths.plans` and follow "Update a plan" below.
+- Source is an existing page: see "Port an existing page" below before step 2.
 - Product context (`paths.context`, see `context`): run `python3 <kit>/skills/context/scripts/context.py summary`, then read the overview, personas, business rules and constraints, and the approved decisions in scope. A business rule there wins over your reading of the PRD; a conflict between the PRD and a rule is a BLOCKING question. No context folder → work without it and suggest `context` once.
 - Business decisions you propose (a reading of a vague rule, a default) go into the plan and into the decision log as `proposed` (`decisions.py add --status proposed`), never as agreed.
 
@@ -54,6 +55,8 @@ Check every unit for:
 | Missing | No empty / error / loading state, role permissions, data limits, cancel behaviour, messages; a flow with a start and no end |
 | Contradiction | Between two units, unit vs existing prototype, unit vs DS (asks for a style no token gives), two sources |
 | Hidden assumption | Something you would have to guess to build it |
+
+For **Missing**, go through the states (S-codes) of `<kit>/skills/prototype/references/states-and-edge-data.md` for every data region of the unit.
 
 Question table: `ID | linked unit | question (specific, answerable in one sentence) | to (PM/BA) | level | temporary assumption | fallback if the assumption is wrong`.
 
@@ -83,10 +86,13 @@ No app yet: propose screens and flows from scratch. Existing app: for each unit,
 | `html`, app `single` | A new file `apps/<app>/<slug>/index.html` needs the shared shell extracted first (header, nav, CSS, scripts) or copied (drifts). Large cost; propose it as its own plan. |
 | `html`, app `multi` | One more page file in the existing shell, plus its entry in the app's route table and the app's `build` command. Low cost. |
 | `react`, `vue` (`spa`) | One route plus one page component. Low cost. |
+| `html` `multi` app, page built in `vue` | One page app (`stack: "vue"`, `type: "page"`, `output`, `usedBy`) built to one JS file that the host pages load; the host app's `build` runs the page build first. Medium cost (install, two builds); see `docs/stacks.md`. |
 
 ## Step 5. Map to the DS catalogue
 
 Table: `element needed | expected DS component (from catalog.md) | match level`. The source is `catalog.md` and the DS CSS, never memory.
+
+Check page patterns too, not only components: `python3 <kit>/skills/document/scripts/catalog.py patterns` (master-detail, split panes, list pages, settings pages; `catalog.py find <words>` searches both). A layout the DS lists as a pattern is **Available**. No pattern listed → search the DS CSS bundle and the DS library page for the layout (class names like `split`, `side`, `detail`) before you write **Missing**, and say in the plan that the profile lists no patterns.
 
 | Match level | Meaning |
 |---|---|
@@ -124,6 +130,7 @@ Split into small waves. Each wave ships a working prototype (a vertical slice th
 | Handoff package for BA, QC, developers | `handoff` |
 
 - End each wave with a stakeholder review (demo) before the next one, unless the user says to run straight on.
+- Porting a page: the last wave's acceptance criterion is the parity check (`prototype` step 6): every row of the parity checklist is "same" on the old and the new page, or a difference the user accepted.
 
 ## Step 7. Traceability matrix
 
@@ -144,6 +151,18 @@ Present, in this order: BLOCKING questions; **new pages** (A/B/C needed before b
 Mark each wave that has a real design question (structure, navigation, main interaction, information order) and suggest `explore` for it before `prototype`.
 Move on only when the user says to start a specific wave: to `explore` for a marked wave if the user agrees, otherwise to `prototype`. Pass the wave's R-ids, S-ids, assumptions, page decisions and component decisions.
 
+## Port an existing page
+
+The requirement is "the same page, built another way" (another stack, another app, a page inside another shell). The business rules live in the running page, not in a document.
+
+1. List the page file and every script and template it loads (shared shell scripts only for the parts this page uses).
+2. Draft the rules: `python3 <kit>/skills/define/scripts/extract_rules.py <files or folders> --out <plan folder>/<app>-<page>-parity.md`. It lists visible text, toast and error messages, input constraints (`maxlength`, `required`, `pattern`, `min`, `max`, input types), numeric limits in code, route patterns and storage keys, each with `file:line`.
+3. Complete the draft into the plan's "Parity checklist": for each row write the rule it shows, or "not a rule" (mock data, labels of other pages). Group rows by flow. Read the code around a row before you write its rule; never guess a rule from the text alone.
+4. Add what the script cannot see: flows and their order, conditions (when a button is disabled, what happens on empty input), states (empty, loading, error), data shared with other pages, responsive behaviour. Open the page and walk each flow once.
+5. Every completed row becomes a unit (type business rule, UI/UX or data; source = `file:line`). Keep the text verbatim. What the new build cannot keep → a BLOCKING question; never drop or change a rule in the plan.
+
+The kit has no parity runner: the check is done with `validate` flows on both pages (`prototype` step 6).
+
 ## Update a plan (requirements changed)
 
 - Read the old plan and the new source. Diff table: units **added / changed / removed**, matched by code, old and new verbatim side by side.
@@ -152,7 +171,7 @@ Move on only when the user says to start a specific wave: to `explore` for a mar
 
 ## Final report (short)
 
-Plan path; units by type; questions (BLOCKING / NON-BLOCKING); elements per match level and pending component decisions; new pages awaiting A/B/C; number of waves and the one to start; assumptions used; parts outside the prototype; warnings (outdated DS version, conflicting sources).
+Plan path; units by type; parity checklist rows (porting only: completed / "not a rule" / open); questions (BLOCKING / NON-BLOCKING); elements per match level and pending component decisions; new pages awaiting A/B/C; number of waves and the one to start; assumptions used; parts outside the prototype; warnings (outdated DS version, conflicting sources).
 
 ## Rules
 

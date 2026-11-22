@@ -2,12 +2,17 @@
 """Demo-site links per wireflow flow (shared by the flows text of a spec and by the Figma wireflow board).
 
   python3 -I demo_links.py fill --screens <screens.json> --flows <flows.json> --app <app id>
-                                [--site <https base URL>] [--manifest <manifest.json>] [--page-root <folder>] [--dry-run]
+                                [--site <https base URL>] [--manifest <manifest.json>] [--page-root <folder>]
+                                [--md <flows.md> | --no-md] [--dry-run]
   python3 -I demo_links.py --selftest
 
 - Flow link = site + page path + hash route of the first screen of the flow (first `n` item), from screens.json
   (the capture output). A flow that already has `url` keeps it (hand-edited).
 - Writes `url` into each flow and `home` (the app root) into flows.json, and prints flow id · screen · link · start.
+- Also writes each link into the text wireflow `spec/flows.md` (default: `<flows.json folder>/../spec/flows.md`, or
+  --md): under the heading of the flow (`## WF-01 · ...`), the "Open demo:" line (locale label
+  `annotate.line.openDemo`) gets the link, or is added right after the heading. A flow without a heading is a WARN.
+  The spec check of `annotate` (run by `pkg.py finalize`) needs every flows.json link in flows.md. --no-md skips it.
 - With --manifest: when the first screen needs clicks to reach (`steps`) and the flow has no `start`, prints a
   REMINDER so the agent fills `start` with the exact on-screen label (for example: Click "New").
 - Page path of a screen: when it contains the app path (`apps[].path`), the part after it is kept; when it is a
@@ -19,6 +24,7 @@ The script makes no network call.
 """
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -60,6 +66,34 @@ def first_screen(flow):
             if it[0] == 'n':
                 return it[1]
     return None
+
+
+def md_links(md, flows, labels, start_label):
+    """(new flows.md text, flow ids without a heading): put each flow url on the "Open demo:" line of its section."""
+    lines, missing = md.split('\n'), []
+    lab = '|'.join(re.escape(x) for x in dict.fromkeys(labels))
+    for f in flows:
+        fid, url = f.get('id') or '', f.get('url') or ''
+        if not fid or not url:
+            continue
+        head = next((i for i, ln in enumerate(lines) if re.match(r'^#{2,4}\s+%s(?![\w-])' % re.escape(fid), ln)), None)
+        if head is None:
+            missing.append(fid)
+            continue
+        end = next((j for j in range(head + 1, len(lines)) if re.match(r'^#{1,4}\s', lines[j])), len(lines))
+        sec = lines[head + 1:end]
+        if any(url in ln for ln in sec):
+            continue
+        new = f'{labels[0]}: [{fid}]({url})' + (f' · {start_label}: {f["start"]}' if f.get('start') else '')
+        at = next((j for j, ln in enumerate(sec) if re.match(r'^\s*(?:%s)\s*:' % lab, ln)), None)
+        if at is None:
+            lines[head + 1:head + 1] = ['', new]               # blank line, link line, then the section as it was
+            if head + 3 < len(lines) and lines[head + 3].strip():
+                lines.insert(head + 3, '')
+        else:
+            ln = sec[at]
+            lines[head + 1 + at] = re.sub(r'\]\([^)\s]+\)', lambda m: f']({url})', ln, count=1) if re.search(r'\]\(https?://', ln) else new
+    return '\n'.join(lines), missing
 
 
 def check_url(u, site):
@@ -129,6 +163,23 @@ def fill(a):
         print('ERROR: ' + e)
     if err:
         sys.exit(1)
+    md = None if a.no_md else Path(a.md) if a.md else Path(a.flows).resolve().parent.parent / 'spec' / 'flows.md'
+    if md is not None and not md.is_file():
+        print(f'NOTE {md} not found: demo links written to flows.json only' if not a.md else f'ERROR: file not found: {md}')
+        if a.md:
+            sys.exit(1)
+        md = None
+    if md is not None:
+        from kitconf import load, t
+        cfg = load(require=False)
+        labels = [t(cfg, 'annotate.line.openDemo'), t('en', 'annotate.line.openDemo')]
+        text = md.read_text(encoding='utf-8')
+        new, missing = md_links(text, flows.get('flows', []), labels, t(cfg, 'annotate.line.start'))
+        for fid in missing:
+            print(f'WARN:  {md.name} has no heading for flow {fid} ("## {fid} · ..."): add its demo link by hand')
+        if new != text and not a.dry_run:
+            md.write_text(new, encoding='utf-8')
+            print(f'Wrote demo links into {md}')
     if not a.dry_run:
         json.dump(flows, open(a.flows, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
         print(f'Wrote url for {len(rows)} flow(s) and home to {a.flows}')
@@ -147,6 +198,18 @@ def selftest():
     for (page, h), root, want in cases:
         got = screen_url(S, A, page, h, root)
         assert got == want, (page, root, got, want)
+    # K-F14: links go into flows.md too (existing "Open demo:" line updated, missing one added, no heading reported)
+    L = ['Open demo', 'Open demo']
+    md = ('# Wireflow\n\n## WF-01 · Create\n\n1. S01 → S02\n\n## WF-02 · Edit\nOpen demo: [old](https://x.example.com/a/) · Start: S03\n'
+          '\n## WF-03 · Done\n')
+    fl = [{'id': 'WF-01', 'url': S + '/a/#/', 'start': 'S01'}, {'id': 'WF-02', 'url': S + '/b/'},
+          {'id': 'WF-03', 'url': S + '/c/'}, {'id': 'WF-09', 'url': S + '/z/'}, {'id': 'WF-04'}]
+    out, miss = md_links(md, fl, L, 'Start')
+    assert miss == ['WF-09'], miss
+    assert '## WF-01 · Create\n\nOpen demo: [WF-01](%s/a/#/) · Start: S01\n\n1. S01' % S in out, out
+    assert 'Open demo: [old](%s/b/) · Start: S03' % S in out and 'x.example.com' not in out, out
+    assert out.endswith('## WF-03 · Done\n\nOpen demo: [WF-03](%s/c/)\n' % S), repr(out[-80:])
+    assert md_links(out, fl, L, 'Start')[0] == out, 'idempotent'
     print('demo_links.py selftest OK')
 
 
@@ -156,13 +219,15 @@ def main():
         return
     ap = argparse.ArgumentParser(description='Demo-site links per wireflow flow. Commands: fill.')
     sub = ap.add_subparsers(dest='cmd', required=True)
-    f = sub.add_parser('fill', help='write url per flow and home into flows.json')
+    f = sub.add_parser('fill', help='write url per flow and home into flows.json, and the links into spec/flows.md')
     f.add_argument('--screens', required=True, help='screens.json from the capture step')
     f.add_argument('--flows', required=True, help='flows.json to update in place')
     f.add_argument('--app', required=True, help='app id from kit.config.json > apps')
     f.add_argument('--site', default='', help='https base URL of the demo site (default: kit.config.json > deploy.site)')
     f.add_argument('--manifest', help='capture manifest with per-screen steps')
     f.add_argument('--page-root', default='', help='leading folder of the captured page paths to drop (e.g. prototype)')
+    f.add_argument('--md', default='', help='text wireflow to update (default: <flows.json folder>/../spec/flows.md)')
+    f.add_argument('--no-md', action='store_true', help='write flows.json only')
     f.add_argument('--dry-run', action='store_true', help='print, do not write')
     a = ap.parse_args()
     fill(a)

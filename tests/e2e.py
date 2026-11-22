@@ -32,6 +32,7 @@ SELFTESTS = [
     [PY, KIT / "scripts/kitconf.py", "--selftest"],
     [PY, S / "handoff/scripts/pkg.py", "--selftest"],
     [PY, S / "wireflow/scripts/demo_links.py", "--selftest"],
+    [PY, S / "wireflow/scripts/figma_wireflow.py", "--selftest"],
     [PY, S / "validate/scripts/validation.py", "--selftest"],
     [PY, S / "sync/scripts/sync_ds.py", "--selftest"],
     [PY, S / "contribute/scripts/registry.py", "--selftest"],
@@ -42,6 +43,7 @@ SELFTESTS = [
     [PY, S / "review/scripts/audit_map_tokens.py", "--selftest"],
     [PY, S / "annotate/scripts/spec_md.py", "--selftest"],
     [PY, S / "document/scripts/catalog.py", "--selftest"],
+    [PY, S / "define/scripts/extract_rules.py", "--selftest"],
     ["node", S / "annotate/scripts/capture.js", "--selftest"],
 ]
 OK = []
@@ -93,6 +95,7 @@ def main():
               ["node", S / "validate/scripts/validate.js", "--help"], [PY, KIT / "scripts/kitconf.py", "--help"],
               [PY, KIT / "scripts/rules.py", "--help"], [PY, S / "context/scripts/decisions.py", "--help"],
               [PY, S / "document/scripts/catalog.py", "--help"], [PY, S / "verify/scripts/verify.py", "--help"],
+              [PY, S / "define/scripts/extract_rules.py", "--help"],
               [PY, S / "explore/scripts/explore.py", "--help"]):
         run(c, KIT)
     check(True, "--help of every changed script")
@@ -301,12 +304,14 @@ def main():
     idx = pkg / "prototype/index.html"
     idx.write_text(idx.read_text().replace("</body>", probe + "\n</body>")
                    .replace("</head>", "<script>window.__seedAtLoad = localStorage.getItem('acme-web:notice');</script>\n</head>", 1))
+    sett = pkg / "prototype/settings/index.html"
+    sett.write_text(sett.read_text().replace("</body>", "<script>window.X={nav:function(p){window.__nav=p;}};</script>\n</body>", 1))
     pcj.update({"figma_file": "https://www.figma.com/design/TESTKEY/acme-test", "figma_board": "1:1",
                 "figma": {"S01": "1:2", "S02": "1:3", "S03": "1:4"}, "codes": "- S01–S03: screens.", "ds_label": ""})
     pcj["lock"].update({"pages": ["index.html", "settings/index.html"], "page_keys": {"home": "index.html", "settings": "settings/index.html",
                         "notes": "notes/index.html"},
                         "allow": ["[data-area=\"tasks\"]", ".app-nav", "#modeBtn", "[data-x-scope]"],
-                        "allow_when": [{"sel": "#more", "hash": "^#/done"}], "nav_functions": ["appNav.go"], "open_block": "#branch",
+                        "allow_when": [{"sel": "#more", "hash": "^#/done"}], "nav_functions": ["appNav.go", {"name": "X.nav", "base": "app"}], "open_block": "#branch",
                         "seed": {"localStorage": {"acme-web:notice": "seen"}},
                         "toast": {"class": "acme-toast", "close_class": "acme-toast-close", "icon": "<span class=\"ti\"></span>"}})
     write(item / "pkg.json", json.dumps(pcj, indent=1))
@@ -343,6 +348,29 @@ def main():
             after = {p.name: p.stat().st_mtime_ns for p in shots.glob("*.png")}
             check(after["S02.png"] != before["S02.png"] and after["S01.png"] == before["S01.png"]
                   and after["S03.png"] == before["S03.png"] and "Wrote 1 screen" in out, "capture --only: one image rewritten", out)
+            # capture: reload after a hash-only goto (K-F10), short state with noWait + at (K-F11), pointer/focus reset (K-B1)
+            write(pkg / "k-test/k.html", "<!doctype html><html><head><style>#hov{background:rgb(1,2,3);color:rgb(1,2,3)}"
+                  "#hov:hover{background:rgb(4,5,6)}#hov:focus{color:rgb(7,8,9)}</style></head><body>"
+                  "<p id=\"val\"></p><div id=\"sk\">loading</div><button id=\"hov\" type=\"button\">hover me</button>"
+                  "<script>document.getElementById('val').textContent='v=' + (localStorage.getItem('k') || 'none');"
+                  "setTimeout(function(){document.getElementById('sk').remove();}, 700);</script></body></html>")
+            km = item / "k-manifest.js"
+            write(km, "module.exports = { viewport: { width: 600, height: 400 }, scale: 1, screens: [\n"
+                  " { id: 'K1', flow: 'k', steps: [{ goto: 'k-test/k.html#/a' }, { eval: \"localStorage.setItem('k','set')\" },"
+                  " { goto: 'k-test/k.html#/', reload: true }], pins: [{ ref: 'R', sel: '#val' }] },\n"
+                  " { id: 'K2', flow: 'k', cont: 1, at: 0, steps: [{ reload: 1, noWait: true }, { waitFor: '#sk' }], pins: [{ ref: 'R', sel: '#sk' }] },\n"
+                  " { id: 'K3', flow: 'k', cont: 1, steps: [{ wait: 900 }, { click: '#hov' }], pins: [{ ref: 'R', sel: '#hov' }] },\n"
+                  " { id: 'K4', flow: 'k', cont: 1, steps: [{ hover: '#hov' }], pins: [{ ref: 'R', sel: '#hov' }] } ] };\n")
+            out = run(["node", S / "annotate/scripts/capture.js", km, d / "kshots", base], d)
+            ks = {x["id"]: x for x in json.loads((d / "kshots/screens.json").read_text())}
+            check(ks["K1"]["pins"][0]["style"]["text"] == "v=set", "capture: goto with reload: true after a hash-only change (K-F10)", out)
+            check(ks["K2"]["pins"][0]["found"] and ks["K2"]["at"] == 0 and (d / "kshots/K2.png").is_file(),
+                  "capture: noWait + at captures a short state (K-F11)", json.dumps(ks["K2"])[:800])
+            p3, p4 = ks["K3"]["pins"][0]["style"]["props"], ks["K4"]["pins"][0]["style"]["props"]
+            check(p3["backgroundColor"] == "rgb(1, 2, 3)" and p3["color"] == "rgb(1, 2, 3)" and p4["backgroundColor"] == "rgb(4, 5, 6)",
+                  "capture: pointer off the page and focus blurred before the shot; a hover step keeps its pointer (K-B1)",
+                  json.dumps([p3, p4]))
+            shutil.rmtree(pkg / "k-test")
             # validate: plan from the capture manifest, desktop touch threshold
             out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-web", "--from-manifest", manifest, "--base", base], d)
             plan = json.loads((d / "docs/validation/acme-web/plan.json").read_text())
@@ -373,6 +401,12 @@ def main():
             check(res["dragoverStopped"] and res["seed"] == "seen", "lock: dragover stopped, seed set", out)
             check(res["seedAtLoad"] == "seen", "lock: seed set before app code reads it (K-1)", out)
             check(res["openBranch"] is False, "lock: open_block blocks an in-package page by hash (K-4)", out)
+            nav_js = d / "lock-nav-app.js"
+            write(nav_js, LOCK_NAV_APP_TEST)
+            out = run(["node", nav_js, base + "prototype/settings/index.html#/"], d)
+            res = json.loads(out.strip().splitlines()[-1])
+            check(res["self"] == "settings/index.html#/y" and res["home"] == "index.html#/x" and res["notes"] is None,
+                  "lock: nav_functions base app resolves paths from the app root, not the page (K-F15)", out)
     finally:
         srv.shutdown()
 
@@ -381,7 +415,10 @@ def main():
           "# Tasks\n\n| Unit | Name | Status | File |\n|---|---|---|---|\n| FR01 | Home | Active | [FR01](FR01.md) |\n| FR02 | More | Active | [FR02](FR02.md) |\n\n"
           "## Not matched\n\n- S03\n")
     write(pkg / "spec/FR01.md", "# FR01 · Home\n\n### S01 · Home\n\nRoute: `prototype/index.html#/`\nHow to reach: open the app.\n\n![S01](../screens/S01.png)\n")
-    write(pkg / "spec/FR02.md", "# FR02 · More\n\n### S02 · Home after a frame click\n\nHow to reach: click inner.\n")
+    write(pkg / "spec/FR02.md", "# FR02 · More\n\n### S02 · Home after a frame click\n\nHow to reach: click inner.\nFigma: none yet\n")
+    ix = pkg / "spec/index.md"
+    ix.write_text(ix.read_text().replace("## Not matched", "## Screens\n\n| Code | Name | Page · route | Figma | Spec |\n|---|---|---|---|---|\n"
+                                         "| S01 | Home | `index.html#/` | — | FR01 |\n\n## Not matched"))
     write(pkg / "spec/old-archive.md", "# Old archive (legacy name)\n")
     write(pkg / "spec/old-cross.md", "# Cross-page contract (legacy name)\n")
     write(pkg / "spec/flows.md", "# Wireflow\n\nEach step: screen → action → screen. Images are in `screens/<id>.webp`. "
@@ -398,6 +435,11 @@ def main():
         write(item / "shots/screens.json", json.dumps([{"id": "S01", "page": "prototype/index.html", "hash": "#/", "pins": []},
                                                      {"id": "S02", "page": "prototype/index.html", "hash": "#/", "pins": []},
                                                      {"id": "S03", "page": "prototype/settings/index.html", "hash": "#/", "pins": []}]))
+    out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", item / "shots/screens.json",
+               "--flows", pkg / "requirements/flows.json", "--app", "acme-web", "--page-root", "prototype"], d)
+    fmd = (pkg / "spec/flows.md").read_text()
+    check("## WF-01 · Home\n\nOpen demo: [WF-01](https://prototypes.example.com/apps/acme-web/#/)" in fmd and "Wrote demo links" in out,
+          "demo_links fill writes the link into spec/flows.md too (K-F14)", fmd + out)
     out = run(fin, d, expect=1)
     check("spec/gone.md is not in the package" in out and "ERROR:" in out, "finalize: missing file reference is an ERROR", out)
     check("WARN:" in out and "spec/luu-tru.md" in out, "finalize: changelog reference to an old file is a WARN", out)
@@ -415,9 +457,48 @@ def main():
     check("screens/<id>.webp" not in fl and "Each step: screen → action → screen. " in fl and "Spec in [index](index.md)." in fl,
           "finalize: only the image sentence replaced in flows.md (K-2)", fl)
     check("spec/old-cross.md" in agents, "AGENTS: Dev path points at the legacy cross-page file (K-3)", agents)
+    fr2, ixs = (pkg / "spec/FR02.md").read_text(), (pkg / "spec/index.md").read_text()
+    check("Figma: [S02](https://www.figma.com/design/TESTKEY/acme-test?node-id=1-3)" in fr2 and "none yet" not in fr2
+          and "| S01 | Home | `index.html#/` | [Figma](https://www.figma.com/design/TESTKEY/acme-test?node-id=1-2) | FR01 |" in ixs,
+          "finalize: Figma lines and the Figma column of spec/index.md refreshed from the screen map (K-B4)", fr2 + ixs)
     zp = item / "out" / "Design - 1234.zip"
     names = zipfile.ZipFile(zp).namelist()
     check(not [n for n in names if n.endswith(".js")], "zip has no .js file")
+    # K-B5: draft awaiting Figma (a screen without a node), then relink fills the links and re-zips, nothing else
+    pcj = json.loads((item / "pkg.json").read_text())
+    check(pcj.get("status") == "final", "finalize: pkg.json > status final", json.dumps(pcj)[:400])
+    del pcj["figma"]["S03"]
+    write(item / "pkg.json", json.dumps(pcj, indent=1))
+    out = run(fin, d, expect=1)
+    check("--allow-missing-figma" in out and "S03" in out, "finalize: screen without a Figma node stops", out)
+    out = run(fin + ["--allow-missing-figma"], d)
+    pcj = json.loads((item / "pkg.json").read_text())
+    check(pcj["status"] == "awaiting-figma" and pcj["awaiting_figma"] == ["S03"] and "pkg.py relink" in out,
+          "finalize --allow-missing-figma: status awaiting-figma, relink named (K-B5)", out)
+    sj = json.loads((pkg / "screens/screens.json").read_text())
+    check(not [x for x in sj if x["id"] == "S03" and x.get("figma")], "draft: S03 has no Figma link")
+    rl = [PY, S / "handoff/scripts/pkg.py", "relink", "--pkg", pkg, "--config", item / "pkg.json", "--zip"]
+    out = run(rl, d, expect=1)
+    check("still no Figma node for S03" in out, "relink stops while a screen has no node", out)
+    flows_before = (pkg / "spec/flows.md").read_text()
+    pcj["figma"]["S03"] = "1:4"
+    write(item / "pkg.json", json.dumps(pcj, indent=1))
+    out = run(rl, d)
+    pcj = json.loads((item / "pkg.json").read_text())
+    sj = json.loads((pkg / "screens/screens.json").read_text())
+    check(pcj["status"] == "final" and "awaiting_figma" not in pcj and all(x.get("figma") for x in sj)
+          and (pkg / "spec/flows.md").read_text() == flows_before and zp.is_file() and "post zip True" in out,
+          "relink: Figma links filled, status final, zip rebuilt, other files unchanged (K-B5)", out)
+    if browser:   # K-B9: the unpacked package in Chromium
+        out = run([PY, S / "handoff/scripts/pkg.py", "smoke", zp, "--widths", "400,1280"], d)
+        check("Smoke Design - 1234.zip: 2 route(s) x 2 width(s)" in out and out.rstrip().endswith("OK"), "pkg.py smoke on the zip (K-B9)", out)
+        bad_pkg = d / "smoke-bad"
+        write(bad_pkg / "screens/screens.json", json.dumps([{"id": "S01", "route": "prototype/index.html#/"}]))
+        write(bad_pkg / "prototype/index.html", '<!doctype html><html lang="en"><body><img src="gone.png" alt="x">'
+              '<div style="width:2000px">wide</div><script>undefinedFn()</script></body></html>')
+        out = run([PY, S / "handoff/scripts/pkg.py", "smoke", bad_pkg, "--widths", "400"], d, expect=1)
+        check("404: /prototype/gone.png" in out and "horizontal scroll" in out and "pageerror" in out and "broken image" in out,
+              "pkg.py smoke reports 404, broken image, page error, horizontal scroll (K-B9)", out)
     cfg["handoff"]["dsLabelCheck"] = "error"
     write(d / "kit.config.json", json.dumps(cfg, indent=1))
     out = run(fin, d, expect=1)
@@ -449,6 +530,35 @@ def main():
     em = json.loads((d / "email3/email.json").read_text())
     check(em["htmlBody"].startswith("<style>p{margin:0}</style>") and "Figma: https://www.figma.com/design/TESTKEY/acme-test" in em["body"],
           "email.template .html: HTML body from the template, plain body from its text", json.dumps(em)[:1500])
+
+    # ---------- share: group names, change types, first release, awaiting Figma (K-F17, K-B10, K-B5) ----------
+    p2 = d / "item2" / "pkg"
+    write(p2 / "README.md", "# Design - 1234\n\nTasks v1.1.0.\n")
+    write(p2 / "spec/index.md", "| Unit | Name | Status | File |\n|---|---|---|---|\n| FR01 | Task list | Active | [FR01](FR01.md) |\n")
+    (p2 / "requirements").mkdir(parents=True, exist_ok=True)
+    (p2 / "requirements/checklist-feature.csv").write_text(
+        "Code,Feature,Group,Screen / location,Behaviour,Inputs,Expected result,Status,Dependencies\nF01,Filter tasks,FR01,S01,b,i,e,Full,\n",
+        encoding="utf-8-sig")
+    write(p2 / "requirements/changelog.md", "# Changelog\n\n## 1.1.0 · 2026-11-22\n- Added: two panes on wide screens (`tasks/index.html#/`)\n"
+          "- Changed: the close button says \"Close task\"\n- `--acme-space-2` gap on cards\n\n## 1.0.0 · 2026-11-21\n- First release\n")
+    em_args = [PY, "-I", S / "share/scripts/draft_email.py", p2, "--app", "acme-web", "--feature", "[1234] Tasks", "--with-features",
+               "--figma", "https://www.figma.com/design/TESTKEY/acme-test", "--template", "docs/mail.html"]
+    run(em_args + ["--out", d / "email4"], d)
+    body = (d / "email4/body.txt").read_text()
+    check("Task list" in body and "FR01" not in body and "Added" in body and "Two panes on wide screens" in body
+          and "Changed" in body and body.count("UI refinements") == 1,
+          "share: group names from spec/index.md, Added/Changed groups, an Added line with a route is never folded into polish", body)
+    write(p2 / "requirements/changelog.md", "# Changelog\n\n## 1.0.0 · 2026-11-21\n- Task list with filters\n")
+    (p2 / "requirements/checklist-feature.csv").unlink()
+    run(em_args + ["--version", "1.0.0", "--out", d / "email5"], d)
+    body = (d / "email5/body.txt").read_text()
+    check("Key features" in body and "changes since" not in body and "Task list with filters" in body,
+          "share: first version (no earlier one) lists key features, not changes", body)
+    write(d / "item2/pkg.json", json.dumps({"status": "awaiting-figma", "awaiting_figma": ["S03"]}))
+    out = run(em_args + ["--out", d / "email6"], d, expect=1)
+    check("awaiting Figma" in out and "relink" in out, "share: package awaiting Figma is an ERROR", out)
+    out = run(em_args + ["--allow-draft", "--out", d / "email6"], d)
+    check("do not send" in out, "share: --allow-draft composes a package awaiting Figma with a NOTE", out)
 
     # ---------- wireflow demo links keep the page folder ----------
     fl = d / "flows-copy.json"
@@ -536,6 +646,65 @@ def main():
     vp = json.loads((d / "valdir/plan.json").read_text())
     check(len(vp["screens"]) >= 2 and any(s["route"].startswith("settings/") for s in vp["screens"]),
           "validate init: starter plan read from the app, written to --dir", out)
+    # validate init --page --url: one file, hash-only routes, served URL as plan url (K-F5)
+    out = run([PY, S / "validate/scripts/validation.py", "init", "--app", "acme-web", "--page", "settings/index.html",
+               "--url", "http://127.0.0.1:9/apps/acme-web/settings/index.html", "--dir", d / "valdir-page"], d)
+    vp = json.loads((d / "valdir-page/plan.json").read_text())
+    check(vp["url"].endswith("settings/index.html") and all(not s["route"] or s["route"].startswith("#") for s in vp["screens"])
+          and "text=200%" in vp["_stateHints"], "validate init --page --url: one page, hash-only routes, state hints", out)
+    if browser:
+        # validate: named states (theme, text 200%), reload step, axe from a path, waivers, contrast detail, compare (K-F6..F10, F19, B7)
+        vt = d / "vt"
+        write(vt / "index.html", "<!doctype html><html lang=\"en\"><head><title>t</title></head><body>\n"
+              "<div id=\"shell\"><a href=\"#/x\">Shell link</a></div><main><p>Body text</p><div id=\"seen\" hidden>seen</div></main>\n"
+              "<script>if (localStorage.getItem('seen')) document.getElementById('seen').hidden = false;\n"
+              "new MutationObserver(() => { const h = document.documentElement; if (h.dataset.brand === 'ocean') console.error('brand-applied');\n"
+              " if (h.style.fontSize) console.error('font-' + h.style.fontSize); }).observe(document.documentElement, { attributes: true });</script>\n"
+              "</body></html>\n")
+        write(d / "axe-x/axe.min.js", "/*! axe v4.9.9 stub */\nwindow.axe = { run: async () => ({ violations: [{ id: 'color-contrast', impact: 'serious',"
+              " help: 'Contrast', nodes: [\n { target: ['#shell > a'], any: [{ data: { fgColor: '#999999', bgColor: '#ffffff', contrastRatio: 2.85,"
+              " expectedContrastRatio: '4.5:1' } }] },\n { target: ['main > p'], any: [{ data: { fgColor: '#777777', bgColor: '#ffffff',"
+              " contrastRatio: 4.48, expectedContrastRatio: '4.5:1' } }] }] }] }) };\n")
+        vd = d / "valdir-states"
+        vplan = {"axe": {"exclude": ["#nothing"]}, "states": ["text=200%"], "screens": [
+            {"id": "S01", "route": "", "states": ["brand=ocean"]},
+            {"id": "S02", "route": "", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"goto": "#/", "reload": True}, {"expectVisible": "#seen"}]}],
+            "flows": [{"name": "reload step", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"reload": True}, {"expectVisible": "#seen"}]},
+                      {"name": "hash only", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"goto": "#/"}, {"expectVisible": "#seen", "timeout": 400}]}]}
+        write(vd / "plan.json", json.dumps(vplan))
+        write(vd / "waivers.json", json.dumps([{"check": "a11y", "id": "color-contrast", "selector": "#shell", "reason": "shared frame, other work"}]))
+        srv2, base2 = serve(vt)
+        try:
+            V = [PY, S / "validate/scripts/validation.py", "run", "--app", "acme-web", "--dir", vd, "--url", base2 + "index.html",
+                 "--viewports", "1280", "--modes", "light", "--no-rules"]
+            out = run(V, d, expect=1, env=dict(os.environ, KIT_AXE_PATH=str(d / "axe-x/axe.min.js")))
+            r1 = sorted(vd.glob("2*/"))[-1]
+            res = json.loads((r1 / "results.json").read_text())
+            errs = {(it["screen"], it["state"]): " ".join(it["errors"]) for it in res["items"]}
+            check("brand-applied" in errs[("S01", "brand=ocean")] and "font-32px" in errs[("S01", "text=200%")],
+                  "validate: named states brand=<value> (ds.json theming attr) and text=200%, plan.states on every screen", str(errs))
+            fl = {f["name"]: f["ok"] for f in res["flows"]}
+            check(not any(it.get("fatal") for it in res["items"]) and fl == {"reload step": True, "hash only": False},
+                  "validate: reload step and goto reload: true load the page again; a hash-only goto does not", json.dumps(res)[:2000])
+            rep = (r1 / "report.md").read_text()
+            check(res["axe"]["version"] == "4.9.9" and "main > p 4.48:1 (needs 4.5:1), #777777 on #ffffff" in rep
+                  and "#shell > a 2.85:1" in rep and "shared frame, other work" in rep and "## Known / waived (" in rep,
+                  "validate: axe from KIT_AXE_PATH, contrast ratio and colours, waived nodes under Known / waived", rep[:3000])
+            vplan["setTheme"] = "console.error('via-setTheme ' + key + '=' + value); document.documentElement.setAttribute('data-' + key, value);"
+            write(vd / "plan.json", json.dumps(vplan))
+            import time
+            time.sleep(1.1)
+            out = run(V + ["--axe", d / "axe-x"], d, expect=1)
+            r2 = sorted(vd.glob("2*/"))[-1]
+            res = json.loads((r2 / "results.json").read_text())
+            rep = (r2 / "report.md").read_text()
+            check(r2 != r1 and any("via-setTheme brand=ocean" in " ".join(it["errors"]) for it in res["items"]),
+                  "validate: theme values go through setTheme when set (K-F19)", json.dumps(res["items"])[:2000])
+            check(("Compared with run %s" % r1.name) in rep and "carried over" in rep and "| new |" in rep,
+                  "validate: report marks rows new or carried over since the previous run (K-B7)", rep[:3000])
+        finally:
+            srv2.shutdown()
+
 
     # prototype.post through the generic hook runner; nothing set = nothing run
     out = run([PY, KIT / "scripts/kitconf.py", "hook", "prototype.post", "--app", "acme-web"], d)
@@ -544,6 +713,38 @@ def main():
     write(d / "kit.config.json", json.dumps(cfg, indent=1))
     out = run([PY, KIT / "scripts/kitconf.py", "hook", "prototype.post", "--app", "acme-web"], d)
     check("posted acme-web" in out and "exit code 0" in out, "prototype.post: project command with {app}, output and exit code", out)
+
+    # prototype: page contract of the app (apps[].pageContract), printed by kitconf.py contract
+    out = run([PY, KIT / "scripts/kitconf.py", "contract", "--app", "acme-web"], d)
+    check("No page contract" in out, "kitconf contract: empty by default", out)
+    cfg["apps"][0]["pageContract"] = ["Call Shell.ready() after the first render"]
+    cfg["local"]["vueStyle"] = "css-file"
+    write(d / "kit.config.json", json.dumps(cfg, indent=1))
+    run([PY, KIT / "scripts/kitconf.py", "check"], d)
+    out = run([PY, KIT / "scripts/kitconf.py", "contract", "--app", "acme-web"], d)
+    check("- Call Shell.ready()" in out, "kitconf contract: apps[].pageContract lines; local.vueStyle css-file is valid", out)
+
+    # define: draft parity rules of an existing page (extract_rules.py)
+    write(d / "apps/acme-web/notes.js", "const NOTE_MAX = 80;\nif (v.length > NOTE_MAX) toast('Title is too long');\n"
+          "localStorage.setItem('acme-web:notes', s);\n")
+    out = run([PY, S / "define/scripts/extract_rules.py", "apps/acme-web/index.html", "apps/acme-web/notes.js",
+               "--out", d / "parity.md"], d)
+    par = (d / "parity.md").read_text()
+    check("Title is too long" in par and "`apps/acme-web/notes.js:2`" in par and "acme-web:notes" in par
+          and "NOTE_MAX = 80" in par and "| E001 |" in par, "extract_rules: messages, limits, storage with file:line", par)
+
+    # catalogue: page patterns (catalog.md '## Patterns', ds.json > patterns) for define step 5
+    catmd = d / "ds/acme/catalog.md"
+    keep_cat, had_json = catmd.read_text(), (d / "ds/acme/catalog.json").exists()
+    write(catmd, keep_cat + "\n## Patterns\n\n### App shell\n\n- Class: `.acme-app`, `.acme-main`\n- Use: top bar, rail and main area\n")
+    out = run([PY, S / "document/scripts/catalog.py", "patterns"], d)
+    check("app-shell" in out and ".acme-main" in out, "catalog patterns: read from catalog.md without catalog.json", out)
+    run([PY, S / "document/scripts/catalog.py", "build"], d)
+    out = run([PY, S / "document/scripts/catalog.py", "check"], d) + run([PY, S / "document/scripts/catalog.py", "find", "shell"], d)
+    check("Catalog OK" in out and "[page pattern]" in out, "catalog build/check/find: page patterns kept in catalog.json", out)
+    write(catmd, keep_cat)
+    if not had_json:
+        (d / "ds/acme/catalog.json").unlink()  # later steps see the profile as before
 
     # handoff: pkg.py proto copies pages and only the files they load
     write(d / "apps/acme-web/assets/used.png", "png")
@@ -561,6 +762,16 @@ def main():
     else:
         shutil.rmtree(d, ignore_errors=True)
 
+
+LOCK_NAV_APP_TEST = r"""
+const { chromium } = require('playwright');
+(async () => {
+  const b = await chromium.launch(), p = await b.newPage(); await p.goto(process.argv[2]); await p.waitForTimeout(300);
+  const go = t => p.evaluate(x => { window.__nav = null; X.nav(x); return window.__nav; }, t);
+  const r = { self: await go('settings/index.html#/y'), home: await go('index.html#/x'), notes: await go('notes/index.html') };
+  await b.close(); console.log(JSON.stringify(r));
+})();
+"""
 
 LOCK_TEST = r"""
 const { chromium } = require('playwright');

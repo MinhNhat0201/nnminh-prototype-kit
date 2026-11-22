@@ -22,7 +22,7 @@ Result: **one email draft** in the user's mail connector (or plain text to paste
 
 ## Step 0. Inputs
 Ask everything missing in one round (at most 4 questions):
-1. **The zip.** None yet: build it with `handoff` first (size and blocked-file step done: no `.js`, under `handoff.maxZipMB`).
+1. **The zip.** None yet: build it with `handoff` first (size and blocked-file step done: no `.js`, under `handoff.maxZipMB`). A package whose `pkg.json > status` is `awaiting-figma` is a draft: run `wireflow` (update the board, `setmap`), then `pkg.py relink --zip` of `handoff`, and use the new zip.
 2. **App** (id or name from `kit.config.json > apps`), **work-item name** as the user says it (may include the code, e.g. `[1234] Scheduled tasks`), **version** (default: read from the package).
 3. **Figma link:** from the Figma step of this session, else ask. **Demo link:** `home` in `flows.json`, else `deploy.site` + app path; confirm with the user. Never invent a link.
 4. **Recipients** (To, Cc) and signature: ask every time. Never write email addresses into the repository, a PR or a shared report.
@@ -34,7 +34,8 @@ python3 -I skills/share/scripts/draft_email.py "<package>.zip" --app <app id> --
   [--with-features] [--package-link <url>] [--demo-needs-login] --out <scratch folder>/email
 ```
 - Writes `email.json` (subject, body, htmlBody, attachment: path, sha256, size, or `null`), `subject.txt`, `body.txt`, `body.html`, and `source.json` (material for step 2). Reads only README, changelog, feature list, flows.json and `spec/index.md` from the zip; no network.
-- ERROR (exit 1): no version found; Figma link not on figma.com; demo link not https; the zip still has files that mail filters block.
+- ERROR (exit 1): no version found; Figma link not on figma.com; demo link not https; the zip still has files that mail filters block; the package is awaiting Figma (`pkg.json > status`, found next to the zip folder or by `--config`). `--allow-draft` composes it anyway with a NOTE, only for a preview the user asked for; never create a draft email from it.
+- Section 3 draft: feature groups use names, not codes (a group code in the checklist is looked up in `spec/index.md`, table rows or `## <code> · <name>` headings; a NOTE lists codes without a name). Changelog lines are grouped by change type (Added, Changed, Fixed, Removed: from a `### Added` sub-heading or the first word, locale `share.words*`); technical lines fold into one "UI refinements" line, never an Added line. First release (the locale first-release text, or no earlier version in the changelog): "Key features", never "changes since the previous version".
 - **Attachment size:** mail providers cap attachments (often 20–25 MB) and mail connectors often accept much less per call (about 3 MB is common). The limit comes from `kit.config.json > email.attachLimitMB` (default 3); `--attach-limit-mb` overrides it. Over the cap, the script drops the attachment and the body points to `--package-link`. Tell the user, and offer a draft without the attachment plus a download link (drive, site). Never split, rename or password-protect the zip.
 - NOTE: missing links, zip over `handoff.maxZipMB`, no feature list or changelog, demo link derived from config.
 - Long lists keep the first `email.maxItems` items (default 12; `--max-items` overrides) and point to the file in the package for the rest. "Out of scope" rows are not key features.
@@ -42,7 +43,7 @@ python3 -I skills/share/scripts/draft_email.py "<package>.zip" --app <app id> --
 - `email.demoLinks: false` (or `--no-demo`): the project sends no prototype or demo links by mail. The email has no demo item and no flow links (numbering shifts up); a `--demo` value is ignored with a NOTE. Do not ask for a demo link then.
 
 ## Step 2. Rewrite section 3 for business readers (required)
-The first run copies section 3 from the package (technical lines folded into one "UI refinements" line) and prints a NOTE. Read `source.json` (features with group, screen, status; changelog lines; flow names), and `spec/index.md` if needed, then write a JSON file:
+The first run copies section 3 from the package (grouped by change type, technical lines folded into one "UI refinements" line) and prints a NOTE. Read `source.json` (features with group name, group code, screen, status; changelog lines with `kind`; flow names), and `spec/index.md` if needed, then write a JSON file:
 ```json
 {"title": "Changelog (changes since the previous version)", "more": "requirements/changelog.md",
  "groups": [{"name": "Create a scheduled task", "items": ["Users can pause and resume a task without losing its history"]},

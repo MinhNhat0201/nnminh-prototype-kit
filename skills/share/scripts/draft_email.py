@@ -17,8 +17,11 @@ and spec/index.md from the zip. It does not unzip the whole package, call the ne
 - Long lists keep the first email.maxItems items (default 12; --max-items overrides).
 - Feature columns: kit.config.json > handoff.csv.feature when set (roles), else the locale headers.
 - Section 3 (key features or changelog) is written for business readers: pass --business <json> (SKILL.md step 2).
-  Without it, a draft is built from checklist-feature.csv (out-of-scope rows dropped, grouped by the group column) and
-  the version's changelog section (technical lines folded into one line), with a NOTE to rewrite it.
+  Without it, a draft is built from checklist-feature.csv (out-of-scope rows dropped, grouped by the group column; group
+  codes get their name from spec/index.md) and the version's changelog section (grouped by change type Added, Changed,
+  Fixed, Removed; technical lines folded into one line, never an Added line), with a NOTE to rewrite it. First release
+  (first-release text, or no earlier version in the changelog): "Key features", not "changes".
+- pkg.json > status "awaiting-figma" (pkg.json next to the package, or --config) -> ERROR; --allow-draft composes anyway.
 - Layout: kit.config.json > email.template (or --template) = a project file with placeholders replaces the default
   layout: .md / .txt -> the plain body (the HTML body is built from it), .html -> the HTML body (the plain body is its
   text). "{language}" in the path is the project language. Placeholders: {greeting} {intro} {figma} {demo} {sections}
@@ -54,6 +57,21 @@ def both(cfg, key):
     return [x for x in dict.fromkeys(t(lg, key) for lg in langs) if x and x != key]
 
 
+def pkg_status(src, config=''):
+    """(status, screens awaiting Figma, pkg.json path) from the package config of `handoff` (pkg.json > status):
+    --config, else pkg.json next to the package or one folder up (zip in <item>/out/, pkg.json in <item>/)."""
+    p = Path(src).resolve()
+    cands = [Path(config)] if config else [d / 'pkg.json' for d in (p.parent, p.parent.parent)]
+    for c in cands:
+        if c.is_file():
+            try:
+                pc = json.loads(c.read_text(encoding='utf-8'))
+            except ValueError:
+                return '', [], c
+            return pc.get('status', ''), pc.get('awaiting_figma') or [], c
+    return '', [], None
+
+
 def read_pkg(src):
     """(package root, zip path or None, file names, temp folder or None)."""
     p = Path(src)
@@ -86,19 +104,95 @@ def find_version(root, given):
     return ''
 
 
+KINDS = ('added', 'changed', 'fixed', 'removed')  # order of the groups in the email
+
+
+def kind_words(cfg):
+    """[(word, kind)] longest first, from share.words<Kind> in every locale ("sửa lỗi" before "sửa")."""
+    ws = [(w.strip().lower(), k) for k in KINDS for x in both(cfg, 'share.words' + k.title()) for w in x.split('|') if w.strip()]
+    return sorted(dict.fromkeys(ws), key=lambda x: -len(x[0]))
+
+
+def change_kind(words, s):
+    """(kind or None, text without a leading "Added:" label). Kind from the first word(s) of a line or a heading."""
+    s0 = re.sub(r'^\*\*([^*]+)\*\*', r'\1', s.strip()).strip()
+    low = s0.lower()
+    for w, k in words:
+        if low.startswith(w) and (len(low) == len(w) or not low[len(w)].isalnum()):
+            rest = s0[len(w):]
+            m = re.match(r'\s*\**\s*[:：–—-]\s*(.*)', rest)
+            return k, ((m.group(1)[:1].upper() + m.group(1)[1:]) if m and m.group(1) else s0)
+    return None, s0
+
+
 def changelog_items(cfg, root, version):
+    """([{'text', 'kind'}], first release?). Kind comes from a sub-heading (### Added) or the line's first words.
+    First release: the locale first-release text is in the section, or the changelog has no earlier version."""
     s = text(root / 'requirements' / 'changelog.md')
     if not s:
         return [], False
+    older = [w.lower().lstrip('# ').strip() for w in both(cfg, 'handoff.changelog.older')]
+    head = lambda x: x.split('\n', 1)[0].lower().lstrip('# ').strip()
+    # sections start at a version heading or the "earlier versions" heading; "### Added" stays inside its version
     secs = [x for x in re.split(r'\n(?=#{2,3}\s)', '\n' + s) if re.match(r'#{2,3}\s', x)]
-    sec = next((x for x in secs if version and version in x.split('\n', 1)[0]), None) or (secs[0] if secs else s)
-    first = any(w.lower() in sec.lower() for w in both(cfg, 'handoff.changelog.first'))
-    items = []
-    for line in sec.splitlines():
+    merged = []
+    for x in secs:
+        if merged and not VER.search(x.split('\n', 1)[0]) and head(x) not in older:
+            merged[-1] += '\n' + x
+        else:
+            merged.append(x)
+    secs = merged
+    vsecs = [x for x in secs if VER.search(x.split('\n', 1)[0])]
+    sec = next((x for x in vsecs if version and version in x.split('\n', 1)[0]), None) or (vsecs[0] if vsecs else secs[0] if secs else s)
+    earlier = [x for x in vsecs if x is not sec] + [x for x in secs if head(x) in older]
+    firsts = [w.lower() for w in both(cfg, 'handoff.changelog.first')]
+    first = any(w in sec.lower() for w in firsts) or (bool(vsecs) and not earlier)
+    words, items, cur = kind_words(cfg), [], None
+    for line in sec.splitlines()[1:]:
         m = re.match(r'\s*[-*]\s+(.*)', line)
         if m and m.group(1).strip():
-            items.append(re.sub(r'\*\*([^*]+)\*\*', r'\1', m.group(1).strip()))
+            k, txt = change_kind(words, m.group(1))
+            txt = re.sub(r'\*\*([^*]+)\*\*', r'\1', txt)
+            if not any(txt.lower().strip(' .') == w for w in firsts):  # the first-release line itself is not an item
+                items.append({'text': txt, 'kind': k or cur})
+        elif line.strip():  # sub-heading, bold line or "Added:" line sets the kind of the lines below it
+            cur = change_kind(words, re.sub(r'^#+\s*', '', line.strip()).rstrip(':： '))[0]
     return items, first
+
+
+def change_groups(changes, tech, T, first=False):
+    """Changelog lines grouped by change type (Added, Changed, Fixed, Removed, then lines with no type). Technical
+    lines fold into one "UI refinements" line at the end, never an Added line (a new feature must stay visible).
+    First release: one list without type names."""
+    by, n_tech = {}, 0
+    for c in changes:
+        if tech.search(c['text']) and c['kind'] != 'added':
+            n_tech += 1
+            continue
+        by.setdefault(None if first else c['kind'], []).append(c['text'])
+    groups = [{'name': T('kind' + k.title()) if k else '', 'items': by[k]} for k in KINDS + (None,) if by.get(k)]
+    if n_tech:
+        if groups and not groups[-1]['name']:
+            groups[-1]['items'].append(T('uiTuning', n=n_tech))
+        else:
+            groups.append({'name': '', 'items': [T('uiTuning', n=n_tech)]})
+    return groups
+
+
+def spec_names(root, rows=()):
+    """Code -> name, from spec/index.md (table rows "| GC-01 | Notes |" and headings "## GC-01 · Notes") and from
+    checklist rows whose code is used as a group code elsewhere. Turns group codes into the names BA uses."""
+    names = {}
+    code = r'[A-Za-z]{1,6}[-_]?\d+[A-Za-z]?'
+    for line in text(root / 'spec' / 'index.md').splitlines():
+        m = re.match(r'\s*\|\s*\[?(%s)\]?(?:\([^)]*\))?\s*\|\s*([^|]+?)\s*\|' % code, line) or \
+            re.match(r'#{1,4}\s+(%s)\s*[·:—–-]\s*(.+?)\s*$' % code, line)
+        if m and not re.fullmatch(r'-+', m.group(2)):
+            names.setdefault(m.group(1), m.group(2))
+    for c, n in rows:
+        if c and n:
+            names.setdefault(c, n)
+    return names
 
 
 def feature_items(cfg, root):
@@ -123,13 +217,16 @@ def feature_items(cfg, root):
     out_words = [w.lower() for w in both(cfg, 'share.outOfScope')]
     full_words = [w.lower() for w in both(cfg, 'share.statusFull')]
     g = lambda r, i: r[i].strip() if i is not None and i < len(r) else ''
+    groups = {g(r, cg) for r in rows[1:]}
+    names = spec_names(root, [(g(r, ci), g(r, cn)) for r in rows[1:] if g(r, ci) in groups])
     out = []
     for r in rows[1:]:
         if not g(r, cn) or any(w in ' '.join(r).lower() for w in out_words):
             continue
         st = g(r, cs)
-        out.append({'code': g(r, ci), 'name': g(r, cn), 'group': g(r, cg), 'screen': g(r, cm),
-                    'status': '' if st.lower() in full_words else st})
+        gr = g(r, cg)
+        out.append({'code': g(r, ci), 'name': g(r, cn), 'group': names.get(gr, gr), 'groupCode': gr if gr in names else '',
+                    'screen': g(r, cm), 'status': '' if st.lower() in full_words else st})
     return out
 
 
@@ -278,6 +375,39 @@ def selftest():
     T = lambda k, **kw: k + (str(kw.get('n', '')) if kw else '')
     sec = {'title': 'Changes', 'groups': [{'name': '', 'items': ['a']}], 'more': 'requirements/changelog.md'}
     assert sections_text([(sec, (sec['groups'], 2))], T) == 'Changes:\n  - a\n  - more2 (seeFile)', sections_text([(sec, (sec['groups'], 2))], T)
+    # K-F17 / K-B10: change types, first release, group names
+    cfg = {'language': 'vi'}
+    W = kind_words(cfg)
+    assert change_kind(W, 'Added: two-pane layout on wide screens') == ('added', 'Two-pane layout on wide screens')
+    assert change_kind(W, 'Sửa lỗi: lưu ghi chú trống')[0] == 'fixed' and change_kind(W, 'Sửa nhãn nút')[0] == 'fixed'
+    assert change_kind(W, 'Đổi tên nút Lưu')[0] == 'changed' and change_kind(W, 'Newsletter link')[0] is None
+    tmp = Path(tempfile.mkdtemp(prefix='share-'))
+    try:
+        (tmp / 'requirements').mkdir()
+        (tmp / 'spec').mkdir()
+        cl = tmp / 'requirements' / 'changelog.md'
+        cl.write_text('# Changelog\n\n## 1.0.0 · 2026-11-21\n- Notes list and editor\n', encoding='utf-8')
+        items, first = changelog_items(cfg, tmp, '1.0.0')
+        assert first and items == [{'text': 'Notes list and editor', 'kind': None}], (first, items)  # no earlier version
+        cl.write_text('# Changelog\n\n## 1.1.0 · 2026-11-22\n### Added\n- Two panes at `notes/index.html#/` (S03d)\n'
+                      '- Changed: close button says "Close note"\n### UI style changes\n- `--acme-space-2` gap on cards\n\n'
+                      '## 1.0.0 · 2026-11-21\n- Phát hành đầu\n', encoding='utf-8')
+        items, first = changelog_items(cfg, tmp, '1.1.0')
+        assert not first and [c['kind'] for c in items] == ['added', 'changed', None], items
+        Tn = lambda k, **kw: {'kindAdded': 'Added', 'kindChanged': 'Changed'}.get(k, k) + (str(kw['n']) if 'n' in kw else '')
+        gs = change_groups(items, tech_rx({'language': 'en', '_ds': {'tokens': {'prefix': '--acme-'}}}), Tn)
+        assert gs == [{'name': 'Added', 'items': ['Two panes at `notes/index.html#/` (S03d)']},
+                      {'name': 'Changed', 'items': ['Close button says "Close note"']}, {'name': '', 'items': ['uiTuning1']}], gs
+        (tmp / 'spec' / 'index.md').write_text('| Unit | Name | Status |\n|---|---|---|\n| [GC-01](GC-01.md) | Notes | Active |\n'
+                                               '## GC-02 · Reminders\n', encoding='utf-8')
+        # K-B5: a package awaiting Figma is found through pkg.json next to the zip folder
+        (tmp / 'out').mkdir()
+        (tmp / 'pkg.json').write_text(json.dumps({'status': 'awaiting-figma', 'awaiting_figma': ['S03d']}))
+        st = pkg_status(tmp / 'out' / 'Design - 1234.zip')
+        assert st[:2] == ('awaiting-figma', ['S03d']) and pkg_status(tmp / 'none.zip', str(tmp / 'nope.json'))[0] == '', st
+        assert spec_names(tmp, [('GC-03', 'Sharing')]) == {'GC-01': 'Notes', 'GC-02': 'Reminders', 'GC-03': 'Sharing'}
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
     print('draft_email.py selftest OK')
 
 
@@ -304,6 +434,8 @@ def main():
     ap.add_argument('--package-link', default='', help='download link used when the zip is too big to attach')
     ap.add_argument('--demo-needs-login', action='store_true', help='add a line that the demo site needs an account')
     ap.add_argument('--template', default='', help='email layout file (default: kit.config.json > email.template)')
+    ap.add_argument('--config', default='', help="handoff package config (pkg.json; default: found next to the package)")
+    ap.add_argument('--allow-draft', action='store_true', help='compose from a package still awaiting Figma (never send it)')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
     cfg = load()
@@ -321,6 +453,12 @@ def main():
             app_name, app_path = x.get('name') or x['id'], x.get('path', '')
     root, zpath, names, tmp = read_pkg(a.src)
     warn, err = [], []
+    status, waiting, pcfg = pkg_status(a.src, a.config)
+    if status == 'awaiting-figma':
+        msg = (f'the package is a draft awaiting Figma ({pcfg}: status awaiting-figma'
+               + (f'; screens {", ".join(waiting[:12])}' if waiting else '') + '). Run wireflow (update the board, setmap), '
+               'then `pkg.py relink --pkg <package> --config pkg.json --zip`, and compose the email from the new zip.')
+        (warn if a.allow_draft else err).append(msg + (' --allow-draft: composed anyway; do not send it.' if a.allow_draft else ''))
     version = find_version(root, a.version)
     flows, home = flow_links(root)
     demo = a.demo or home or ((cfg['deploy'].get('site') or '').rstrip('/') + '/' + app_path.strip('/') + '/'
@@ -380,6 +518,8 @@ def main():
             print(f'ERROR: cannot read --business: {e}')
             sys.exit(1)
         for sec in (nv if isinstance(nv, list) else [nv]):
+            if first and sec.get('title') in both(cfg, 'share.changelog'):
+                warn.append(f'version {version} is the first release: title "{sec["title"]}" speaks of changes; use "{T("keyFeatures")}"')
             sections.append({'title': sec.get('title') or (T('keyFeatures') if first else T('changelog')),
                              'groups': [{'name': g.get('name', ''), 'items': [m for m in g.get('items', []) if m]}
                                         for g in sec.get('groups', [])],
@@ -396,12 +536,13 @@ def main():
                 groups.setdefault(f['group'], []).append(f['name'] + (f' ({f["status"]})' if f['status'] else ''))
             sections.append({'title': T('keyFeatures'), 'groups': [{'name': k, 'items': v} for k, v in groups.items()],
                              'more': 'requirements/checklist-feature.csv'})
-        if changes and not first:
-            biz = [c for c in changes if not tech.search(c)]
-            n_tech = len(changes) - len(biz)
-            if n_tech:
-                biz.append(T('uiTuning', n=n_tech))
-            sections.append({'title': T('changelog'), 'groups': [{'name': '', 'items': biz}], 'more': 'requirements/changelog.md'})
+            coded = sorted({f['group'] for f in feats if re.fullmatch(r'[A-Za-z]{1,6}[-_]?\d+[A-Za-z]?', f['group'] or '')})
+            if coded:
+                warn.append('feature groups are codes without a name in spec/index.md: ' + ', '.join(coded)
+                            + ' (name them in the --business rewrite)')
+        if changes and (not first or not feats):  # first release without a feature list: its lines are the key features
+            sections.append({'title': T('keyFeatures') if first else T('changelog'),
+                             'groups': change_groups(changes, tech, T, first), 'more': 'requirements/changelog.md'})
         if sections:
             warn.append('section 3 is copied from the package: rewrite it for business readers into a JSON file and run again '
                         'with --business (SKILL.md step 2). Material is in source.json.')

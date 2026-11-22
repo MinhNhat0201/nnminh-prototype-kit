@@ -1,0 +1,15 @@
+{
+  "define.extract.title": "Parity checklist (draft): rules read from the existing page",
+  "define.extract.intro": "Read from: {sources}. Draft only: every row is a candidate. Fill the rule column (the business rule the row shows, or \"not a rule\"), keep the text verbatim, and check each row on the old and the new page (same steps, same text, same states, same storage).",
+  "define.extract.kind": "Kind",
+  "define.extract.text": "Text or value (verbatim)",
+  "define.extract.source": "Source",
+  "define.extract.rule": "Rule (to complete)",
+  "define.extract.kind.text": "text",
+  "define.extract.kind.message": "message",
+  "define.extract.kind.input": "input constraint",
+  "define.extract.kind.limit": "limit",
+  "define.extract.kind.route": "route",
+  "define.extract.kind.storage": "storage",
+  "define.extract.counts": "Rows: {text} text, {message} messages, {input} input constraints, {limit} limits, {route} routes, {storage} storage keys."
+}

@@ -1,0 +1,15 @@
+{
+  "define.extract.title": "Bảng đối chiếu (nháp): quy tắc đọc từ trang đang chạy",
+  "define.extract.intro": "Đọc từ: {sources}. Đây là bản nháp: mỗi dòng chỉ là ứng viên. Điền cột quy tắc (quy tắc nghiệp vụ mà dòng thể hiện, hoặc \"không phải quy tắc\"), giữ nguyên chữ, rồi kiểm từng dòng trên trang cũ và trang mới (cùng bước, cùng chữ, cùng trạng thái, cùng dữ liệu lưu).",
+  "define.extract.kind": "Loại",
+  "define.extract.text": "Chữ hoặc giá trị (nguyên văn)",
+  "define.extract.source": "Nguồn",
+  "define.extract.rule": "Quy tắc (cần điền)",
+  "define.extract.kind.text": "chữ hiển thị",
+  "define.extract.kind.message": "thông báo",
+  "define.extract.kind.input": "ràng buộc ô nhập",
+  "define.extract.kind.limit": "giới hạn",
+  "define.extract.kind.route": "route",
+  "define.extract.kind.storage": "dữ liệu lưu",
+  "define.extract.counts": "Số dòng: {text} chữ hiển thị, {message} thông báo, {input} ràng buộc ô nhập, {limit} giới hạn, {route} route, {storage} khoá lưu trữ."
+}

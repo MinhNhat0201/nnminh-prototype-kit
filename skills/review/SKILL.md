@@ -86,6 +86,8 @@ Trust a difference only when it repeats on several elements for the same propert
 Rule out two false positives by reading the code: a control cut from its parent loses `.parent .child` rules and inherited colours; an app on an older DS shows version debt, not an override.
 Record numbers; do not capture the whole app.
 
+**Screen review** (the user asks to review a screen or a flow, not the DS compliance): score it with `references/heuristics-rubric.md`, check motion with `references/motion.md`, accessibility with `<kit>/skills/validate/references/a11y-web.md` (and `a11y-mobile.md` there for phone platforms) and states with `<kit>/skills/prototype/references/states-and-edge-data.md`; findings cite their codes.
+
 ## Step 4. Classify every deviation
 
 Never stop at the numbers. Put each group in one class:

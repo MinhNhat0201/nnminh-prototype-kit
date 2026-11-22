@@ -29,13 +29,17 @@ Commands:
   pkg.py proto    --pages index.html notes/index.html --into "<package>/prototype" (--root <app folder> | --app <id>)
       Copy the pages and only the files they load (href, src, srcset, url(), @import, file names quoted in scripts,
       followed through CSS, JS and JSON), keeping relative paths. Linked pages not in --pages are left out (NOTE: lock or
-      hide every way in); references not found are listed (paths built at run time).
+      hide every way in); references not found are listed (paths built at run time). Bare file names quoted in scripts
+      (no folder, often sample data) are only counted (--verbose lists them). Pages of the app folder that no static
+      reference reaches (a page registry or router in a script) are listed too.
 
   pkg.py finalize --pkg "<package folder>" --shots shots --config pkg.json [--zip [<zip path>]] [--allow-missing-figma]
       Finish the package after spec/*.md, requirements/ and README.md are written:
       1. screens/screens.json, slim: route, how to reach (text and runnable steps), pins, exits, Figma link.
       2. Remove screen images: delete screens/*.webp|png, replace image lines in spec/*.md with "Figma: ...".
       2b. Only the sentence of a line that points at screen images becomes the locale sentence; the rest stays.
+      2c. Refresh the Figma links of spec/*.md from pkg.json > figma: the "Figma:" line of each "### Sxx" screen and the
+          Figma column of tables whose first column is a screen code (index.md "Screens").
       3. Move replaced or removed units to spec/archive.md and fix links (an older name from handoff.specFiles.legacy
          when the package already has that file or README/AGENTS/changelog point at it).
       4. Keep only pkg.json > changelog_keep versions (default 2) in requirements/changelog.md.
@@ -51,6 +55,20 @@ Commands:
       kit.config.json > handoff.pre / handoff.post: project commands run before step 1 and after step 7
       ({pkg}, {config}, {zip}, {root} are replaced, shell-quoted). A failing command stops with ERROR.
 
+      Figma gate: every screen needs a node (pkg.json > figma) unless --allow-missing-figma; then pkg.json > status is
+      "awaiting-figma" (draft, screens listed in awaiting_figma; spec gets a "Figma: <not yet>" line), else "final".
+
+  pkg.py relink   --pkg "<package folder>" --config pkg.json [--zip [<zip path>]]
+      For a package finalized as awaiting-figma, after the wireflow skill mapped the screens (setmap): write the Figma
+      links into screens/screens.json, the "Figma:" lines and Figma columns of spec/*.md and the board link of AGENTS.md,
+      set status final and re-zip. Nothing else changes (no capture, no archive, no changelog trim). Then run share.
+
+  pkg.py smoke    <zip | package folder> [--widths 400,768,1280] [--keep]
+      Unzip to a temp folder, serve it over HTTP from the package folder and open every route of screens/screens.json
+      at each width (handoff.smokeWidths) in Chromium (smoke.js): page errors, console errors, responses >= 400, failed
+      requests, broken images, horizontal scroll; a zip is also checked for blocked files. Exit 1 on any problem.
+      Routes only (no click steps): flows are checked by the validate skill.
+
   pkg.py --selftest
       Run the built-in checks of the pure functions (no browser, no network).
 
@@ -59,11 +77,11 @@ pkg.json (one per work item, kept in <handoff.dir>/<pbi>/):
    "treatment": "lock", "prototype": "prototype", "figma_file": "<file link>", "figma_board": "<node id>",
    "figma": {"S01": "<node id>"}, "codes": "...", "archive": [], "changelog_keep": 2, "agents_note": "",
    "ds_label": "<DS label of the packaged prototype, e.g. Acme DS 1.4.0; empty = see handoff.dsLabel>",
-   "lock": {...}, "hide": {...}, "csv": {"feature": ..., "qc": ...}}
+   "lock": {...}, "hide": {...}, "csv": {"feature": ..., "qc": ...}, "status": "final|awaiting-figma"}
   csv (optional) overrides kit.config.json > handoff.csv for this package (headers kept from its earlier versions).
 Generated text comes from locales/<language>/handoff.json. Messages on the console are English.
 """
-import argparse, json, os, re, shlex, shutil, subprocess, sys, tempfile
+import argparse, functools, http.server, json, os, re, shlex, shutil, subprocess, sys, tempfile, threading, zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -76,6 +94,7 @@ ANNOTATE = KIT / "skills" / "annotate" / "scripts"
 CAPTURE = ANNOTATE / "capture.js"
 SPEC_MD = ANNOTATE / "spec_md.py"
 OPTIMIZE = HERE / "optimize_package.py"
+SMOKE = HERE / "smoke.js"
 ASSETS = HERE.parent / "assets"
 SCREEN = r"S\d+[a-z]?"
 VER_RX = re.compile(r"\b\d+\.\d+\.\d+\b")
@@ -254,7 +273,7 @@ def render_layer(cfg, pc, kind):
         toast.update({k: v for k, v in (L.get("toast") or {}).items() if v not in ("", None, [])})
         conf = {"name": name, "msg": t(cfg, "handoff.lock.toast", name=name), "close": t(cfg, "handoff.lock.close"),
                 "pages": L.get("pages", []), "pageKeys": pk, "allow": L["allow"], "allowWhen": L.get("allow_when", []),
-                "block": L.get("block", []), "navFunctions": L.get("nav_functions", []), "shortcuts": L.get("shortcuts", []),
+                "block": L.get("block", []), "navFunctions": nav_functions(L), "shortcuts": L.get("shortcuts", []),
                 "openAllow": L.get("open_allow", ""), "openBlock": L.get("open_block", ""), "toast": toast}
         if not toast.get("function") and not toast.get("class"):
             die("pkg.json > lock.toast needs 'function' (the app's toast function) or 'class' (the DS toast classes "
@@ -277,6 +296,25 @@ def render_layer(cfg, pc, kind):
     return {"script": f'<script id="{HIDE_ID}">\n{js}</script>',
             "style": f'<style id="{HIDE_CSS_ID}">\n/* Handoff scope: hidden on purpose (see spec, "Out of scope") */\n{css}\n</style>',
             "meta": t(cfg, "handoff.layer.hide", name=name), "seed": seed_script(H.get("seed"))}
+
+
+NAV_BASES = ("page", "app")
+
+
+def nav_functions(L):
+    """pkg.json > lock.nav_functions as [{"name", "base"}]. An entry is a dotted name ("appNav.go") or
+    {"name": ..., "base": "page"|"app"}; base says what a relative path argument is relative to: the current page
+    (default, lock.nav_base) or the app root, i.e. the package prototype folder (K-F15)."""
+    dflt = L.get("nav_base") or "page"
+    if dflt not in NAV_BASES:
+        die("pkg.json > lock.nav_base must be one of " + ", ".join(NAV_BASES))
+    out = []
+    for i, x in enumerate(L.get("nav_functions") or []):
+        x = {"name": x} if isinstance(x, str) else x
+        if not isinstance(x, dict) or not x.get("name") or (x.get("base") or dflt) not in NAV_BASES:
+            die(f"pkg.json > lock.nav_functions[{i}] must be a dotted name or {{\"name\": ..., \"base\": \"page\"|\"app\"}}")
+        out.append({"name": x["name"], "base": x.get("base") or dflt})
+    return out
 
 
 def seed_script(seed):
@@ -461,27 +499,31 @@ ASSET_STR = re.compile(r"""(?<![\w/.%-])((?:\.\.?/)*[\w@%-][\w@.%-]*(?:/[\w@.%-]
 TEXT_EXT = {".html", ".htm", ".css", ".js", ".mjs", ".json", ".svg"}
 
 
-def refs_of(f, text):
+def refs_of(f, text, kinds=False):
     """Relative file references of one HTML, CSS, JS, JSON or SVG file: href/src/srcset, url() and @import, and quoted
-    strings that name a file (paths built in scripts). External URLs, data: URIs and anchors are skipped."""
+    strings that name a file (paths built in scripts). External URLs, data: URIs and anchors are skipped.
+    kinds=True: (ref, sure) pairs; sure is False for a bare file name found only in script text (no folder), which is
+    often sample data, not a file the page loads (K-F16)."""
     out = []
     if f.suffix.lower() in (".html", ".htm", ".svg"):
         for m in REF_ATTR.finditer(text):
-            out += [x.strip().split(" ")[0] for x in m.group(1).split(",")] if "srcset" in m.group(0).lower() else [m.group(1)]
-    out += [m.group(1) or m.group(2) for m in CSS_URL.finditer(text)]
-    out += [m.group(1) for m in ASSET_STR.finditer(text)]
+            out += [(x.strip().split(" ")[0], True) for x in m.group(1).split(",")] if "srcset" in m.group(0).lower() \
+                else [(m.group(1), True)]
+    out += [(m.group(1) or m.group(2), True) for m in CSS_URL.finditer(text)]
+    out += [(m.group(1), "/" in m.group(1)) for m in ASSET_STR.finditer(text)]
     keep = []
-    for r in out:
+    for r, sure in out:
         r = re.sub(r"^(?:\$\{[^}]*\}|\{\{[^}]*\}\})+", "", r.strip())   # ${ROOT}assets/x.png, {{ROOT}}assets/x.png
         r = re.split(r"[?#]", r, maxsplit=1)[0]
         if r and not re.match(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", r, re.I) and "${" not in r and "{{" not in r:
-            keep.append(r)
-    return keep
+            keep.append((r, sure))
+    return keep if kinds else [r for r, _ in keep]
 
 
-def proto_files(root, pages):
+def proto_files(root, pages, weak=None):
     """(files to copy, linked pages left out, references not found): the pages plus every file they load, followed
-    through CSS, scripts and JSON (relative to the file, else to the app root). Other pages are never pulled in."""
+    through CSS, scripts and JSON (relative to the file, else to the app root). Other pages are never pulled in.
+    weak (a set): receives the bare file names quoted in scripts that were not found (kept out of the missing list)."""
     root = root.resolve()
     want = {(root / p).resolve() for p in pages}
     for p in want:
@@ -492,11 +534,11 @@ def proto_files(root, pages):
         f = todo.pop()
         if f.suffix.lower() not in TEXT_EXT:
             continue
-        for r in refs_of(f, f.read_text(encoding="utf-8", errors="replace")):
+        for r, sure in refs_of(f, f.read_text(encoding="utf-8", errors="replace"), kinds=True):
             hit = next((c for c in ((f.parent / r).resolve(), (root / r.lstrip("/")).resolve()) if c.is_file() and root in c.parents), None)
             if not hit:
                 if not r.lower().endswith((".html", ".htm")):
-                    missing.add(r)
+                    (missing if sure else (weak if weak is not None else set())).add(r)
                 continue
             if hit.suffix.lower() in (".html", ".htm") and hit not in want:
                 left.add(hit.relative_to(root).as_posix())
@@ -504,7 +546,25 @@ def proto_files(root, pages):
             if hit not in files:
                 files.add(hit)
                 todo.append(hit)
+    if weak is not None:
+        weak -= missing
     return sorted(files), sorted(left), sorted(missing)
+
+
+SKIP_DIRS = {"node_modules", "dist", "build"}
+
+
+def other_pages(root, files, left):
+    """HTML pages under the app folder that are neither copied nor linked statically: pages reached only through a
+    page registry or router in a script (K-F16). Folders starting with . or _ and node_modules, dist, build are skipped."""
+    root = root.resolve()
+    seen = {f.relative_to(root).as_posix() for f in files} | set(left)
+    found = set()
+    for f in root.rglob("*.htm*"):
+        rel = f.relative_to(root)
+        if f.suffix.lower() in (".html", ".htm") and not any(x.startswith((".", "_")) or x in SKIP_DIRS for x in rel.parts[:-1]):
+            found.add(rel.as_posix())
+    return sorted(found - seen)
 
 
 def cmd_proto(a):
@@ -512,7 +572,11 @@ def cmd_proto(a):
     if not root:
         cfg = load()
         root = Path(cfg["_root"]) / kitconf.app(cfg, a.app)["path"] if a.app else die("proto needs --root <app folder> or --app <id>")
-    files, left, missing = proto_files(root, a.pages)
+    if not root.is_dir():
+        die(f"app folder not found: {root}")
+    weak = set()
+    files, left, missing = proto_files(root, a.pages, weak)
+    others = other_pages(root, files, left)
     into = Path(a.into)
     if into.exists() and any(into.iterdir()) and not a.force:
         die(f"{into} is not empty (use --force to add to it)")
@@ -526,9 +590,15 @@ def cmd_proto(a):
     if left:
         print(f"NOTE {len(left)} linked page(s) left out (not in --pages; lock or hide every way in): " + ", ".join(left[:12])
               + (" …" if len(left) > 12 else ""))
+    if others:
+        print(f"NOTE {len(others)} other page(s) of the app are not linked statically (page registry or router in a script): lock or hide every way in, or add them to --pages: " + ", ".join(others[:12])
+              + (" …" if len(others) > 12 else ""))
     if missing:
-        print(f"NOTE {len(missing)} reference(s) not found in {root} (built at run time, or missing): " + ", ".join(missing[:12])
-              + (" …" if len(missing) > 12 else ""))
+        print(f"NOTE {len(missing)} reference(s) not found in {root} (built at run time, or missing): "
+              + ", ".join(missing if a.verbose else missing[:12]) + (" …" if len(missing) > 12 and not a.verbose else ""))
+    if weak:
+        print(f"NOTE {len(weak)} bare file name(s) quoted in scripts were not found (often sample data, not loaded files)"
+              + (": " + ", ".join(sorted(weak)) if a.verbose else "; --verbose lists them"))
 
 
 # ---------------- finalize ----------------
@@ -571,7 +641,10 @@ def slim_screens(cfg, pkg, shots, pc):
     out, last = [], {}
     for s in full:
         q = s.get("search") or last_query(s.get("steps"))   # ?demo=1 of the last goto stays in the route
-        route = f"{proto}{q}{s.get('hash', '')}" if single else f"{proto}/{s.get('page', '')}{q}{s.get('hash', '')}"
+        page = s.get("page", "")
+        if not single and page.startswith(proto + "/"):   # captured with the package folder served: no double prefix
+            page = page[len(proto) + 1:]
+        route = f"{proto}{q}{s.get('hash', '')}" if single else f"{proto}/{page}{q}{s.get('hash', '')}"
         e = {"id": s["id"], "name": s.get("name", ""), "route": route}
         if how.get(s["id"]):
             e["how"] = how[s["id"]]
@@ -640,9 +713,9 @@ def strip_images(cfg, pkg, pc):
     for p in spec.glob("*.md"):
         s = p.read_text(encoding="utf-8")
 
-        def img(m):
+        def img(m):   # no link yet (draft, awaiting Figma): a placeholder line that relink / finalize fills later
             u = figma_url(pc, m.group(1))
-            return f"Figma: [{m.group(1)}]({u})\n" if u else ""
+            return f"Figma: [{m.group(1)}]({u})\n" if u else f"Figma: {t(cfg, 'handoff.spec.figmaPending')}\n"
         s2 = re.sub(r"^!\[[^\]]*\]\(\.\./screens/(%s)\.(?:webp|png|jpe?g)\)\n?" % SCREEN, img, s, flags=re.M)
         # other sentences that point at screen images (e.g. "Images are in `screens/<id>.webp`"): only that sentence
         # becomes the locale sentence; the rest of the line stays
@@ -660,6 +733,52 @@ def strip_images(cfg, pkg, pc):
                     lambda m: f"[Figma]({figma_url(pc, m.group(1))})" if figma_url(pc, m.group(1)) else "—", s2)
         if s2 != s:
             p.write_text(s2, encoding="utf-8")
+
+
+FIG_LINE = re.compile(r"^(\s*(?:[-*]\s+)?)Figma\s*:(.*)$")
+
+
+def refresh_figma(cfg, pkg, pc):
+    """K-B4: write the Figma link of each screen into spec/*.md from the screen map (pkg.json > figma): the "Figma:" line
+    under "### Sxx · ..." (or a "Figma: [Sxx](...)" line anywhere) and the Figma column of every table whose first column
+    is a screen code. Returns the number of lines changed. Screens without a node keep their line."""
+    spec = pkg / "spec"
+    if not spec.is_dir():
+        return 0
+    cols = {t(cfg, "annotate.col.figma"), t("en", "annotate.col.figma"), "Figma"}
+    n = 0
+    for p in sorted(spec.glob("*.md")):
+        lines, cur, col, changed = p.read_text(encoding="utf-8").split("\n"), None, None, False
+        for i, ln in enumerate(lines):
+            h = re.match(r"^#{2,4}\s+(%s)\s+·" % SCREEN, ln)
+            if h or re.match(r"^#{1,3}\s", ln):
+                cur = h.group(1) if h else None
+            if ln.startswith("|"):
+                cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+                nxt = lines[i + 1].strip() if i + 1 < len(lines) else ""
+                if re.match(r"^\|[\s:|-]+\|$", nxt):          # header row of a table
+                    col = next((k for k, c in enumerate(cells) if c in cols), None)
+                    continue
+                if col is not None and col < len(cells) and re.fullmatch(SCREEN, cells[0]):
+                    u = figma_url(pc, cells[0])
+                    want = f"[Figma]({u})" if u else cells[col]
+                    if cells[col] != want:
+                        cells[col] = want
+                        lines[i] = "| " + " | ".join(cells) + " |"
+                        changed, n = True, n + 1
+                continue
+            col = None
+            m = FIG_LINE.match(ln)
+            if not m:
+                continue
+            sid = (re.match(r"\s*\[(%s)\]" % SCREEN, m.group(2)) or [None, cur])[1]
+            u = figma_url(pc, sid) if sid else ""
+            if u and ln != f"{m.group(1)}Figma: [{sid}]({u})":
+                lines[i] = f"{m.group(1)}Figma: [{sid}]({u})"
+                changed, n = True, n + 1
+        if changed:
+            p.write_text("\n".join(lines), encoding="utf-8")
+    return n
 
 
 def archive(cfg, pkg, pc):
@@ -727,14 +846,17 @@ def grep_labels(cfg):
     return ", ".join(f'"{w}"' for w in dict.fromkeys(words) if w and not re.fullmatch(r"[a-z]+(\.[A-Za-z]+)+", w))
 
 
+def board_url(pc):
+    if not (pc.get("figma_file") and pc.get("figma_board")):
+        return ""
+    base = re.sub(r"([?&])node-id=[^&]*", "", pc["figma_file"]).rstrip("?&")
+    return base + ("&" if "?" in base else "?") + "node-id=" + pc["figma_board"].replace(":", "-")
+
+
 def agents(cfg, pkg, pc, archived, label=None):
     has = lambda f: (pkg / f).exists()
     pr = pc.get("prototype", "prototype")
-    if pc.get("figma_file") and pc.get("figma_board"):
-        base = re.sub(r"([?&])node-id=[^&]*", "", pc["figma_file"]).rstrip("?&")
-        board = base + ("&" if "?" in base else "?") + "node-id=" + pc["figma_board"].replace(":", "-")
-    else:
-        board = t(cfg, "handoff.agents.noBoard")
+    board = board_url(pc) or t(cfg, "handoff.agents.noBoard")
     cross, arc = special_name(cfg, pkg, "crossPage"), special_name(cfg, pkg, "archive")
     dev_last = t(cfg, "handoff.agents.devCross", file=cross) if has("spec/" + cross) else t(cfg, "handoff.agents.devNoCross")
     ds = cfg.get("_ds") or {}
@@ -821,10 +943,12 @@ def cmd_finalize(a):
         if cfg["handoff"].get("figmaRequired", True) and not a.allow_missing_figma:
             die(msg + " Draft without a wireflow (only when the user agrees): add --allow-missing-figma.")
         print("NOTE " + msg)
+    set_status(a.config, pc, "awaiting-figma" if (nofig or not pc.get("figma_file")) else "final", nofig)
     zpath = (Path(a.zip) if a.zip != "auto" else pkg.parent / (want + ".zip")) if a.zip else ""
     run_hook(cfg, "pre", pkg=pkg, config=a.config, zip=zpath)
     scr = slim_screens(cfg, pkg, a.shots, pc)
     strip_images(cfg, pkg, pc)
+    refresh_figma(cfg, pkg, pc)
     archived = archive(cfg, pkg, pc)
     trim_changelog(cfg, pkg, int(pc.get("changelog_keep", 2)))
     label, source = ds_label(cfg, pc, pkg)
@@ -866,16 +990,169 @@ def cmd_finalize(a):
     print(f"screens.json {size / 1024:.0f} KB · {len(scr)} screens · archived: {', '.join(archived) or 'none'} · "
           f"screens without Figma link: {len(nofig)}")
     if a.zip:
-        z = zpath
-        r = subprocess.run([sys.executable, "-I", str(OPTIMIZE), str(pkg), "--zip", str(z),
-                            "--target-mb", str(cfg["handoff"].get("maxZipMB", 3))], capture_output=True, text=True)
-        print("\n".join(r.stdout.strip().splitlines()[-3:]))
-        if r.returncode == 2:
-            print(r.stderr)
-            die("optimize_package.py: some pages still load .js files that could not be inlined")
-        if r.returncode == 1:
-            print("NOTE zip is over handoff.maxZipMB: follow the size steps in the handoff skill")
+        zip_package(cfg, pkg, zpath)
+    if pc.get("status") == "awaiting-figma":
+        print(f"Package status: awaiting-figma ({', '.join(nofig[:12]) or 'no figma_file'}). Draft only: do not send it. "
+              f"After the wireflow skill has mapped the screens (setmap): pkg.py relink --pkg \"{pkg}\" --config {a.config} --zip")
     run_hook(cfg, "post", pkg=pkg, config=a.config, zip=zpath)
+
+
+def zip_package(cfg, pkg, z):
+    r = subprocess.run([sys.executable, "-I", str(OPTIMIZE), str(pkg), "--zip", str(z),
+                        "--target-mb", str(cfg["handoff"].get("maxZipMB", 3))], capture_output=True, text=True)
+    print("\n".join(r.stdout.strip().splitlines()[-3:]))
+    if r.returncode == 2:
+        print(r.stderr)
+        die("optimize_package.py: some pages still load .js files that could not be inlined")
+    if r.returncode == 1:
+        print("NOTE zip is over handoff.maxZipMB: follow the size steps in the handoff skill")
+
+
+def set_status(config, pc, status, waiting=()):
+    """K-B5: pkg.json > status "awaiting-figma" (draft: screens without a Figma node, listed in awaiting_figma) or
+    "final". Written back into pkg.json, other keys kept."""
+    pc["status"] = status
+    if status == "awaiting-figma":
+        pc["awaiting_figma"] = list(waiting)
+    else:
+        pc.pop("awaiting_figma", None)
+    Path(config).write_text(json.dumps(pc, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+
+
+def cmd_relink(a):
+    """K-B5: fill the Figma links of a finalized package (screens.json, spec "Figma:" lines and columns, AGENTS board
+    link), set status final and re-zip. Nothing else of the package changes."""
+    pc = read_json(a.config)
+    cfg = with_pkg_csv(load(app=pc.get("app") or None), pc)
+    pkg = Path(a.pkg)
+    sj = pkg / "screens" / "screens.json"
+    if not sj.is_file():
+        die(f"{sj} not found: run pkg.py finalize first (relink only fills Figma links of a finalized package)")
+    scr = read_json(sj)
+    nofig = [x["id"] for x in scr if not figma_url(pc, x["id"])]
+    if nofig or not pc.get("figma_file"):
+        die("still no Figma node for " + (", ".join(nofig[:12]) if pc.get("figma_file") else "the package (no figma_file)")
+            + ": build or update the board with the wireflow skill, then figma_wireflow.py setmap --config " + str(a.config))
+    for e in scr:
+        e["figma"] = figma_url(pc, e["id"])
+    sj.write_text(json.dumps(scr, ensure_ascii=False, separators=(",", ":")).replace('},{"id"', '},\n{"id"'), encoding="utf-8")
+    n = refresh_figma(cfg, pkg, pc)
+    ag, board = pkg / "AGENTS.md", board_url(pc)
+    if ag.is_file() and board:
+        s = ag.read_text(encoding="utf-8")
+        s2 = s.replace(t(cfg, "handoff.agents.noBoard"), board, 1) if board not in s else s
+        if s2 != s:
+            ag.write_text(s2, encoding="utf-8")
+            n += 1
+    waited = pc.get("awaiting_figma") or []
+    set_status(a.config, pc, "final")
+    print(f"Relinked {len(scr)} screen(s) in screens.json, {n} line(s) in spec/ and AGENTS.md; status final"
+          + (f" (were awaiting Figma: {', '.join(waited)})" if waited else ""))
+    zpath = (Path(a.zip) if a.zip != "auto" else pkg.parent / (pkg_name(cfg, pc) + ".zip")) if a.zip else ""
+    if a.zip:
+        zip_package(cfg, pkg, zpath)
+    run_hook(cfg, "post", pkg=pkg, config=a.config, zip=zpath)
+
+
+# ---------------- smoke ----------------
+def package_root(folder):
+    """The package folder inside an unzipped package: the folder itself or its only subfolder with screens/ or prototype."""
+    folder = Path(folder)
+    for c in [folder] + sorted(p for p in folder.iterdir() if p.is_dir()):
+        if (c / "screens" / "screens.json").is_file() or (c / "prototype").exists() or (c / "prototype.html").is_file():
+            return c
+    return None
+
+
+def smoke_routes(root):
+    """[{id, route}] from screens/screens.json (one per distinct route), else the prototype entry."""
+    sj, out, seen = root / "screens" / "screens.json", [], set()
+    for s in (read_json(sj) if sj.is_file() else []):
+        r = s.get("route")
+        if r and r not in seen:
+            seen.add(r)
+            out.append({"id": s.get("id", ""), "route": r})
+    if not out:
+        entry = next((e for e in ("prototype.html", "prototype/index.html") if (root / e).is_file()), None)
+        out = [{"id": "entry", "route": entry}] if entry else []
+    return out
+
+
+def blocked_names(names):
+    sys.path.insert(0, str(HERE))
+    from optimize_package import BLOCKED, NESTED
+    return [n for n in names if Path(n).suffix.lower() in BLOCKED | NESTED]
+
+
+def smoke_widths(cfg, arg):
+    w = arg or ",".join(str(x) for x in ((cfg or {}).get("handoff") or {}).get("smokeWidths") or [400, 768, 1280])
+    try:
+        ws = [int(x) for x in str(w).split(",") if x.strip()]
+    except ValueError:
+        ws = []
+    if not ws or min(ws) < 200:
+        die(f"widths must be comma-separated px values of at least 200 (got {w})")
+    return ws
+
+
+def cmd_smoke(a):
+    """K-B9 (steps 4 and 9.5): unzip the package to a temp folder (or use the folder), serve it over HTTP from the
+    package folder, open every route of screens.json at each width in Chromium and report page errors, console
+    errors, 4xx/5xx, failed requests, broken images and horizontal scroll. A zip is also checked for blocked files."""
+    src, cfg = Path(a.package), load(require=False)
+    widths = smoke_widths(cfg, a.widths)
+    tmp, problems = None, 0
+    if src.is_file():
+        if not zipfile.is_zipfile(src):
+            die(f"not a zip file: {src}")
+        z = zipfile.ZipFile(src)
+        bad = blocked_names(z.namelist())
+        if bad:
+            print("ERROR: blocked file(s) in the zip (mail filters): " + ", ".join(bad[:12]))
+            problems += len(bad)
+        tmp = Path(tempfile.mkdtemp(prefix="pkg-smoke-"))
+        z.extractall(tmp)   # zipfile never writes outside the target folder
+        base_dir = tmp
+    elif src.is_dir():
+        base_dir = src
+    else:
+        die(f"package not found: {src}")
+    root = package_root(base_dir)
+    if root is None:
+        die(f"no package in {src} (no screens/screens.json, prototype/ or prototype.html)")
+    routes = smoke_routes(root)
+    if not routes:
+        die("no route to open: screens/screens.json has no route and there is no prototype entry")
+
+    class Quiet(http.server.SimpleHTTPRequestHandler):
+        def log_message(self, *x):
+            pass
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=str(root)))
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    rf = Path(tempfile.mkstemp(prefix="pkg-smoke-", suffix=".json")[1])
+    try:
+        rf.write_text(json.dumps(routes), encoding="utf-8")
+        r = subprocess.run(["node", str(SMOKE), "http://127.0.0.1:%d/" % srv.server_address[1], str(rf),
+                            "--widths", ",".join(map(str, widths))], capture_output=True, text=True)
+    finally:
+        srv.shutdown()
+        rf.unlink()
+        if tmp and not a.keep:
+            shutil.rmtree(tmp, ignore_errors=True)
+    last = (r.stdout.strip().splitlines() or [""])[-1]
+    if r.returncode or not last.startswith("["):
+        print(r.stdout[-2000:] + r.stderr[-2000:])
+        die("smoke.js failed")
+    res = json.loads(last)
+    for x in res:
+        for i in x["issues"]:
+            print(f"FAIL  {x['id']} {x['route']} @{x['width']}: {i}")
+    problems += sum(len(x["issues"]) for x in res)
+    print(f"Smoke {src.name}: {len(routes)} route(s) x {len(widths)} width(s) ({', '.join(map(str, widths))} px) from "
+          f"{root.relative_to(base_dir).as_posix() if root != base_dir else '.'}: "
+          + (f"{problems} problem(s)" if problems else "OK") + (f"; unzipped at {tmp}" if tmp and a.keep else ""))
+    if problems:
+        sys.exit(1)
 
 
 def selftest():
@@ -966,6 +1243,55 @@ def selftest():
     old = {"id": "S01", "page": "a.html", "hash": "#/", "pins": [{"sel": "#b", "style": {"props": {"color": "rgb(0, 0, 0)"}}}]}
     assert screen_change(dict(old, hash="#/x"), old) == "route" and screen_change(old, old) == ""
     assert screen_change({"id": "S01", "page": "a.html", "hash": "#/", "pins": [{"sel": "#b", "style": {"props": {"color": "red"}}}]}, old) == "style"
+    # K-F16: bare file names in scripts are weak (counted, not listed); pages reached only by a script registry are listed
+    (app / "app.js").write_text((app / "app.js").read_text() + ' var demo = ["report-q3.pdf", "data/missing.json"];'
+                                ' var PAGES = {lib: "library/"};')
+    (app / "library").mkdir()
+    (app / "library" / "index.html").write_text("<p>library</p>")
+    (app / "_shell").mkdir()
+    (app / "_shell" / "index.html").write_text("<p>source</p>")
+    weak = set()
+    files, left, miss = proto_files(app, ["index.html"], weak)
+    assert miss == ["data/missing.json"] and weak == {"report-q3.pdf"}, (miss, weak)
+    assert other_pages(app, files, left) == ["library/index.html"], other_pages(app, files, left)
+    # K-F15: nav_functions keep the string form; {name, base} and lock.nav_base set the base of relative paths
+    assert nav_functions({"nav_functions": ["appNav.go", {"name": "X.nav", "base": "app"}]}) == \
+        [{"name": "appNav.go", "base": "page"}, {"name": "X.nav", "base": "app"}]
+    assert nav_functions({"nav_functions": ["go"], "nav_base": "app"}) == [{"name": "go", "base": "app"}]
+    # K-B4: Figma lines and the Figma column of the screen table come from pkg.json > figma
+    e = Path(tempfile.mkdtemp(prefix="pkg-selftest-"))
+    (e / "spec").mkdir()
+    (e / "spec" / "index.md").write_text("# x\n\n| Code | Name | Page · route | Figma | Spec |\n|---|---|---|---|---|\n"
+                                         "| S01 | Home | `index.html#/` | — | FR-01 |\n| S02 | New | `#/n` | [Figma](old) | FR-01 |\n\nFigma: board\n")
+    (e / "spec" / "FR-01.md").write_text("# FR-01\n\n### S01 · Home\nRoute: x\nFigma: none yet\n\n### S02 · New\nFigma: [S02](old)\n"
+                                         "\n### S03 · Later\nFigma: none yet\n")
+    pf = {"figma_file": "https://www.figma.com/design/KEY/x", "figma": {"S01": "1:2", "S02": "1:3"}}
+    assert refresh_figma(cfg, e, pf) == 4 and refresh_figma(cfg, e, pf) == 0
+    ix, u1 = (e / "spec" / "index.md").read_text(), "https://www.figma.com/design/KEY/x?node-id=1-2"
+    assert f"| S01 | Home | `index.html#/` | [Figma]({u1}) | FR-01 |" in ix and "Figma: board" in ix, ix
+    un = (e / "spec" / "FR-01.md").read_text()
+    assert f"Figma: [S01]({u1})" in un and "Figma: [S02](https://www.figma.com/design/KEY/x?node-id=1-3)" in un \
+        and un.rstrip().endswith("Figma: none yet"), un
+    # K-B5: status in pkg.json
+    cf = e / "pkg.json"
+    pj = {"pbi": "1", "figma": {}}
+    set_status(cf, pj, "awaiting-figma", ["S03"])
+    assert json.loads(cf.read_text())["awaiting_figma"] == ["S03"]
+    set_status(cf, pj, "final")
+    assert json.loads(cf.read_text()) == {"pbi": "1", "figma": {}, "status": "final"}
+    # K-B9: package root and routes of an unzipped package, blocked names, widths
+    (e / "Design - 1" / "screens").mkdir(parents=True)
+    (e / "Design - 1" / "screens" / "screens.json").write_text(json.dumps(
+        [{"id": "S01", "route": "prototype/index.html#/"}, {"id": "S02", "route": "prototype/index.html#/"},
+         {"id": "S03", "route": "prototype/b/index.html"}]))
+    shutil.rmtree(e / "spec")
+    cf.unlink()
+    root = package_root(e)
+    assert root == e / "Design - 1" and [x["id"] for x in smoke_routes(root)] == ["S01", "S03"]
+    assert blocked_names(["a/x.html", "a/y.js", "b.zip", "c.map"]) == ["a/y.js", "b.zip", "c.map"]
+    assert smoke_widths({"handoff": {"smokeWidths": [390, 1280]}}, "") == [390, 1280] and smoke_widths(None, "400,800") == [400, 800]
+    shutil.rmtree(e, ignore_errors=True)
+    shutil.rmtree(d, ignore_errors=True)
     print("pkg.py selftest OK")
 
 
@@ -975,7 +1301,7 @@ def main():
         return
     ap = argparse.ArgumentParser(description="Handoff package pipeline (see the module docstring for details).",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
-    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{init,name,layer,capture,proto,finalize}")
+    sub = ap.add_subparsers(dest="cmd", required=True, metavar="{init,name,layer,capture,proto,finalize,relink,smoke}")
     i = sub.add_parser("init", help="create pkg.json and CSV headers for a work item")
     i.add_argument("--pbi", required=True, help="work-item code")
     i.add_argument("--title", required=True, help="feature or app title")
@@ -1008,14 +1334,24 @@ def main():
     pr.add_argument("--root", default="", help="app folder (default: apps[].path of --app)")
     pr.add_argument("--app", default="")
     pr.add_argument("--force", action="store_true", help="copy into a folder that is not empty")
+    pr.add_argument("--verbose", action="store_true", help="list every reference not found, bare file names in scripts too")
     f = sub.add_parser("finalize", help="slim screens.json, drop images, archive, AGENTS.md, check, zip")
     f.add_argument("--pkg", required=True)
     f.add_argument("--shots", required=True)
     f.add_argument("--config", required=True)
     f.add_argument("--zip", nargs="?", const="auto", default="", help="zip path; no value = <zipName>.zip next to the package")
     f.add_argument("--allow-missing-figma", action="store_true", help="only when the user accepts a draft without a wireflow")
+    rl = sub.add_parser("relink", help="fill Figma links of a finalized (awaiting-figma) package, status final, re-zip")
+    rl.add_argument("--pkg", required=True)
+    rl.add_argument("--config", required=True)
+    rl.add_argument("--zip", nargs="?", const="auto", default="", help="zip path; no value = <zipName>.zip next to the package")
+    sm = sub.add_parser("smoke", help="run the unpacked package in Chromium: errors, 4xx, broken images, horizontal scroll")
+    sm.add_argument("package", help="package zip or folder")
+    sm.add_argument("--widths", default="", help="comma-separated px (default kit.config.json > handoff.smokeWidths)")
+    sm.add_argument("--keep", action="store_true", help="keep the unzipped copy")
     a = ap.parse_args()
-    {"init": cmd_init, "name": cmd_name, "layer": cmd_layer, "capture": cmd_capture, "proto": cmd_proto, "finalize": cmd_finalize}[a.cmd](a)
+    {"init": cmd_init, "name": cmd_name, "layer": cmd_layer, "capture": cmd_capture, "proto": cmd_proto, "finalize": cmd_finalize,
+     "relink": cmd_relink, "smoke": cmd_smoke}[a.cmd](a)
 
 
 if __name__ == "__main__":

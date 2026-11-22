@@ -9,7 +9,10 @@ Commands:
   catalog.py build                 Parse catalog.md (+ components.map) into catalog.json, keeping maintained fields.
   catalog.py check                 Every class exists in the DS CSS bundle, every token is defined, deprecated
                                    components name an existing replacement, ids are unique. Exit 1 on error.
-  catalog.py find <words>          Components whose name, class, code names or usage match (for agents).
+  catalog.py find <words>          Components and page patterns whose name, class, code names or usage match (for agents).
+  catalog.py patterns              Page patterns and templates (master-detail, split layouts, list pages…): the
+                                   '## Patterns' section of catalog.md ('### <Name>' with '- Class:', '- Use:') and
+                                   ds.json > patterns ([{"name", "classes", "use"}]). Works without catalog.json.
   catalog.py show <id>             Print one component as JSON.
   catalog.py set <id> [--status active|experimental|deprecated] [--replaced-by <id>] [--reason "..."]
                       [--figma-component "Button"] [--figma-key <key>] [--figma-node <node id>]
@@ -32,7 +35,8 @@ from kitconf import load, app as app_cfg, DS_DEFAULTS, _merge, css_load  # noqa:
 SCHEMA = "kit-catalog/1"
 STATUSES = ("active", "experimental", "deprecated")
 MAINTAINED = ("figma", "status", "replacedBy", "reason", "usage", "a11y")
-FIELD = re.compile(r"^- (Class|Variants|States|Source|Notes|Structure|Tokens):\s*(.*)$")
+FIELD = re.compile(r"^- (Class|Variants|States|Source|Notes|Structure|Tokens|Use):\s*(.*)$")
+PATTERN_SECTIONS = ("patterns", "page patterns", "page templates", "templates")
 TICK = re.compile(r"`([^`]+)`")
 EXT_SCAN = {".html", ".htm", ".tsx", ".jsx", ".ts", ".js", ".vue", ".css"}
 
@@ -105,6 +109,49 @@ def parse_map(lines):
     return rows
 
 
+def parse_patterns(md):
+    """Page patterns of catalog.md: '### <Name>' entries under a '## Patterns' (or 'Page patterns', 'Templates') heading."""
+    out, cur, on = [], None, False
+    for ln in md.splitlines():
+        if ln.startswith("## "):
+            on, cur = ln[3:].strip().lower() in PATTERN_SECTIONS, None
+            continue
+        if not on:
+            continue
+        if ln.startswith("### "):
+            cur = {"id": slug(ln[4:].strip()), "name": ln[4:].strip(), "classes": [], "use": "", "structure": "", "notes": "",
+                   "source": "catalog.md"}
+            out.append(cur)
+            continue
+        m = FIELD.match(ln)
+        if cur is not None and m:
+            k, v = m.group(1).lower(), m.group(2).strip()
+            if k == "class":
+                cur["classes"] = [x.lstrip(".") for x in TICK.findall(v) if x.startswith(".")]
+            elif k in ("use", "structure", "notes"):
+                cur[k] = v
+    return out
+
+
+def ds_patterns(ds):
+    """ds.json > patterns: [{"name", "classes" (or "class"), "use", "structure"}], for profiles built by a project script."""
+    out = []
+    for p in (ds or {}).get("patterns") or []:
+        if not isinstance(p, dict) or not p.get("name"):
+            continue
+        cls = p.get("classes") or ([p["class"]] if p.get("class") else [])
+        out.append({"id": slug(p["name"]), "name": p["name"], "classes": [c.lstrip(".") for c in cls], "use": p.get("use", ""),
+                    "structure": p.get("structure", ""), "notes": p.get("notes", ""), "source": "ds.json"})
+    return out
+
+
+def all_patterns(ds, md):
+    """Patterns of catalog.md, then those of ds.json not already listed (same id)."""
+    out = parse_patterns(md)
+    ids = {p["id"] for p in out}
+    return out + [p for p in ds_patterns(ds) if p["id"] not in ids]
+
+
 def parse_catalog(md):
     lines = md.splitlines()
     comps, cur, section = [], None, None
@@ -170,8 +217,9 @@ def cmd_build(cfg, d, a):
     md = d / (cfg["_ds"].get("catalog") or "catalog.md")
     if not md.is_file():
         die("%s not found in the DS profile" % md.name)
-    comps = parse_catalog(md.read_text(encoding="utf-8"))
-    if not comps:
+    text = md.read_text(encoding="utf-8")
+    comps, pats = parse_catalog(text), all_patterns(cfg["_ds"], text)
+    if not comps and not pats:
         die("no components found: catalog.md needs a '## Components' section with '### <Name>' entries and '- Class:' lines")
     old = {}
     p = cat_path(cfg, d)
@@ -188,9 +236,13 @@ def cmd_build(cfg, d, a):
     gone = sorted(set(old) - {c["id"] for c in comps})
     ds = cfg["_ds"]
     data = {"$schema": SCHEMA, "ds": ds.get("name") or "", "label": ds.get("label") or "", "version": ds.get("version", ""),
-            "prefix": ds["tokens"]["prefix"], "generatedFrom": md.name, "components": comps}
+            "prefix": ds["tokens"]["prefix"], "generatedFrom": md.name, "components": comps, "patterns": pats}
     write_cat(cfg, d, data)
-    print("Wrote %s: %d components; maintained fields kept for %d" % (p.name, len(comps), len(kept)) + (" (%s)" % ", ".join(sorted(kept)) if kept else ""))
+    print("Wrote %s: %d components, %d page patterns; maintained fields kept for %d" % (p.name, len(comps), len(pats), len(kept))
+          + (" (%s)" % ", ".join(sorted(kept)) if kept else ""))
+    if not pats:
+        print("NOTE: no page patterns (catalog.md '## Patterns' or ds.json > patterns): define and prototype cannot see "
+              "list-detail, split or other page layouts the DS has")
     for g in gone:
         print("WARN: %s was in catalog.json but is no longer in catalog.md (its maintained fields are dropped)" % g)
     missing = [c["id"] for c in comps if not c["class"]]
@@ -244,6 +296,11 @@ def cmd_check(cfg, d, a):
                     errs.append("%s: token %s is not defined in the DS CSS" % (i, tk))
         if not (c.get("code") or {}).get("react") and not (c.get("code") or {}).get("vue"):
             warns.append("%s: no React or Vue mapping in components.map" % i)
+    for pt in data.get("patterns") or []:
+        if classes is not None:
+            for cl in pt.get("classes") or []:
+                if cl not in classes:
+                    errs.append("pattern %s: class .%s is not in the DS CSS" % (pt.get("id"), cl))
     for w in warns:
         print("WARN:", w)
     for e in errs:
@@ -265,8 +322,29 @@ def cmd_find(cfg, d, a):
     for _, c in sorted(hits, key=lambda x: (-x[0], x[1]["name"])):
         flag = " [DEPRECATED → %s]" % c["replacedBy"] if c["status"] == "deprecated" else (" [experimental]" if c["status"] == "experimental" else "")
         print("%-20s .%-22s react: %-30s%s" % (c["id"], c.get("class") or "-", c["code"].get("react", "")[:30], flag))
+    for pt in data.get("patterns") or []:
+        hay = " ".join([pt["id"], pt["name"], " ".join(pt.get("classes") or []), pt.get("use", ""), pt.get("structure", "")]).lower()
+        if any(re.search(r"\b%s" % re.escape(w), hay) for w in words):
+            hits.append((0, pt))
+            print("%-20s .%-22s [page pattern] %s" % (pt["id"], (pt.get("classes") or ["-"])[0], pt.get("use", "")[:60]))
     if not hits:
-        print("No component matches. Not in the DS → prototype component gate.")
+        print("No component or page pattern matches. Not in the DS → prototype component gate.")
+
+
+def cmd_patterns(cfg, d, a):
+    p = cat_path(cfg, d)
+    if p.is_file():
+        pats = json.loads(p.read_text(encoding="utf-8")).get("patterns")
+    else:
+        pats = None
+    if pats is None:  # no catalog.json, or one built before patterns: read the sources
+        md = d / (cfg["_ds"].get("catalog") or "catalog.md")
+        pats = all_patterns(cfg["_ds"], md.read_text(encoding="utf-8") if md.is_file() else "")
+    for pt in pats:
+        print("%-22s %-34s %s" % (pt["id"], " ".join("." + c for c in pt.get("classes") or []) or "-", pt.get("use") or pt.get("structure") or ""))
+    if not pats:
+        print("No page patterns listed (catalog.md '## Patterns' or ds.json > patterns). Search the DS CSS and library before "
+              "calling a page layout missing.")
 
 
 def cmd_show(cfg, d, a):
@@ -376,6 +454,12 @@ def selftest():
     assert not is_ds_copy(cfg, app, d / "apps" / "w" / "app.css")
     t = strip_ds(cfg, '<style>/* @ds:begin */.btn{}/* @ds:end */</style><style id="libA">.card{}</style><b class="btn">')
     assert ".btn{}" not in t and ".card{}" not in t and 'class="btn"' in t, t
+    md = ("## Components\n\n### Button\n\n- Class: `.btn`\n\n## Patterns\n\n### Master detail\n\n- Class: `.pg-split`, `.pg-side`\n"
+          "- Use: list on the left, detail on the right; one pane on compact screens\n\n## components.map\n")
+    pats = all_patterns({"patterns": [{"name": "Master detail", "classes": ["x"]}, {"name": "Settings page", "class": ".pg-set"}]}, md)
+    assert [p["id"] for p in pats] == ["master-detail", "settings-page"] and pats[0]["classes"] == ["pg-split", "pg-side"], pats
+    assert pats[0]["source"] == "catalog.md" and pats[1]["classes"] == ["pg-set"] and "compact" in pats[0]["use"], pats
+    assert [c["id"] for c in parse_catalog(md)] == ["button"], "patterns are not components"
     print("catalog.py selftest OK")
 
 
@@ -387,7 +471,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--ds", help="DS profile folder (default: kit.config.json > ds)")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("build"); sub.add_parser("check")
+    sub.add_parser("build"); sub.add_parser("check"); sub.add_parser("patterns")
     p = sub.add_parser("find"); p.add_argument("words", nargs="+")
     p = sub.add_parser("show"); p.add_argument("id")
     p = sub.add_parser("set"); p.add_argument("id")
@@ -397,7 +481,7 @@ def main():
     p = sub.add_parser("scan"); p.add_argument("--app", required=True)
     a = ap.parse_args()
     cfg, d = profile(a)
-    {"build": cmd_build, "check": cmd_check, "find": cmd_find, "show": cmd_show, "set": cmd_set, "scan": cmd_scan}[a.cmd](cfg, d, a)
+    {"build": cmd_build, "check": cmd_check, "find": cmd_find, "show": cmd_show, "set": cmd_set, "scan": cmd_scan, "patterns": cmd_patterns}[a.cmd](cfg, d, a)
 
 
 if __name__ == "__main__":

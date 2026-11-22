@@ -27,7 +27,8 @@ The layer script is inlined into the page, so the package still has no loose `.j
   "allow": ["[data-area=\"tasks\"]", "[role=dialog]", ".acme-menu", ".acme-toast-stack", "#modeBtn"],
   "allow_when": [{"sel": "#taskMore", "hash": "^#/tasks/"}],
   "block": ["[data-action=\"export\"]"],
-  "nav_functions": ["appNav.go"],
+  "nav_functions": ["appNav.go", {"name": "X.nav", "base": "app"}],
+  "nav_base": "page",
   "shortcuts": ["F1"],
   "open_allow": "",
   "open_block": "#branch",
@@ -44,7 +45,8 @@ The layer script is inlined into the page, so the package still has no loose `.j
 | `allow` | Selectors of the feature, plus the menus, dialogs, popovers and toasts it uses, and shared controls you keep (theme switch). Required. |
 | `allow_when` | Per-route rules: `[{"sel": "<selector>", "hash": "<regex>", "path": "<regex>"}]`. An element inside `sel` is allowed only while `location.hash` (and `location.pathname`, when given) match; this overrides `allow`. For a control that is in scope on one route and out of scope on another. |
 | `block` | Selectors inside allowed areas that belong to another feature. Checked first. |
-| `nav_functions` | Global navigation functions of the app (dotted path). Called with a page key (see `page_keys`) or a URL that is not in `pages`: toast, no navigation. |
+| `nav_functions` | Global navigation functions of the app: a dotted path, or `{"name": "<dotted path>", "base": "page"\|"app"}`. Called with a page key (see `page_keys`) or a URL that is not in `pages`: toast, no navigation. `base` says what a relative path argument is relative to: `page` (default) the current page, `app` the app root (the package prototype folder), for a function such as `X.nav('chat/index.html#/c/1')` that is called from `notes/index.html` but means `chat/` at the root. Check the app's function before choosing: a wrong base blocks every valid page change. |
+| `nav_base` | Default `base` for string entries of `nav_functions`: `page` (default) or `app`. |
 | `shortcuts` | Key combos of out-of-scope features (`Ctrl+`, `Meta+`, `Alt+`, `Shift+` then `KeyboardEvent.key`). Toast, no action. |
 | `open_allow` | Regex of more URLs `window.open` may open, tested on the URL as written and as resolved. A page in `pages` always opens (relative or absolute). With `pages` empty, only `open_allow` decides. |
 | `open_block` | Regex tested first on the URL `window.open` (and a link) gets, as written and as resolved: a match is blocked **even for a page of the package**, for example the same page opened in a new tab with the hash of another feature (`#branch`). Empty = off. |

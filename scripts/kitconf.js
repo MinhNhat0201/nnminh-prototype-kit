@@ -8,17 +8,18 @@ const path = require('path');
 const KIT_ROOT = path.resolve(__dirname, '..');
 const DEFAULTS = {
   language: 'en', stack: 'html', ds: null, apps: [],
-  local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json', command: { update: null, check: null }, fields: {} },
+  local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json', command: { update: null, check: null }, fields: {},
+    vueStyle: 'sfc', vueCss: 'src/styles/local.css' },
   handoff: { dir: 'docs/handover', zipName: 'Design - {pbi}', maxZipMB: 3, figmaRequired: true, itemLabel: '', grepLabels: [],
     dsLabel: 'auto', dsLabelCheck: 'warn', specFiles: { archive: 'archive.md', crossPage: 'cross-page.md', legacy: [] },
-    csv: { feature: null, qc: null }, pre: null, post: null, specFields: {} },
+    csv: { feature: null, qc: null }, pre: null, post: null, specFields: {}, smokeWidths: [400, 768, 1280] },
   email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3, demoLinks: true, maxItems: 12, template: null },
   deploy: { type: 'none', site: null },
   sync: { command: null, check: null, prepare: null, post: null },
   review: { extraChecks: [] },
   prototype: { post: null },
   figma: { imageSuffix: null },
-  validate: { touchTarget: { default: 44, desktop: 24 } },
+  validate: { touchTarget: { default: 44, desktop: 24 }, axePath: null, setTheme: null },
   skills: {},
   rules: { categories: {} },
   paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits', explorations: 'docs/explorations', context: 'product-context', validation: 'docs/validation', verify: 'docs/verify', rules: 'rules' },
@@ -30,7 +31,7 @@ const DS_DEFAULTS = {
   version_label: { text: '{label} {version}', meta: 'ds-version' },
   theming: {}, breakpoints: { compact: 0, medium: 600, expanded: 840 }, icons: {},
   catalog: 'catalog.md', catalog_json: 'catalog.json', rules: 'rules.md', changelog: null, review: { genericClasses: [] }, library: {},
-  figma: { libraries: [], collections: {}, modes: {} }, preset: {},
+  figma: { libraries: [], collections: {}, modes: {} }, preset: {}, patterns: [],
 };
 
 function merge(base, over) {
@@ -111,4 +112,11 @@ function cssLoad(cfg, appId) {
   return { load, linkPath: load === 'link' ? link : null };
 }
 
-module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, cssLoad, KIT_ROOT };
+// Lines of apps[].pageContract (same as kitconf.py page_contract): what every page must do for the app shell. Default [].
+function pageContract(cfg, appId) {
+  const a = ((cfg && cfg.apps) || []).find(x => x.id === appId);
+  const v = (a && a.pageContract) || [];
+  return typeof v === 'string' ? [v] : v.map(String);
+}
+
+module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, cssLoad, pageContract, KIT_ROOT };
