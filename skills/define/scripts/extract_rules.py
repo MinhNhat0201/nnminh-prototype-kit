@@ -16,8 +16,9 @@ a rule.
 Usage:
   extract_rules.py <file or folder>… [--json] [--out <file.md>] [--skip-shell] [--exclude <glob>]… [--function <name>]…
       Files: .html .htm .js .mjs .ts .vue .jsx .tsx (a folder is read recursively, node_modules and dist skipped).
-      --skip-shell: leave out the regions of the shared shell, by default <!-- SHELL:x --> … <!-- /SHELL:x --> (HTML) and
-      /* SHELL:x */ … /* /SHELL:x */ (scripts, CSS); kit.config.json > define.skipRegions replaces them with your own
+      --skip-shell: leave out the regions of the shared shell, by default <!-- SHELL:x --> … <!-- /SHELL:x --> and
+      <!-- SHELL:BEGIN … --> … <!-- SHELL:END --> (HTML), /* SHELL:x */ … /* /SHELL:x */ and /* SHELL:BEGIN */ … /* SHELL:END */
+      (scripts, CSS); kit.config.json > define.skipRegions replaces them with your own
       regular expressions (each matches a whole region).
       --exclude <glob>: skip files whose path (relative to the project, or to the folder given) matches, e.g. '**/shared/**'.
       --function <name>: in scripts, read only the body of this function (function name(…){…}, name = function…,
@@ -46,7 +47,9 @@ WRAPPER_VERBS = ("get", "put", "set", "remove")
 # a bare call that looks like a storage helper: get('k', d), put('k', v), lsGet('k'), storeSet('k', v), saveLocal('k', v)
 BARE_STORE = re.compile(r"(?i)(?:get|put|set|remove)|(?:ls|store|storage|prefs?|local|session)_?(?:get|set|put|remove|del|load|save)(?:item)?"
                         r"|(?:get|set|put|remove|load|save)_?(?:ls|store|storage|prefs?|local)")
-SHELL_REGIONS = [r"<!--\s*SHELL:([\w-]+)\s*-->.*?<!--\s*/SHELL:\1\s*-->", r"/\*\s*SHELL:([\w-]+)\s*\*/.*?/\*\s*/SHELL:\1\s*\*/"]
+# <!-- SHELL:BEGIN (any note) --> … <!-- SHELL:END -->, and <!-- SHELL:x --> … <!-- /SHELL:x --> (HTML and /* */ in scripts)
+SHELL_REGIONS = [r"<!--\s*SHELL:BEGIN\b.*?-->.*?<!--\s*SHELL:END\b.*?-->", r"/\*\s*SHELL:BEGIN\b.*?\*/.*?/\*\s*SHELL:END\b.*?\*/",
+                 r"<!--\s*SHELL:([\w-]+)\s*-->.*?<!--\s*/SHELL:\1\s*-->", r"/\*\s*SHELL:([\w-]+)\s*\*/.*?/\*\s*/SHELL:\1\s*\*/"]
 NOT_STORAGE = {"headers", "searchparams", "params", "query", "formdata", "dataset", "attributes", "classlist", "style",
                "map", "cache", "url", "router", "route", "app", "axios", "http", "api", "fetch"}
 
@@ -59,16 +62,26 @@ LIMIT = [re.compile(p) for p in (
     r"\blimit\w*\s*[:=]\s*\d+",
     r"[\w$.\])]*\.(?:slice|substring|substr)\(\s*0\s*,\s*\d+\s*\)",
     r"Math\.(?:min|max)\([^()]*\d+[^()]*\)")]
-STORAGE = re.compile(r"(localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\(\s*['\"`]([^'\"`]+)")
+STORAGE = re.compile(r"(localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\(\s*(['\"`])([^'\"`]+)\2(\s*\+\s*([A-Za-z_$][\w$]*\b(?!\s*[.(\[]))?)?")
 STORAGE_ID = re.compile(r"(localStorage|sessionStorage)\s*\.\s*(?:getItem|setItem|removeItem)\(\s*([A-Za-z_$][\w$]*)\s*[,)]")
 CONST = re.compile(r"(?<![\w$.])([A-Za-z_$][\w$]*)\s*=\s*(['\"])([^'\"\n]+)\2\s*[;,\n)]")
 PARAM = re.compile(r"(?:searchParams|URLSearchParams\([^()]*(?:\([^()]*\))?[^()]*\)|\b(?:params|query|qs|usp|sp))\s*\.\s*(?:get|has|getAll|set|delete|append)\(\s*['\"`]([\w.\-]+)")
 QUERY = re.compile(r"[?&]([A-Za-z_][\w\-]*)=([\w\-.%]*)")
 IDENT = re.compile(r"[A-Za-z_$][\w$]*")
 QUERY_LIT = re.compile(r"[?&]?([A-Za-z_][\w\-]*)=([\w\-.%]*)")   # a whole literal 'ext=1' (appended after '?' or '&')
-# function get(k, d) { … localStorage.getItem('app.' + k) … }: a wrapper of this file, its calls give the stored key
-WRAP_DEF = re.compile(r"function\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)[^)]*\)\s*\{[^}]*?(localStorage|sessionStorage)"
-                      r"\s*\.\s*(?:get|set|remove)Item\(\s*(['\"])([^'\"\n]*)\4\s*\+\s*\2\b")
+# function get(k, d) { … localStorage.getItem('app.' + k) … } (also get = function(k)…, get = (k) => …, get = k => …; the key
+# 'app.' + k, `app.${k}` or PREFIX + k with PREFIX = 'app.'): a wrapper, its calls give the stored key (in any file of the run)
+WRAP_HEAD = re.compile(r"\bfunction\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)|(?<![\w$.])([A-Za-z_$][\w$]*)\s*[:=]\s*(?:async\s+)?"
+                       r"(?:function\b[^(]*\(\s*([A-Za-z_$][\w$]*)|\(\s*([A-Za-z_$][\w$]*)[^()]*\)\s*=>|([A-Za-z_$][\w$]*)\s*=>)")
+WRAP_KEY = (r"(localStorage|sessionStorage)\s*\.\s*(?:get|set|remove)Item\(\s*(?:(['\"])([^'\"\n]*)\2\s*\+\s*{p}\b"
+            r"|`([^`$]*)\$\{{\s*{p}\s*\}}`|([A-Za-z_$][\w$]*)\s*\+\s*{p}\b)")
+# a regular expression literal (/[&<>"']/g): blanked before strings are read, so its quotes start no string
+RX_LIT = re.compile(r"/(?![*/])(?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\\\n\[])+/[dgimsuyv]*")
+RX_AFTER = set("(,=:[!&|?{};+-*%<>~^")
+RX_WORDS = {"return", "typeof", "case", "in", "of", "void", "delete", "instanceof", "new", "throw", "else", "do", "yield", "await"}
+# a name declared in a file (function x, var x, a parameter x): a wrapper of another file with that name is not this one
+DECLARED = r"\bfunction\s+{n}\b|\b(?:var|let|const)\s+{n}\b|\bfunction\b[^(\n]*\([^)]*\b{n}\b[^)]*\)|\([^()]*\b{n}\b[^()]*\)\s*=>|\b{n}\s*=>"
+CODEY = re.compile(r"\bfunction\s*\(|=>|[{}]")   # a piece of code, never text a user reads
 ROUTE_RX = re.compile(r"/\^?#\\/(?:\\.|[^/\\\n])*/[a-z]*")
 WS = re.compile(r"\s*")
 CALL = re.compile(r"(?<![\w$.])((?:[A-Za-z_$][\w$]*\s*(?:\?\.|\.)\s*)*[A-Za-z_$][\w$]*)\s*\(")
@@ -130,8 +143,8 @@ def from_markup(text, base, out, src, fragment=False):
                 out.append(("route", attrs[k], src, ln, None))
     for m in re.finditer(r"(?:^|>)([^<>]+)(?=<|$)" if fragment else r">([^<>]+)<", clean):
         s = re.sub(r"\s+", " ", htmllib.unescape(m.group(1))).strip()
-        if fragment and ('="' in s or "='" in s or re.fullmatch(r"[\s{}…]*", s)):   # an attribute piece, or only {…}
-            continue
+        if fragment and ('="' in s or "='" in s or re.fullmatch(r"[\s{}…]*", s) or CODEY.search(s.replace("{…}", ""))):
+            continue   # an attribute piece, only {…}, or code around the piece (function(c){…}, =>)
         if s and re.search(r"[^\W\d_]", s) and not re.fullmatch(r"\{\{[^}]*\}\}", s):
             out.append(("text", s, src, base + line_of(text, m.start(1)), None))
 
@@ -156,6 +169,53 @@ def close_paren(code, i):
     return len(code)
 
 
+def blank_regex(code):
+    """code with its regular expression literals blanked (line numbers kept): a / after an operator, an opening bracket,
+    a comma or a keyword such as return starts one; strings are skipped."""
+    chars, i, n = list(code), 0, len(code)
+    while i < n:
+        c = code[i]
+        if c in "'\"`":
+            m = STR.match(code, i)
+            if m:
+                i = m.end()
+                continue
+        elif c == "/":
+            j = i - 1
+            while j >= 0 and code[j] in " \t\r\n":
+                j -= 1
+            w = re.search(r"[\w$]+$", code[max(0, j - 11):j + 1]) if j >= 0 else None
+            if j < 0 or code[j] in RX_AFTER or (w and w.group(0) in RX_WORDS):
+                m = RX_LIT.match(code, i)
+                if m:
+                    chars[i:m.end()] = " " * (m.end() - i)
+                    i = m.end()
+                    continue
+        i += 1
+    return "".join(chars)
+
+
+def wrappers(code, consts=None):
+    """{name: (localStorage|sessionStorage, key prefix, (start, end) of the body)} of the storage wrappers defined in code."""
+    out = {}
+    for m in WRAP_HEAD.finditer(code):
+        name, prm = m.group(1) or m.group(3), m.group(2) or m.group(4) or m.group(5) or m.group(6)
+        b = re.match(r"\s*\{" if m.group(0).endswith("=>") else r"[^{;\n]*\{", code[m.end():])
+        if b:
+            i = m.end() + b.end() - 1
+            span = (i, close_paren(code, i) + 1)
+        else:   # an arrow with an expression body: to the end of the line
+            j = code.find("\n", m.end())
+            span = (m.end(), len(code) if j < 0 else j)
+        k = re.search(WRAP_KEY.format(p=re.escape(prm)), code[span[0]:span[1]])
+        if not k:
+            continue
+        pre = k.group(3) if k.group(3) is not None else k.group(4) if k.group(4) is not None else (consts or {}).get(k.group(5))
+        if pre is not None:
+            out.setdefault(name, (k.group(1), pre, span))
+    return out
+
+
 def named(callee, names):
     """True when a call (X.store.get, toast) is one of the names: the whole callee, or its last part ("toast" matches X.toast)."""
     low = callee.lower()
@@ -166,14 +226,19 @@ def from_script(text, base, out, src, opts=None):
     """Messages (string arguments of the message calls), other strings a user may read, limits, routes (static, and a
     row at each route built at run time), storage keys (Web Storage, configured wrapper calls, other .get/.put calls)."""
     opts = opts or {}
-    code = COMMENT.sub(blank, text)
+    raw_code = COMMENT.sub(blank, text)
+    code = blank_regex(raw_code)   # a regular expression literal is no string, no text (K4-5)
     msg_calls = opts.get("messageCalls") or MESSAGE_CALLS
     store_calls, prefix = opts.get("storageCalls") or [], opts.get("storagePrefix") or ""
     spans = []
     consts = {}   # KEY = 'app.pos': a storage key held in a constant (the first value given to the name)
     for m in CONST.finditer(code):
         consts.setdefault(m.group(1), m.group(3))
-    wraps = {m.group(1): (m.group(3), m.group(5)) for m in WRAP_DEF.finditer(code)}
+    own = wrappers(code, consts)
+    wraps = {k: v + (None,) for k, v in own.items()}
+    for k, v in (opts.get("_wraps") or {}).items():   # wrappers of other files of the run: (store, prefix, span, file),
+        if k not in wraps and v[3] != src and not re.search(DECLARED.format(n=re.escape(k)), code):   # unless the name is
+            wraps[k] = v                                                                                # declared here
     for m in CALL.finditer(code):
         callee = re.sub(r"\s|\?", "", m.group(1))
         if named(callee, msg_calls):
@@ -192,8 +257,9 @@ def from_script(text, base, out, src, opts=None):
             out.append(("storage", "%s %s%s" % (callee, prefix, key), src, ln, None))
         elif len(parts) > 1 and parts[-1] in WRAPPER_VERBS and parts[-2].lower() not in NOT_STORAGE:
             out.append(("storage", "%s %s" % (callee, key), src, ln, "wrapper"))
-        elif len(parts) == 1 and callee in wraps:   # a wrapper defined in this file: the key it stores is known
-            out.append(("storage", "%s %s%s (%s)" % (wraps[callee][0], wraps[callee][1], key, callee), src, ln, None))
+        elif len(parts) == 1 and callee in wraps:   # a wrapper of this file or of another file of the run: the key is known
+            w = wraps[callee]
+            out.append(("storage", "%s %s%s (%s%s)" % (w[0], w[1], key, callee, ", " + w[3] if w[3] else ""), src, ln, None))
         elif len(parts) == 1 and BARE_STORE.fullmatch(callee) and re.fullmatch(r"[\w.:\-]+", key):
             out.append(("storage", "%s %s" % (callee, key), src, ln, "wrapper"))
     for m in STR.finditer(code):
@@ -222,13 +288,18 @@ def from_script(text, base, out, src, opts=None):
         for m in rx.finditer(code):
             out.append(("limit", re.sub(r"\s+", " ", m.group(0)), src, base + line_of(code, m.start()), None))
     for m in STORAGE.finditer(code):
-        out.append(("storage", "%s %s" % (m.group(1), m.group(2)), src, base + line_of(code, m.start()), None))
+        key, tail = m.group(3), consts.get(m.group(5) or "")   # 'app.' + K with K = 'pos': the whole key is known
+        dyn = (bool(m.group(4)) and tail is None) or "${" in key   # 'app.' + k: a key prefix, the stored key is built at run time
+        if dyn and any(a <= m.start() < b for _s, _p, (a, b) in own.values()):
+            continue   # the prefix inside a wrapper: its calls give the keys
+        key = re.sub(r"\$\{[^{}]*\}", "{…}", key) + (tail if tail is not None else "…" if m.group(4) else "")
+        out.append(("storage", "%s %s" % (m.group(1), key), src, base + line_of(code, m.start()), "dynamic" if dyn else None))
     for m in STORAGE_ID.finditer(code):   # localStorage.getItem(KEY) with KEY = '…'
         if m.group(2) in consts:
             out.append(("storage", "%s %s" % (m.group(1), consts[m.group(2)]), src, base + line_of(code, m.start()), None))
     for m in PARAM.finditer(code):   # u.searchParams.get('q'), new URLSearchParams(location.search).get('ext')
         out.append(("param", m.group(1), src, base + line_of(code, m.start()), None))
-    for m in ROUTE_RX.finditer(code):
+    for m in ROUTE_RX.finditer(raw_code):
         out.append(("route", m.group(0), src, base + line_of(code, m.start()), None))
 
 
@@ -301,12 +372,25 @@ def collect(paths, root, opts=None, exclude=()):
             files += [] if excluded(p, root, p.parent, exclude) else [p]
         else:
             sys.exit("ERROR: not found: %s" % p)
-    rows, seen = [], {}
+    rels = []
     for f in files:
         try:
-            rel = f.resolve().relative_to(root).as_posix()
+            rels.append(f.resolve().relative_to(root).as_posix())
         except ValueError:
-            rel = f.as_posix()
+            rels.append(f.as_posix())
+    opts = dict(opts or {}, _wraps={})   # storage wrappers of every file, so a call in another file gives its key (K1a-5)
+    for f, rel in zip(files, rels):
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if f.suffix in (".html", ".htm", ".vue"):   # only the inline scripts of a page
+            text = "\n".join(m.group(1) for m in re.finditer(r"<script\b[^>]*>(.*?)</script\s*>", text, re.S | re.I))
+        code = blank_regex(COMMENT.sub(blank, text))
+        consts = {}
+        for m in CONST.finditer(code):
+            consts.setdefault(m.group(1), m.group(3))
+        for k, (st, pre, span) in wrappers(code, consts).items():
+            opts["_wraps"].setdefault(k, (st, pre, span, rel))
+    rows, seen = [], {}
+    for f, rel in zip(files, rels):
         for kind, text, src, ln, note in extract(f, rel, opts):
             key = (kind, text, note) + ((src, ln) if note == "dynamic" else ())  # a route built at run time: one row per site
             if key in seen:
@@ -420,8 +504,43 @@ def selftest():
     fn = {r["text"] for r in collect([d / "k32.html"], d, {"_functions": ["save", "load"]})}
     assert fn == {"Too long", "v.length > 9", "Loaded"}, fn
     assert {r["text"] for r in collect([d / "k32.html"], d, {"_functions": ["other"]})} == {"Other"}
+    # 0.12.3 (K5-1): <!-- SHELL:BEGIN (note) --> … <!-- SHELL:END --> and /* SHELL:BEGIN */ … /* SHELL:END */ too
+    (d / "k51.html").write_text("<!-- SHELL:BEGIN (shared frame; synced by a script) -->\n<nav><a>Frame menu</a></nav>\n<!-- SHELL:END -->\n"
+                                "<main><h1>Slide page</h1></main>\n<script>/* SHELL:BEGIN */ toast('Frame toast'); /* SHELL:END */ toast('Page toast');</script>\n",
+                                encoding="utf-8")
+    k51 = {r["text"] for r in collect([d / "k51.html"], d, {"_skipShell": True})}
+    assert {"Slide page", "Page toast"} <= k51 and not {"Frame menu", "Frame toast"} & k51, k51
     custom = {r["text"] for r in collect([d / "k32.html"], d, {"_skipShell": True, "skipRegions": [r"<nav>.*?</nav>"]})}
     assert "Shell menu" not in custom and "Shell toast" in custom, custom
+    # 0.12.3 (K1a-5): a wrapper whose key is 'prefix.' + k, `prefix.${k}` or PREFIX + k, called in the same file or in
+    # another file of the run; the prefix inside the wrapper is no row of its own, a prefix outside one is a dynamic key
+    (d / "k15").mkdir()
+    (d / "k15" / "store.js").write_text(
+        "function get(k){return localStorage.getItem('oneai2.'+k)}\nvar runs = get('amisChat');\n"
+        "const load = k => JSON.parse(sessionStorage.getItem(`p3.${k}`));\nvar PFX = 'app3.';\n"
+        "var store = { rd: function (key) { return localStorage.getItem(PFX + key); } };\n"
+        "localStorage.setItem('conv.' + id, s);\n", encoding="utf-8")
+    (d / "k15" / "page.html").write_text("<script>var a = get('ucStart'); var b = load('tab'); var c = rd('pin');</script>\n", encoding="utf-8")
+    (d / "k15" / "other.js").write_text("function store(get, put){ return get('schedQueue', []); }\nvar K_CUS = 'homeBg';\n"
+                                        "localStorage.removeItem('oneai2.' + K_CUS);\n", encoding="utf-8")
+    k15 = {(r["kind"], r["text"]): (r.get("note"), r["source"]) for r in collect([d / "k15"], d)}
+    for want in (("storage", "localStorage oneai2.amisChat (get)"), ("storage", "localStorage oneai2.ucStart (get, k15/store.js)"),
+                 ("storage", "sessionStorage p3.tab (load, k15/store.js)"), ("storage", "localStorage app3.pin (rd, k15/store.js)")):
+        assert want in k15 and k15[want][0] is None, (want, sorted(k15))
+    assert ("storage", "localStorage oneai2.") not in k15 and not any(t.startswith("sessionStorage p3.{") for _k, t in k15), sorted(k15)
+    assert k15[("storage", "localStorage conv.…")][0] == "dynamic" and ("storage", "localStorage oneai2.homeBg") in k15, sorted(k15)
+    assert not any("schedQueue (get" in t for _k, t in k15), "a parameter named get is not the wrapper of another file"
+    # K4-5: a regular expression literal is no string: esc() gives no text row, a route regex and real messages stay
+    (d / "k45.js").write_text(
+        "function esc(s){return String(s).replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]})}\n"
+        "var half = w / 2, q = h / 3; toast('Saved to the list');\nvar m = /^#\\/c\\/([\\w-]+)$/.exec(location.hash);\n"
+        "var h = '<b>' + x + '</b>' + (ok ? function(){ return 1 } : 0) + 'Plain label</i>';\n"
+        "var p = '<p>Sent by mail at 08:12 (mock); saved to the log.</p>';\n", encoding="utf-8")
+    k45 = collect([d / "k45.js"], d)
+    txt = {(r["kind"], r["text"]) for r in k45}
+    assert ("text", "Sent by mail at 08:12 (mock); saved to the log.") in txt and ("message", "Saved to the list") in txt and ("route", "/^#\\/c\\/([\\w-]+)$/") in txt, sorted(txt)
+    assert not any(re.search(r"function|]/g|=>|[{}]", t) and k in ("text", "string", "message") for k, t in txt), sorted(txt)
+    assert blank_regex("a = b / c / d; r = /x'y/g;\n") == "a = b / c / d; r = " + " " * 6 + ";\n"
     print("extract_rules.py selftest OK")
 
 

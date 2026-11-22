@@ -14,13 +14,22 @@
 // (ids, data-testid, aria-label) of visible elements inside the content root: the first selector of the list that
 // matches (plan / config contentRoot), never the shell around it.
 // --parity: no axe or focus check; every view also records a snapshot (visible text lines, interactive elements by
-// role and name, aria states) and every flow its URL after each step (relative to the entry folder, path only) and
+// role and name, aria states, the tag and classes of the elements of the content root by role, name and order) and
+// every flow its URL after each step (relative to the entry folder, path only) and
 // localStorage at the end (validation.py parity). plan.mask: selectors masked in screenshots, their text replaced by "▒".
 //
 // plan.prepare (a JS string, or {js, reload: true}) runs once after every page load of a screen and a flow, before its
 // own steps and prepare (for example to dismiss a shell overlay); reload: true reloads the page after it.
-// Every prepare and eval step may use await at the top level (the code is then run as the body of an async function).
+// Every prepare and eval step may use await at the top level (the code is then run as the body of an async function);
+// a script whose value is a promise (an async IIFE, "(async () => {…})()") is awaited too. A prepare that reloads or
+// leaves the page (location.reload()) waits for the new page to load instead of failing.
+// A state (and a flow) may carry "reload": true: its prepare runs (for example to write localStorage), the page is
+// reloaded and the theme and text size are set again, then the view is checked (plan.prepare is not run again, so it
+// cannot clear what the state wrote).
+// plan.settle: what to wait for right before every view and flow end is read and captured, after every step, prepare
+// and reload: a number (ms), a selector that must be hidden (a skeleton), or {wait: ms, waitForHidden: sel, waitFor: sel}.
 // A prepare that throws marks the view or flow with prepareError (parity reports it as an error, never as a match).
+// --shots <dir>: screenshots there instead of <out>/shots (validation.py --artifacts, validate.artifactsDir).
 // --discover also clicks each other button of the content root in a fresh page and, when no hash changes but a dialog,
 // tab panel, menu, [data-view] or panel appears, reports it as a state; hidden dialogs and popup buttons outside the
 // content root are listed as hints.
@@ -32,6 +41,7 @@
 // iframe plan.frames.F) and viewports (only these widths). A step without "timeout" waits plan.timeout, else 8000 ms
 // (the capture.js default). Not reported: text for screen readers only, hidden file inputs, links inside a sentence.
 // "reload" (or goto with reload: true) reloads the page and waits for load: a goto that only changes the hash does not.
+// expectText [selector, text]: the element's text contains text; [selector, ""]: the element has no text (whitespace only).
 //
 // States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: false} or named strings:
 // "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2).
@@ -79,7 +89,8 @@ const THEMING = Object.assign({ mode: modeAttr }, A.theming ? JSON.parse(A.themi
 const SET_THEME = A['set-theme'] || plan.setTheme || null;
 const WAIVE = A.waive ? JSON.parse(A.waive) : [];
 const out = A.out ? path.resolve(A.out) : null;
-if (out) fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
+const SHOTS = A.shots ? path.resolve(String(A.shots)) : out ? path.join(out, 'shots') : null;
+if (SHOTS) fs.mkdirSync(SHOTS, { recursive: true });
 
 // axe-core is optional: --axe (a file or a folder that holds it), else the project, the kit, and the current folder.
 let axePath = null, axeVersion = null;
@@ -102,14 +113,36 @@ else if (A.axe) {
   }
 }
 
-// Run plan JS in the page: top-level await is allowed (the code becomes the body of an async function, awaited).
-const AWAIT = /(^|[^\w$.])await\b/;
-const runJs = (page, code) => page.evaluate(c => (0, eval)(c), AWAIT.test(code) ? '(async () => {\n' + code + '\n})()' : code);
+// Run plan JS in the page. A script that parses as plain code is run as it is and its value awaited when it is a
+// promise ("(async () => { …; await sleep(1500) })()" waits the 1500 ms); a script that only parses with await at the
+// top level becomes the body of an async function, awaited. Nothing is returned to Node (a DOM node does not serialize).
+const runJs = (page, code) => page.evaluate(async c => {
+  let plain = true;
+  try { new Function(c); } catch (e) { plain = false; }
+  const v = (0, eval)(plain ? c : '(async () => {\n' + c + '\n})()');
+  if (v && typeof v.then === 'function') await v;
+}, code);
+// The page reloaded or left during the script (location.reload(), a link): wait for the new page instead of failing.
+const NAVIGATED = /Execution context was destroyed|navigation|Target page, context or browser has been closed|frame was detached/i;
 // A prepare script that throws: the error names the prepare, and the view or flow keeps it as prepareError.
 async function prepareJs(page, code, what) {
   try { await runJs(page, code); } catch (e) {
+    if (NAVIGATED.test(String(e.message || e)) && !page.isClosed()) { await page.waitForLoadState('load').catch(() => {}); return; }
     const err = new Error(what + ' failed: ' + String(e.message || e).split('\n')[0].slice(0, 200)); err.prepare = true; throw err;
   }
+}
+
+// plan.settle, right before a view or a flow end is read and captured: ms, a selector to be hidden, or
+// {wait, waitForHidden, waitFor}. A selector that stays shown fails the view (the timeout names it).
+const SETTLE = typeof plan.settle === 'number' ? { wait: plan.settle } : typeof plan.settle === 'string' ? { waitForHidden: plan.settle } : (plan.settle || {});
+async function settle(page) {
+  const T = plan.timeout || 8000;
+  if (SETTLE.waitFor) await page.locator(SETTLE.waitFor).first().waitFor({ state: 'visible', timeout: T })
+    .catch(e => { throw new Error('plan.settle: ' + SETTLE.waitFor + ' not shown in ' + T + ' ms'); });
+  if (SETTLE.waitForHidden) await page.waitForFunction(sel => [...document.querySelectorAll(sel)].every(el => {
+    const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.display === 'none' || s.visibility === 'hidden' || !b.width || !b.height; }),
+    SETTLE.waitForHidden, { timeout: T }).catch(e => { throw new Error('plan.settle: ' + SETTLE.waitForHidden + ' still shown after ' + T + ' ms'); });
+  if (SETTLE.wait) await page.waitForTimeout(Math.min(+SETTLE.wait, 10000));
 }
 
 const IGNORE_CONSOLE = /fonts\.(googleapis|gstatic)\.com|Failed to load resource.*(font|woff)|ERR_NAME_NOT_RESOLVED|ERR_INTERNET_DISCONNECTED/i;
@@ -198,8 +231,11 @@ async function runStep(page, s) {
   else if (s.expectVisible) await loc(s.expectVisible).waitFor({ state: 'visible', timeout: T });
   else if (s.expectHidden) await loc(s.expectHidden).waitFor({ state: 'hidden', timeout: T });
   else if (s.expectText) {
-    const txt = await loc(s.expectText[0]).textContent({ timeout: T });
-    if (!txt || !txt.includes(s.expectText[1])) throw new Error('text of ' + s.expectText[0] + ' does not contain "' + s.expectText[1] + '"');
+    if (!Array.isArray(s.expectText) || s.expectText.length !== 2 || typeof s.expectText[1] !== 'string') throw new Error('expectText needs [selector, text]');
+    const txt = (await loc(s.expectText[0]).textContent({ timeout: T })) || '';
+    if (s.expectText[1] === '') {   // "" = the element has no text (whitespace only)
+      if (txt.trim()) throw new Error('text of ' + s.expectText[0] + ' is not empty: "' + txt.trim().slice(0, 80) + '"');
+    } else if (!txt.includes(s.expectText[1])) throw new Error('text of ' + s.expectText[0] + ' does not contain "' + s.expectText[1] + '"');
   } else if (s.expectUrl) { if (!page.url().includes(s.expectUrl)) throw new Error('URL ' + page.url() + ' does not contain ' + s.expectUrl); }
   else throw new Error('unknown step ' + JSON.stringify(s));
 }
@@ -272,7 +308,7 @@ function normState(st) {
   return { name: st, theme: { [m[1]]: m[2].trim() } };
 }
 
-async function openPage(ctx, route, mode, prepare, errors) {
+async function openPage(ctx, route, mode, prepare, errors, reload) {
   const page = await ctx.newPage();
   page.on('pageerror', e => errors.push('pageerror: ' + String(e.message || e).slice(0, 200)));
   page.on('console', m => { if (m.type() === 'error' && !IGNORE_CONSOLE.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); });
@@ -285,6 +321,7 @@ async function openPage(ctx, route, mode, prepare, errors) {
   await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; });
   if (mode) await setTheme(page, 'mode', mode);
   if (prepare) await prepareJs(page, prepare, 'flow prepare');
+  if (prepare && reload) { await page.reload({ waitUntil: 'load' }); if (mode) await setTheme(page, 'mode', mode); }
   await page.waitForTimeout(250);
   return page;
 }
@@ -331,7 +368,24 @@ async function snapshot(page) {
     const hide = x => masked.reduce((v, m) => v.split(m).join('▒'), x);
     const text = (R.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 400).map(hide);
     const hk = o => { const r = {}; for (const [k, v] of Object.entries(o)) { const h = hide(k); r[h] = typeof v === 'number' ? (r[h] || 0) + v : v; } return r; };
-    return { root: root && R !== document.body ? root : 'body', text, roles: hk(roles), aria: hk(aria) };
+    // class and structure: the tag and sorted classes of each control (by role and name) and of each element with text of
+    // its own (by its text), the n-th of a key numbered; parity compares the keys both builds have
+    const classes = {}, nth = {};
+    for (const el of R.querySelectorAll('*')) {
+      if (Object.keys(classes).length >= 400) break;
+      if (!vis(el)) continue;
+      const role = (el.getAttribute('role') || '').split(/\s+/)[0] || implicit(el);
+      let key;
+      if (ROLES.test(role)) key = role + ' "' + label(el) + '"';
+      else {
+        const own = norm([...el.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' '));
+        if (!own) continue;
+        key = 'text "' + own.slice(0, 60) + '"';
+      }
+      nth[key] = (nth[key] || 0) + 1;
+      classes[nth[key] > 1 ? key + ' #' + nth[key] : key] = el.tagName.toLowerCase() + [...el.classList].sort().map(c => '.' + c).join('');
+    }
+    return { root: root && R !== document.body ? root : 'body', text, roles: hk(roles), aria: hk(aria), classes: hk(classes) };
   }, { root: plan.contentRoot || null, mask: MASK });
 }
 
@@ -365,7 +419,7 @@ async function runFlow(browser, flow) {
   if (PARITY) res.urls = [];
   let page;
   try {
-    page = await openPage(ctx, flow.start || '', null, flow.prepare, errors);
+    page = await openPage(ctx, flow.start || '', null, flow.prepare, errors, flow.reload);
     for (let i = 0; i < (flow.steps || []).length; i++) {
       const s = flow.steps[i];
       try {
@@ -376,13 +430,14 @@ async function runFlow(browser, flow) {
       }
     }
     if (errors.length) res.ok = false;
+    await settle(page);
     if (PARITY) {
       await page.waitForTimeout(150);
       res.storage = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
       res.snap = await snapshot(page);
     }
     const shot = 'flow__' + slug(flow.name) + '.png';
-    await page.screenshot(Object.assign({ path: path.join(out, 'shots', shot) }, masks(page)));
+    await page.screenshot(Object.assign({ path: path.join(SHOTS, shot) }, masks(page)));
     res.shot = shot;
   } catch (e) {
     res.ok = false; res.error = String(e.message || e).split('\n')[0].slice(0, 240);
@@ -548,11 +603,20 @@ async function discover(browser) {
               try { await runStep(page, sc.steps[i]); } catch (e) { throw new Error('step ' + (i + 1) + ': ' + String(e.message || e).split('\n')[0]); }
             }
             if (st.error) throw new Error(st.error);
-            if (modes.length > 1 || mode !== 'light') await setTheme(page, 'mode', mode);
-            for (const [k, v] of Object.entries(st.theme || {})) await setTheme(page, k, v);
-            if (st.textScale) await page.evaluate(x => { const h = document.documentElement; h.style.fontSize = (parseFloat(getComputedStyle(h).fontSize) * x) + 'px'; }, st.textScale);
+            const look = async () => {   // mode, theme values and text size of the view (set again after a reload)
+              if (modes.length > 1 || mode !== 'light') await setTheme(page, 'mode', mode);
+              for (const [k, v] of Object.entries(st.theme || {})) await setTheme(page, k, v);
+              if (st.textScale) await page.evaluate(x => { const h = document.documentElement; h.style.fontSize = (parseFloat(getComputedStyle(h).fontSize) * x) + 'px'; }, st.textScale);
+            };
+            await look();
             if (st.prepare) await prepareJs(page, st.prepare, 'prepare of state "' + st.name + '"');
+            if (st.reload) {   // the state's data is written: load the page again so it starts from it (K1a-7)
+              await page.reload({ waitUntil: 'load' });
+              await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; });
+              await look();
+            }
             await page.waitForTimeout(150);
+            await settle(page);
             Object.assign(item, await pageChecks(page, vp));
             if (PARITY) item.snap = await snapshot(page);
             else {
@@ -562,7 +626,7 @@ async function discover(browser) {
             }
             const shot = [slug(sc.id), slug(st.name), vp, mode].join('__') + '.png';
             await page.evaluate(() => window.scrollTo(0, 0));
-            await page.screenshot(Object.assign({ path: path.join(out, 'shots', shot), fullPage: true }, masks(page)));
+            await page.screenshot(Object.assign({ path: path.join(SHOTS, shot), fullPage: true }, masks(page)));
             item.shot = shot;
           } catch (e) {
             item.fatal = String(e.message || e).split('\n')[0].slice(0, 240);
