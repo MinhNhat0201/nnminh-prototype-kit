@@ -18,6 +18,8 @@ What it does:
   - react / vue: copies the DS bundle to src/ds/<bundle file>, wrapped in the ds.json > css.marker comments
   - html multi: runs _shell/build.py build so every page holds the shared shell
   - writes templates/CLAUDE.md to the project CLAUDE.md only when the project has none
+  - creates the project rules folder (kit.config.json > paths.rules, default rules/) with a README when it is missing
+  - uses the app's own DS profile when kit.config.json > apps[].ds is set
 
 It never overwrites a file: when a target file exists it writes nothing and exits 1 with the list.
 It does not run npm install, edit kit.config.json, commit or push.
@@ -33,7 +35,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, version_label, STACKS  # noqa: E402
+from kitconf import load, ds_path, version_label, STACKS, t as tr  # noqa: E402
 
 TEMPLATES = KIT / "templates"
 SKIP = {"node_modules", "dist", "dist-handoff", "__pycache__", ".vite"}
@@ -186,7 +188,7 @@ def main():
     if not a.name.strip() or re.search(r'["\\<>&`]', a.name):
         die('--name must not be empty or contain " \\ < > & or a backtick')
 
-    cfg = load()
+    cfg = load(app=a.app)  # the app's own DS profile when kit.config.json > apps[].ds is set
     root = Path(cfg["_root"])
     declared = next((x for x in cfg["apps"] if x.get("id") == a.app), None)
     stack = a.stack or (declared or {}).get("stack") or cfg["stack"]  # apps[].stack overrides the project stack
@@ -294,6 +296,9 @@ def main():
         plan.append((app_dir / "src" / "ds" / bundle_file,
                      "%s\n%s\n%s\n" % (real_markers[0], css, real_markers[1])))
 
+    rules_dir = root / ((cfg.get("paths") or {}).get("rules") or "rules")
+    if not rules_dir.exists():  # the project layer of the rules registry (scripts/rules.py)
+        plan.append((rules_dir / "README.md", tr(cfg, "rules.readme")))
     claude_md = root / "CLAUDE.md"
     write_claude = not claude_md.exists()
     if write_claude:

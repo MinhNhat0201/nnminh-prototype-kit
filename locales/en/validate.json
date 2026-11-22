@@ -27,5 +27,6 @@
   "validate.kind.visual": "Visual change vs baseline",
   "validate.kind.flow": "Flow",
   "validate.shotsTitle": "Screenshots",
-  "validate.shotsNote": "Screenshots are in shots/, highlighted differences in diffs/. After a human has looked at them, accept them as the new baseline with: validation.py baseline --app <app>."
+  "validate.shotsNote": "Screenshots are in shots/, highlighted differences in diffs/. After a human has looked at them, accept them as the new baseline with: validation.py baseline --app <app>.",
+  "validate.kind.rule": "Project rule (rules registry)"
 }

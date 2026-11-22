@@ -8,6 +8,8 @@ description: "Put a prototype flow board on Figma: one screenshot per screen, jo
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
 Model and effort: `kit.config.json > skills.wireflow` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
+Rules: run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rules.py list --app <app> --skill wireflow` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 The result is a **flow reference board** in a Figma Design file, not an editable design. Each screen is a real prototype capture; arrows carry the user action, as in the flows section of the spec.
 
 Why it is cheap: the model never reads the HTML and never writes Figma code per element. Images and pin positions come from the capture step of `annotate`. The code sent to Figma is a **fixed template** (`assets/wireflow-template.js`) plus compact data. Images go up by HTTP, not through the context.

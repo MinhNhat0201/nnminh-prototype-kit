@@ -1,6 +1,7 @@
 // Load kit.config.json and the DS profile it points to (Node version of kitconf.py).
 //   const { load, t, versionLabel } = require('<kit>/scripts/kitconf.js');
 //   const cfg = load();   // cfg._root, cfg._ds, cfg._dsDir
+//   const mob = load(null, true, 'acme-mobile');   // the DS profile of that app (apps[].ds)
 const fs = require('fs');
 const path = require('path');
 
@@ -10,14 +11,15 @@ const DEFAULTS = {
   local: { prefix: 'x-', marker: 'LOCAL', registry: 'docs/local-components.json', command: { update: null, check: null }, fields: {} },
   handoff: { dir: 'docs/handover', zipName: 'Design - {pbi}', maxZipMB: 3, figmaRequired: true, itemLabel: '', grepLabels: [],
     dsLabel: 'auto', dsLabelCheck: 'warn', specFiles: { archive: 'archive.md', crossPage: 'cross-page.md', legacy: [] },
-    csv: { feature: null, qc: null }, pre: null, post: null },
-  email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3, demoLinks: true, maxItems: 12 },
+    csv: { feature: null, qc: null }, pre: null, post: null, specFields: {} },
+  email: { subject: '[{app}] Design - {feature} - {version}', attachLimitMB: 3, demoLinks: true, maxItems: 12, template: null },
   deploy: { type: 'none', site: null },
   sync: { command: null, check: null },
   review: { extraChecks: [] },
   validate: { touchTarget: { default: 44, desktop: 24 } },
   skills: {},
-  paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits', explorations: 'docs/explorations', context: 'product-context', validation: 'docs/validation', verify: 'docs/verify' },
+  rules: { categories: {} },
+  paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits', explorations: 'docs/explorations', context: 'product-context', validation: 'docs/validation', verify: 'docs/verify', rules: 'rules' },
 };
 const DS_DEFAULTS = {
   label: null, version: '0.0.0', platforms: ['web'],
@@ -48,23 +50,34 @@ function findRoot(start) {
   }
 }
 
-function load(start, require = true) {
+function readProfile(root, rel) {
+  if (!rel) return [null, null];
+  const dir = path.resolve(root, rel), f = path.join(dir, 'ds.json');
+  if (!fs.existsSync(f)) return [null, null];
+  const ds = merge(DS_DEFAULTS, JSON.parse(fs.readFileSync(f, 'utf8')));
+  ds.label = ds.label || ds.name;
+  return [ds, dir];
+}
+
+// The app's own DS profile (apps[].ds) replaces the top-level one; unknown app or no apps[].ds: unchanged.
+function forApp(cfg, appId) {
+  if (!cfg || !appId) return cfg;
+  const a = (cfg.apps || []).find(x => x.id === appId);
+  const out = { ...cfg, _app: appId };
+  if (a && a.ds && a.ds !== cfg.ds) { out.ds = a.ds; [out._ds, out._dsDir] = readProfile(cfg._root, a.ds); }
+  return out;
+}
+
+function load(start, require = true, app = null) {
   const root = findRoot(start);
   if (!root) {
     if (require) { console.error('ERROR: kit.config.json not found in this folder or any parent. Run the kickoff skill first.'); process.exit(1); }
     return null;
   }
   const cfg = merge(DEFAULTS, JSON.parse(fs.readFileSync(path.join(root, 'kit.config.json'), 'utf8')));
-  cfg._root = root; cfg._ds = null; cfg._dsDir = null;
-  if (cfg.ds) {
-    const dir = path.resolve(root, cfg.ds), f = path.join(dir, 'ds.json');
-    if (fs.existsSync(f)) {
-      const ds = merge(DS_DEFAULTS, JSON.parse(fs.readFileSync(f, 'utf8')));
-      ds.label = ds.label || ds.name;
-      cfg._ds = ds; cfg._dsDir = dir;
-    }
-  }
-  return cfg;
+  cfg._root = root; cfg._app = null;
+  [cfg._ds, cfg._dsDir] = readProfile(root, cfg.ds);
+  return app ? forApp(cfg, app) : cfg;
 }
 
 const fmt = (s, kw) => s.replace(/\{(\w+)\}/g, (m, k) => (k in kw ? kw[k] : m));
@@ -86,4 +99,4 @@ function t(cfgOrLang, key, kw = {}) {
   return fmt(locale(lang)[key] || locale('en')[key] || key, kw);
 }
 
-module.exports = { load, findRoot, t, versionLabel, dsPath, KIT_ROOT };
+module.exports = { load, forApp, findRoot, t, versionLabel, dsPath, KIT_ROOT };

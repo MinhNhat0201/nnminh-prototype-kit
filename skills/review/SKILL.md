@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.review` (`model`, `effort`) when set
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill review` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Goal: tell the user **how far each app is in sync with the DS, where it deviates, whether that matters, and what it risks**.
 The skill only measures, analyses and proposes. It never edits the app, the local registry or the DS, and never opens a fix PR.
 
@@ -18,7 +20,7 @@ Scripts run from the project folder (or take `--project`).
 ## Step 1. Read configuration and scope
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py check`). Missing → `kickoff`. No DS profile → `adopt`.
-- Read the DS profile: `ds.json`, `rules.md`, `catalog.md`. Intentional deviations and "do not override" rules in `rules.md` are never findings.
+- Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` when the output says so). Intentional deviations, rule exceptions for the app and "do not override" rules are never findings.
 - The DS source of truth is the bundle at `ds.json > css.bundle` and the profile files. Never say from memory that a token or class "exists in the DS": check with a script or read the source.
 - Ask if unclear: which apps (default: every app in `apps[]`), static scan only or with browser checks, compare with an earlier audit (in `paths.audits`, if any).
 
@@ -28,7 +30,9 @@ Scripts run from the project folder (or take `--project`).
 python3 <kit>/skills/review/scripts/audit_app.py [app ...] --json <scratchpad>/audit.json
 ```
 
-Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines) to the app's table, or to "Project checks" when it is not per app. Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+Rules registry: `audit_app.py` also runs the `check` command of every active rule for `review` (`rules.py check`): one row per rule and app, a failing `must` rule is a Deviation, a failing `should` or `note` rule a Note. Report the rules without an automated check that matter for the audit (`rules.py coverage`) as checked by reading. `--no-rules` skips them.
+
+Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines; `{app}` = app id, `{path}` = app folder) to the app's table, or to "Project checks" when it is not per app. Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
 
 DS with its own Vue component layer (`ds.json > components.vue`): vue apps get a "DS Vue components" row: local `.vue` files named like a DS component (rebuilt instead of used) and shadcn-vue imports are hard-rule violations. With `ds.json > tailwind: false` there is no Tailwind row and Tailwind is never asked for.
 

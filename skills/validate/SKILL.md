@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.validate` (`model`, `effort`) when s
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill validate` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Script: `V=<kit>/skills/validate/scripts/validation.py` (`--help` lists every command); it runs `validate.js` (Playwright, installed Chromium; never `playwright install`). Folder: `<paths.validation>/<app>/` (default `docs/validation`).
 
 Goal: a prototype that was checked, not only generated.
@@ -22,7 +24,7 @@ Reason: a screen that looks right in one screenshot can still break at another w
   - **screens**: one per screen (S-ids from the `define` plan or the `annotate` spec), with its `route` (`""` for the entry, `#/settings` for hash routes);
   - **states** per screen: every state the screen has (empty, loading, error, success, long content), each with a `prepare` script run in the page (clear or seed `localStorage`, click a control, set a mock flag). A state you cannot reach without code changes → list it in the report as not checked; never fake it;
   - **flows**: the user flows of the wave, as steps (`click`, `fill`, `select`, `press`, `goto`, `wait`, `expectVisible`, `expectHidden`, `expectText`, `expectUrl`), each with the acceptance criterion it proves.
-- The app already has a capture manifest (`annotate`, `handoff`): `python3 $V init --app <id> --from-manifest <manifest.js> --base <URL the manifest is served at>` turns its screens into plan screens, each with the steps that reach it (screens it continues from are inlined; `F|…` and `in` frames kept). Screens recorded with clicks run at the manifest width only. Run with the prototype served at the same base URL (the plan keeps it as `url`). Add states and flows by hand.
+- The app already has a capture manifest (`annotate`, `handoff`): `python3 $V init --app <id> --from-manifest <manifest.js> --base <URL the manifest is served at>` turns its screens into plan screens, each with the steps that reach it (screens it continues from are inlined; `F|…` and `in` frames kept). Screens recorded with clicks run at the manifest width only. Run with the prototype served at the same base URL (the plan keeps it as `url`). Steps without `timeout` wait the plan's `timeout` (copied from the manifest, default 8000 ms, the capture default), so a screen that captures does not fail here on a slow wait. Add states and flows by hand.
 - Touch targets: the minimum on phone widths depends on the app's platform (`apps[].platform`, sizes in `kit.config.json > validate.touchTarget`: 44 px by default, 24 px for `desktop`, the WCAG 2.2 minimum). A desktop web app checked at 390 px is not held to the phone size.
 - Accessibility needs axe-core in the project: `npm i -D axe-core`. Not installed → ask once whether to install; without it the report lists accessibility as skipped, never as passed.
 
@@ -32,8 +34,10 @@ Reason: a screen that looks right in one screenshot can still break at another w
 
 | Result | Meaning | Examples |
 |---|---|---|
-| **Fail** | A real defect | page or console error, horizontal overflow, axe critical or serious, a flow step that fails, a page that does not open |
-| **Needs a human** | The script cannot decide | touch target under the platform minimum on phones, clipped text, no visible focus ring, axe moderate or minor, a visual change against the baseline |
+| **Fail** | A real defect | page or console error, horizontal overflow, axe critical or serious, a flow step that fails, a page that does not open, a `must` rule of the rules registry whose check fails |
+| **Needs a human** | The script cannot decide | touch target under the platform minimum on phones, clipped text, no visible focus ring, axe moderate or minor, a visual change against the baseline, a `should` or `note` rule whose check fails |
+
+Never reported: text for screen readers only (1×1 box, `clip`, `clip-path`), a file input hidden behind its button, a link inside a sentence (the inline exception of WCAG 2.5.8). Rules: `run` also runs the `check` of every active rule for `validate` (`rules.py check --app <id>`); `--no-rules` skips them.
 | **Skipped** | Not checked, and why | axe-core not installed, no baseline yet |
 
 ## Step 3. Read the report like a reviewer

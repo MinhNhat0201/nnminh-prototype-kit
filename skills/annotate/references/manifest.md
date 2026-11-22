@@ -46,7 +46,7 @@ module.exports = {
 | `{ eval }`, `{ waitEval }` | Run a script / wait until an expression is true |
 | `{ waitUrl: 'regex' }`, `{ wait: ms }` | Wait for a URL / a delay |
 
-Any step may add `in: 'F'` (act inside frame `F`) and `timeout` (ms, default 8000).
+Any step may add `in: 'F'` (act inside frame `F`) and `timeout` (ms). Without it a step waits the manifest's `timeout` (default 8000 ms); `validate` uses the same value (`validation.py init --from-manifest` copies it into the plan), so a screen that captures does not fail there. The manifest may name its `app`: token names then come from that app's DS profile (`apps[].ds`).
 
 Every frame named by a selector (`F|…`) or by `in` must be declared in `frames`; otherwise `capture.js` stops with an ERROR that lists each place, before it opens a browser (a pin is never silently reported as "not found").
 
@@ -71,3 +71,5 @@ Older manifests may use frame-prefixed step names: `fclick: sel` is read as `{ c
 Token matching: every custom property that starts with `ds.json > tokens.prefix` is resolved on `<html>`. For each property only names of the matching role are kept (`color` → `text`, `icon`; `backgroundColor` → `bg`; `borderColor` → `stroke`; `borderRadius` → `radius`; `fontSize`; `lineHeight`; `gap`, `padding` → `spacing`; `boxShadow` → `shadow`). With no role match, primitives (prefix but no role) are returned. `padding` tokens describe `padding-top` only.
 
 `screens.json` merges with the previous run, so `--only` keeps the other screens. Exit code 1 when a screen's steps fail.
+
+Border notes: `borderColor` and its stroke token are recorded only when the border is wider than 0. An element without a border gets no stroke token in its style notes (earlier versions listed the colour of a 0 px border).

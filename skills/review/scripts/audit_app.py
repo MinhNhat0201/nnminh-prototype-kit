@@ -17,12 +17,22 @@ Usage:
   python3 audit_app.py --json out.json      also write raw numbers
   python3 audit_app.py --roots roots.json   write the DS root classes for audit_components_browser.js
   python3 audit_app.py --no-extra           skip kit.config.json > review.extraChecks
+  python3 audit_app.py --no-rules           skip the check commands of the rules registry (scripts/rules.py)
   python3 audit_app.py --selftest           checks of the extra-check runner and the DS Vue layer check
 
 Project checks (extension point): kit.config.json > review.extraChecks = [{"name", "command", "parse"?, "level"?}] run
 after the scan in the project root. A command with {app} runs once per audited app and adds a row to that app's table;
 otherwise it adds a row to the "Project checks" table. Result = exit code plus the summary lines: lines matching the
-regex "parse", else the last non-empty line. Exit 0 = Pass, else "level" (default Deviation; "note" for Note).
+regex "parse", else (or when none matches) the last non-empty line. Exit 0 = Pass, else "level" (default Deviation;
+"note" for Note). {app} is the app id, {path} its folder (apps[].path).
+
+Rules registry: the check commands of the active rules for the review skill (scripts/rules.py check) add one row per
+rule and app: a failing must rule = Deviation, should or note = Note.
+
+Each app is audited against its own DS profile (apps[].ds, else ds). Root classes come from the profile's catalog.json
+when it exists (the components it lists), else from the components CSS. Files other apps build into this app
+(apps[].usedBy of a "page" app) are skipped, and the DS version is read from pages (HTML <meta> and footer label; Vue,
+JSX and TSX label text), never from scripts.
 
 DS Vue layer: when ds.json > components.vue is set, vue apps also get the row "DS Vue components": local .vue files
 named like a DS Vue component (rebuilt instead of used) and imports of shadcn-vue components (@/components/ui/).
@@ -41,13 +51,15 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, ds_path, t, ds_vue  # noqa: E402
+from kitconf import load, ds_path, t, ds_vue, app_ds  # noqa: E402
+import rules as RULES  # noqa: E402  (scripts/rules.py)
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".vite", ".next", ".nuxt", "coverage", ".git"}
 EXT_HTML = {".html", ".htm"}
 EXT_CSS = {".css", ".scss"}
 EXT_SCRIPT = {".js", ".mjs", ".ts", ".tsx", ".jsx"}
 EXT_VUE = {".vue"}
+PAGE_EXT = EXT_HTML | EXT_VUE | {".jsx", ".tsx"}
 
 STYLE = re.compile(r"<style([^>]*)>(.*?)</style>", re.S | re.I)
 STYLE_ATTR = re.compile(r'(?<![:\w-])style="([^"]*)"')
@@ -122,10 +134,10 @@ def vkey(s):
 class Ctx:
     """Everything the audit needs from kit.config.json and ds.json."""
 
-    def __init__(self, start=None):
-        cfg = load(start)
+    def __init__(self, start=None, app=None):
+        cfg = load(start, app=app)
         if cfg["_ds"] is None:
-            die("no DS profile: kit.config.json > ds must point at a folder with ds.json.")
+            die("no DS profile: kit.config.json > ds (or apps[].ds of %s) must point at a folder with ds.json." % (app or "the app"))
         self.cfg, self.ds, self.root = cfg, cfg["_ds"], Path(cfg["_root"])
         self.prefix = self.ds["tokens"]["prefix"]
         p = re.escape(self.prefix)
@@ -171,10 +183,13 @@ def app_files(ctx, app):
         return [base]
     ds_dir = Path(ctx.cfg["_ds_dir"]).resolve()
     exts = EXT_HTML | EXT_CSS | EXT_SCRIPT | EXT_VUE
+    built = build_outputs(ctx.cfg)
     out = []
     for f in sorted(base.rglob("*")):
         if not f.is_file() or f.suffix.lower() not in exts:
             continue
+        if f.resolve() in built:
+            continue  # build output of another app (apps[].usedBy): audited with that app
         rel = f.relative_to(base).parts
         if any(p in SKIP_DIRS or p.startswith(".") for p in rel[:-1]):
             continue
@@ -191,6 +206,25 @@ def app_files(ctx, app):
 WRAP = re.compile(r"\.([\w-]+)(?![\w-])(?:[.:\[(][^\s>]*)?(?:\s*(>)\s*|\s+)(button|input|select|textarea|table)\b(?![\w-])")
 TAG = re.compile(r"<(/?)([A-Za-z][\w.-]*)((?:[^>\"'{]|\"[^\"]*\"|'[^']*'|\{[^}]*\})*)>")
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+
+def build_outputs(cfg):
+    """Resolved paths of files that other apps build into an app (apps[].usedBy)."""
+    root = Path(cfg["_root"])
+    return {(root / u).resolve() for a in cfg.get("apps") or [] for u in (a.get("usedBy") or []) if isinstance(u, str)}
+
+
+def catalog_roots(ctx):
+    """Root classes of the components listed in the profile's catalog.json, or None when it has none."""
+    p = Path(ctx.cfg["_ds_dir"]) / (ctx.ds.get("catalog_json") or "catalog.json")
+    if not p.is_file():
+        return None
+    try:
+        comps = json.loads(p.read_text(encoding="utf-8")).get("components") or []
+    except ValueError:
+        return None
+    roots = {c["class"] for c in comps if isinstance(c, dict) and c.get("class") and c.get("status") != "deprecated"}
+    return roots or None
 
 
 def class_tokens(attrs):
@@ -240,6 +274,9 @@ def ds_facts(ctx, min_rules=3):
     allm = set().union(*mods.values()) if mods else set()
     roots = {r for r, n in rootn.items() if n >= min_rules and len(r) > 2 and r not in allm
              and not r.startswith(("is-", ctx.local_prefix))}
+    cat = catalog_roots(ctx)
+    if cat:  # the catalogue names the components: count those, not every class of the bundle
+        roots = cat
     classes |= roots  # root classes count even when short (btn, tag)
     rules = {(norm(m.group(1)), norm(m.group(2))) for m in RULE.finditer(css)}
     # wrapper classes that style a native control inside them, e.g. `.acme-select > select` (child) or `.acme-x select` (descendant)
@@ -249,9 +286,9 @@ def ds_facts(ctx, min_rules=3):
             for w in WRAP.finditer(sel):
                 child = w.group(2) == ">"
                 wrappers[w.group(3)][w.group(1)] = wrappers[w.group(3)].get(w.group(1), True) and child
-    return {"rules": rules, "wrappers": {t: dict(v) for t, v in wrappers.items()}, "sel": {k for k, _ in rules}, "roots": roots, "mods": {r: mods[r] for r in roots},
+    return {"rules": rules, "wrappers": {t: dict(v) for t, v in wrappers.items()}, "sel": {k for k, _ in rules}, "roots": roots, "mods": {r: mods.get(r, set()) for r in roots},
             "all_classes": set(rootn) | allm | set(cnt), "defs": defs, "names": {k for k, _ in defs},
-            "classes": classes, "version": ctx.ds["version"]}
+            "classes": classes, "version": ctx.ds["version"], "roots_from": "catalog.json" if cat else "css"}
 
 
 # ---------- extraction ----------
@@ -397,6 +434,8 @@ def declared_versions(ctx, files):
     label = re.compile(pat)
     seen = collections.Counter()
     for f in files:
+        if f.suffix.lower() not in PAGE_EXT:
+            continue  # scripts and styles may name older DS versions (comments, changelogs, copied bundles)
         txt = read(f)
         for m in meta.finditer(txt):
             seen["meta " + m.group(1)] += 1
@@ -599,6 +638,18 @@ def ds_vue_names(ctx, cv):
     return {n for n in names if n}
 
 
+def rule_rows(ctx, apps):
+    """Rows from the rules registry: the check commands of active rules for the review skill (rules.py check)."""
+    out = []
+    for x in RULES.run_checks(ctx.cfg, skill="review"):
+        if x["app"] and x["app"] not in apps:
+            continue
+        lvl = "pass" if x["ok"] else ("deviation" if x["severity"] == "must" else "note")
+        out.append({"_app": x["app"], "name": "%s %s: %s" % (ctx.tr("rule"), x["id"], x["title"]), "command": x["command"],
+                    "exit": x["exit"], "summary": x["summary"], "level": lvl, "rule": x["id"]})
+    return out
+
+
 def run_extra(ctx, apps):
     """kit.config.json > review.extraChecks: [{name, command, parse?, level?}] -> rows per app id (None = project)."""
     out = collections.defaultdict(list)
@@ -606,17 +657,17 @@ def run_extra(ctx, apps):
         cmd = x.get("command")
         if not x.get("name") or not cmd:
             continue
-        for aid in (apps if "{app}" in cmd else [None]):
-            line = cmd.replace("{app}", shlex.quote(aid)) if aid else cmd
+        per_app = "{app}" in cmd or "{path}" in cmd
+        for aid in (apps if per_app else [None]):
+            path = ((ctx.apps().get(aid) or {}).get("path") or "") if aid else ""
+            line = cmd.replace("{app}", shlex.quote(aid)).replace("{path}", shlex.quote(path)) if aid else cmd
             try:
                 r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
                 code, lines = r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()]
             except subprocess.TimeoutExpired:
                 code, lines = 124, ["timed out"]
-            if x.get("parse"):
-                summary = [ln for ln in lines if re.search(x["parse"], ln)][:6]
-            else:
-                summary = lines[-1:]
+            summary = [ln for ln in lines if re.search(x["parse"], ln)][:6] if x.get("parse") else []
+            summary = summary or lines[-1:]  # parse matched nothing: the last line, as documented
             lvl = "pass" if code == 0 else ("note" if x.get("level") == "note" else "deviation")
             out[aid].append({"name": x["name"], "command": line, "exit": code, "summary": summary, "level": lvl})
     return out
@@ -747,6 +798,21 @@ def selftest():
     assert ex["acme-vue"][0]["exit"] == 2 and ex["acme-vue"][0]["summary"] == ["bad acme-vue"], ex["acme-vue"]
     r = audit_app(ctx, ctx.apps()["acme-vue"], ds_facts(ctx))
     assert r["dsvue"]["rebuilt"] == ["apps/acme-vue/src/components/local/AcmeDialog.vue"], r["dsvue"]
+    # parse that matches nothing -> last line; {path}; build outputs of a page app; catalog.json roots; versions from pages
+    cfgj = json.loads((d / "kit.config.json").read_text())
+    cfgj["review"]["extraChecks"] = [{"name": "P", "command": py + " -c \"print('x'); print('last')\" {path}", "parse": "^nothing"}]
+    cfgj["apps"].append({"id": "pg", "path": "src/pg", "stack": "vue", "type": "page", "usedBy": ["apps/acme-vue/src/pg.js"]})
+    (d / "kit.config.json").write_text(json.dumps(cfgj))
+    (src / "pg.js").write_text("const a = '#123456'; /* acme 0.1.0 */")
+    (src / "old.js").write_text("// acme 0.5.0 changelog")
+    (d / "ds" / "acme" / "catalog.json").write_text(json.dumps({"components": [{"class": "acme-btn"}, {"class": "acme-old", "status": "deprecated"}]}))
+    ctx = Ctx(d)
+    ex = run_extra(ctx, ["acme-vue"])
+    assert ex["acme-vue"][0]["summary"] == ["last"], ex
+    assert not [f for f in app_files(ctx, ctx.apps()["acme-vue"]) if f.name == "pg.js"], "usedBy output skipped"
+    lib = ds_facts(ctx)
+    assert lib["roots"] == {"acme-btn"} and lib["roots_from"] == "catalog.json", lib["roots"]
+    assert not declared_versions(ctx, app_files(ctx, ctx.apps()["acme-vue"])), "no version labels from scripts"
     assert r["dsvue"]["shadcn"] == ["apps/acme-vue/src/App.vue"] and r["dsvue"]["components"] == 2, r["dsvue"]
     shutil.rmtree(d, ignore_errors=True)
     print("audit_app.py selftest OK")
@@ -761,6 +827,7 @@ def main():
     ap.add_argument("--min-rules", type=int, default=3, help="rules a class needs in the DS components CSS to count as a root class (default 3)")
     ap.add_argument("--project", help="project folder (default: the current folder)")
     ap.add_argument("--no-extra", action="store_true", help="do not run kit.config.json > review.extraChecks")
+    ap.add_argument("--no-rules", action="store_true", help="do not run the check commands of the rules registry")
     if "--selftest" in sys.argv:
         selftest()
         return
@@ -775,13 +842,21 @@ def main():
     out, js = ["# " + ctx.tr("title"), "", ctx.tr("intro", ds=ctx.label(), bundle=Path(ctx.bundle_path).relative_to(ctx.root) if ctx.root in Path(ctx.bundle_path).parents else ctx.bundle_path, stack=ctx.stack + ("".join(sorted({", %s: %s" % (k, apps[k]["stack"]) for k in keys if apps[k].get("stack") and apps[k]["stack"] != ctx.stack})))), ""], []
     project_stack = ctx.stack
     extra = {} if a.no_extra else run_extra(ctx, keys)
+    for x in ([] if a.no_rules else rule_rows(ctx, keys)):
+        extra.setdefault(x.pop("_app"), []).append(x)
+    per_profile = {ctx.cfg.get("ds"): (ctx, lib)}
     for k in keys:
-        ctx.stack = apps[k].get("stack") or project_stack  # apps[].stack overrides the project stack
-        r = audit_app(ctx, apps[k], lib)
-        r["stack"] = ctx.stack
+        prof = app_ds(ctx.cfg, k)  # apps[].ds: the app is audited against its own DS profile
+        if prof not in per_profile:
+            c = Ctx(a.project, app=k)
+            per_profile[prof] = (c, ds_facts(c, a.min_rules))
+        actx, alib = per_profile[prof]
+        actx.stack = apps[k].get("stack") or project_stack  # apps[].stack overrides the project stack
+        r = audit_app(actx, apps[k], alib)
+        r["stack"], r["ds"] = actx.stack, actx.label()
         r["extra"] = extra.get(k, [])
         js.append(r)
-        out.append(report(ctx, r))
+        out.append(report(actx, r))
     if extra.get(None):
         out += ["## " + ctx.tr("extra.title"), "", "| %s | %s | %s |" % (ctx.tr("col.item"), ctx.tr("col.result"), ctx.tr("col.level")),
                 "|---|---|---|"]

@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.verify` (`model`, `effort`) when set
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill verify` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Script: `Y=<kit>/skills/verify/scripts/verify.py` (`--help` lists every command); it runs `verify.js` (Playwright, installed Chromium; never `playwright install`). Folder: `<paths.verify>/<name>/` (default `docs/verify`).
 
 Goal: the shipped product matches what was approved, and every difference has an owner.

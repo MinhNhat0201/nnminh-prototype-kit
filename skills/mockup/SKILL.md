@@ -8,6 +8,8 @@ description: "Figma handoff for one work item, built from a handoff package or f
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
 Model and effort: `kit.config.json > skills.mockup` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
+Rules: run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rules.py list --app <app> --skill mockup` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 The result is **one Figma page per work item** with two boards:
 
 | Board | What | How |

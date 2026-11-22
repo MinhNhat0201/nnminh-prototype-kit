@@ -80,5 +80,6 @@
  "review.b.dsvue_rebuilt": "Local Vue files named like a DS Vue component (rebuilt instead of used) ({n}): {list}",
  "review.b.dsvue_shadcn": "Files that import shadcn-vue components although the DS has its own Vue layer ({n}): {list}",
  "review.res.extra": "exit {code}: {summary}",
- "review.extra.title": "Project checks (kit.config.json > review.extraChecks)"
+ "review.extra.title": "Project checks (kit.config.json > review.extraChecks)",
+ "review.rule": "Rule"
 }

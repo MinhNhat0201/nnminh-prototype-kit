@@ -19,10 +19,15 @@ and spec/index.md from the zip. It does not unzip the whole package, call the ne
 - Section 3 (key features or changelog) is written for business readers: pass --business <json> (SKILL.md step 2).
   Without it, a draft is built from checklist-feature.csv (out-of-scope rows dropped, grouped by the group column) and
   the version's changelog section (technical lines folded into one line), with a NOTE to rewrite it.
+- Layout: kit.config.json > email.template (or --template) = a project file with placeholders replaces the default
+  layout: .md / .txt -> the plain body (the HTML body is built from it), .html -> the HTML body (the plain body is its
+  text). "{language}" in the path is the project language. Placeholders: {greeting} {intro} {figma} {demo} {sections}
+  {package} {how_to_open} {feedback} {thanks} {signature} {feature} {version} {app} {pbi} {subject} {attachment}.
+  Unknown placeholders stay as written (NOTE). Without a template the default layout is used.
 - Checks: Figma link on figma.com; demo link https; no file in the zip that mail filters block (.js ...);
   zip over --attach-limit-mb (mail provider limit, default 25 MB) -> no attachment, the body points to --package-link;
   zip over kit.config.json > handoff.maxZipMB -> NOTE.
-Exit code 1 on ERROR.
+Exit code 1 on ERROR. --selftest checks the template helpers (no package needed).
 """
 import argparse, csv, hashlib, html, io, json, re, shutil, sys, tempfile, zipfile
 from pathlib import Path
@@ -30,7 +35,7 @@ from urllib.parse import urlparse
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, t, csv_header, CSV_ROLES  # noqa: E402
+from kitconf import load, t, csv_header, CSV_ROLES, for_app  # noqa: E402
 
 BLOCKED = ('.js', '.mjs', '.cjs', '.exe', '.bat', '.cmd', '.com', '.msi', '.ps1', '.sh', '.vbs', '.jar', '.scr', '.dll',
            '.apk', '.py', '.hta', '.lnk', '.reg')
@@ -155,7 +160,125 @@ def flow_links(root):
     return [(f.get('id', ''), f.get('name', ''), f['url'], f.get('start', '')) for f in fl if f.get('url')], home
 
 
+def fill(tpl, vals, missing):
+    """Replace {name} placeholders (only word names, so CSS braces and other text stay); unknown names stay as written."""
+    def rep(m):
+        if m.group(1) in vals:
+            return str(vals[m.group(1)])
+        missing.append(m.group(1))
+        return m.group(0)
+    return re.sub(r'\{([a-z_]+)\}', rep, tpl)
+
+
+def sections_text(secs, T):
+    L = []
+    for sec, (groups, more) in secs:
+        L += ([''] if L else []) + [sec['title'] + ':']
+        for g in groups:
+            if g['name']:
+                L.append('  ' + g['name'])
+            L += [('    - ' if g['name'] else '  - ') + x for x in g['items']]
+        if more:
+            L.append('  - ' + T('more', n=more) + (' (' + T('seeFile', file=sec['more']) + ')' if sec['more'] else ''))
+    return '\n'.join(L)
+
+
+def sections_html(secs, T):
+    E = lambda s: html.escape(s, quote=True)
+    out = []
+    for sec, (groups, more) in secs:
+        h = f'<p><b>{E(sec["title"])}:</b></p>'
+        for g in groups:
+            h += (f'<p style="margin:8px 0 0"><b>{E(g["name"])}</b></p>' if g['name'] else '')
+            h += '<ul>' + ''.join(f'<li>{E(x)}</li>' for x in g['items']) + '</ul>'
+        if more:
+            h += '<p>' + E(T('more', n=more)) + (' (' + E(T('seeFile', file=sec['more'])) + ')' if sec['more'] else '') + '</p>'
+        out.append(h)
+    return '\n'.join(out)
+
+
+def text_to_html(text):
+    """Plain body -> simple mail HTML: paragraphs, "- " lists, **bold**, links for http(s) URLs."""
+    def inline(s):
+        s = html.escape(s, quote=True)
+        s = re.sub(r'\*\*([^*]+)\*\*', r'<b>\1</b>', s)
+        return re.sub(r'(https?://[^\s<]+)', r'<a href="\1">\1</a>', s)
+    out, para, items = [], [], []
+    def flush():
+        if para:
+            out.append('<p>' + '<br>'.join(inline(x) for x in para) + '</p>')
+            para.clear()
+        if items:
+            out.append('<ul>' + ''.join(f'<li>{inline(x)}</li>' for x in items) + '</ul>')
+            items.clear()
+    for ln in text.splitlines():
+        m = re.match(r'\s*[-*]\s+(.*)', ln)
+        if not ln.strip():
+            flush()
+        elif m:
+            if para:
+                out.append('<p>' + '<br>'.join(inline(x) for x in para) + '</p>')
+                para.clear()
+            items.append(m.group(1))
+        else:
+            if items:
+                flush()
+            para.append(ln.strip())
+    flush()
+    return '\n'.join(out)
+
+
+def html_to_text(h):
+    s = re.sub(r'(?i)<br\s*/?>|</p>|</li>|</h\d>|</tr>', '\n', h)
+    s = re.sub(r'(?i)<li[^>]*>', '- ', s)
+    s = re.sub(r'(?i)<a\s[^>]*href="([^"]*)"[^>]*>(.*?)</a>', lambda m: m.group(2) + (' (' + m.group(1) + ')' if m.group(1) != m.group(2) else ''), s)
+    s = html.unescape(re.sub(r'<[^>]+>', '', s))
+    return re.sub(r'\n{3,}', '\n\n', '\n'.join(x.rstrip() for x in s.splitlines())).strip() + '\n'
+
+
+def from_template(cfg, tpl_path, warn, err, vals, secs, T):
+    """(plain body, HTML body) from the project's email template (email.template)."""
+    p = Path(cfg['_root']) / tpl_path.replace('{language}', cfg.get('language', 'en'))
+    if not p.is_file():
+        err.append(f'email template not found: {p}')
+        return '', ''
+    tpl = p.read_text(encoding='utf-8')
+    if p.suffix.lower() in ('.html', '.htm'):
+        E = lambda s: html.escape(str(s), quote=True)
+        hv = {k: E(v) for k, v in vals.items()}
+        for k in ('figma', 'demo'):
+            if vals[k].startswith('http'):
+                hv[k] = f'<a href="{E(vals[k])}">{E(vals[k])}</a>'
+        hv['sections'] = sections_html(secs, T)
+        missing = []
+        htmlbody = fill(tpl, hv, missing)
+        body = html_to_text(htmlbody)
+    else:
+        missing = []
+        body = fill(tpl, dict(vals, sections=sections_text(secs, T)), missing).strip() + '\n'
+        htmlbody = text_to_html(body)
+    if missing:
+        warn.append('email template has unknown placeholders, left as written: ' + ', '.join('{%s}' % m for m in dict.fromkeys(missing)))
+    return body, htmlbody
+
+
+def selftest():
+    miss = []
+    assert fill('Hi {greeting} <style>p{margin:0}</style> {nope}', {'greeting': 'team'}, miss) == \
+        'Hi team <style>p{margin:0}</style> {nope}' and miss == ['nope'], miss
+    h = text_to_html('Hello,\n\nFigma: https://www.figma.com/x\n- one\n- **two**\nBye')
+    assert '<a href="https://www.figma.com/x">' in h and '<li><b>two</b></li>' in h and h.endswith('<p>Bye</p>'), h
+    assert html_to_text('<p>Hi</p><ul><li>a</li></ul><p><a href="https://x.y/">open</a></p>') == 'Hi\n- a\nopen (https://x.y/)\n'
+    T = lambda k, **kw: k + (str(kw.get('n', '')) if kw else '')
+    sec = {'title': 'Changes', 'groups': [{'name': '', 'items': ['a']}], 'more': 'requirements/changelog.md'}
+    assert sections_text([(sec, (sec['groups'], 2))], T) == 'Changes:\n  - a\n  - more2 (seeFile)', sections_text([(sec, (sec['groups'], 2))], T)
+    print('draft_email.py selftest OK')
+
+
 def main():
+    if '--selftest' in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description='Compose the handoff email (draft material only; never sends).',
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument('src', help='package zip or folder')
@@ -174,9 +297,12 @@ def main():
     ap.add_argument('--attach-limit-mb', type=float, default=None, help='attachment limit in MB (default: kit.config.json > email.attachLimitMB, else 3)')
     ap.add_argument('--package-link', default='', help='download link used when the zip is too big to attach')
     ap.add_argument('--demo-needs-login', action='store_true', help='add a line that the demo site needs an account')
+    ap.add_argument('--template', default='', help='email layout file (default: kit.config.json > email.template)')
     ap.add_argument('--out', required=True)
     a = ap.parse_args()
     cfg = load()
+    aid = next((x['id'] for x in cfg['apps'] if a.app in (x.get('id'), x.get('name'))), None)
+    cfg = for_app(cfg, aid)  # the app's own DS profile (apps[].ds): technical words of its DS
     if a.attach_limit_mb is None:
         a.attach_limit_mb = float((cfg.get('email') or {}).get('attachLimitMB') or 3)
     if a.max_items is None:
@@ -348,12 +474,20 @@ def main():
     H.append(f'<p>{E(T("feedback"))}</p>')
     H.append(f'<p>{E(T("thanks"))}' + (f'<br>{E(a.signature)}' if a.signature else '') + '</p>')
     htmlbody = '\n'.join(H)
+    tpl_path = a.template or (cfg.get('email') or {}).get('template') or ''
+    if tpl_path:
+        body, htmlbody = from_template(cfg, tpl_path, warn, err, {
+            'greeting': greeting, 'intro': T('intro', feature=a.feature, version=version, app=app_name), 'figma': a.figma or na,
+            'demo': (demo or na) if demo_links else '', 'package': pkg_line, 'how_to_open': T('howToOpen'), 'feedback': T('feedback'),
+            'thanks': T('thanks'), 'signature': a.signature, 'feature': a.feature, 'version': version, 'app': app_name,
+            'pbi': a.pbi, 'subject': subject, 'attachment': att['filename'] if att else ''},
+            [(sec, cut(sec)) for sec in sections], T)
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     res = {'subject': subject, 'body': body, 'htmlBody': htmlbody, 'attachment': att, 'attachmentDropped': dropped,
            'version': version, 'demo': demo, 'sections': sections, 'businessRewritten': not auto, 'firstRelease': first,
-           'flowLinks': len(flows), 'demoLinks': demo_links, 'warnings': warn, 'errors': err}
+           'flowLinks': len(flows), 'demoLinks': demo_links, 'template': tpl_path or None, 'warnings': warn, 'errors': err}
     (out / 'email.json').write_text(json.dumps(res, ensure_ascii=False, indent=1), encoding='utf-8')
     (out / 'subject.txt').write_text(subject, encoding='utf-8')
     (out / 'body.txt').write_text(body, encoding='utf-8')

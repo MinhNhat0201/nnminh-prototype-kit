@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.contribute` (`model`, `effort`) when
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill contribute` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 A local component is UI the DS does not have yet. Its code is marked, and the registry records what it is and what was decided. This skill keeps both in step and runs the path from local to DS with two approval gates.
 
 Script: `python3 <kit>/skills/contribute/scripts/registry.py` (`scan`, `update`, `check`, `ack <id>`, `list`, `report`; `--help` lists options). Demo images: `node <kit>/skills/contribute/scripts/capture_demos.js` (header of the file explains the `demo` field).

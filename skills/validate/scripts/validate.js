@@ -6,7 +6,8 @@
 //
 // Screens may carry steps (same vocabulary as flows and as the capture manifest: goto, reset, click, hover, fill,
 // type, select, press, eval, wait, waitFor, waitEval, waitUrl, files, expect*; "in": "F" or "F|sel" act inside the
-// iframe plan.frames.F) and viewports (only these widths).
+// iframe plan.frames.F) and viewports (only these widths). A step without "timeout" waits plan.timeout, else 8000 ms
+// (the capture.js default). Not reported: text for screen readers only, hidden file inputs, links inside a sentence.
 //
 // For every screen x state x viewport x mode: page errors and console errors, horizontal overflow,
 // accessibility (axe-core, when installed), keyboard focus visibility, touch targets on phones, clipped text,
@@ -59,6 +60,15 @@ function urlFor(route) {
 async function pageChecks(page, vp) {
   return page.evaluate(({ vp, touchMin }) => {
     const r = { overflow: null, touch: [], clipped: [], hidden: false };
+    // Never reported (WCAG 2.5.8 exceptions and content for screen readers only):
+    // text for screen readers only (1x1 box, clip or clip-path), a file input hidden behind its button, a link inside a sentence.
+    const srOnly = el => { for (let n = el, i = 0; n && n.nodeType === 1 && i < 3; n = n.parentElement, i++) {
+      const s = getComputedStyle(n), b = n.getBoundingClientRect();
+      if ((b.width <= 1 && b.height <= 1) || (s.clip && s.clip !== 'auto' && /rect\(\s*0/.test(s.clip)) || /inset\(50%|circle\(0/.test(s.clipPath)) return true;
+    } return false; };
+    const hiddenInput = el => el.matches('input[type=file]') && (parseFloat(getComputedStyle(el).opacity) === 0 || el.getBoundingClientRect().width <= 1);
+    const inText = el => getComputedStyle(el).display === 'inline' && !!el.parentElement &&
+      [...el.parentElement.childNodes].some(n => n !== el && n.nodeType === 3 && n.textContent.trim().length > 1);
     const vis = el => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== 'hidden' && s.display !== 'none' && b.width > 0 && b.height > 0; };
     const name = el => { const id = el.id ? '#' + el.id : ''; const c = (el.getAttribute('class') || '').trim().split(/\s+/).slice(0, 2).filter(Boolean).map(x => '.' + x).join(''); const tx = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 40); return el.tagName.toLowerCase() + id + c + (tx ? ' "' + tx + '"' : ''); };
     const sw = document.documentElement.scrollWidth;
@@ -74,17 +84,14 @@ async function pageChecks(page, vp) {
     }
     if (vp < 600) {
       document.querySelectorAll('a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=tab], [role=checkbox], [role=switch]').forEach(el => {
-        if (!vis(el)) return;
+        if (!vis(el) || srOnly(el) || hiddenInput(el)) return;
         const b = el.getBoundingClientRect();
-        if (b.width < touchMin || b.height < touchMin) {
-          const inline = getComputedStyle(el).display === 'inline' && el.closest('p, li, td, dd');
-          if (!inline) r.touch.push(name(el) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height));
-        }
+        if ((b.width < touchMin || b.height < touchMin) && !inText(el)) r.touch.push(name(el) + ' ' + Math.round(b.width) + 'x' + Math.round(b.height));
       });
       r.touch = r.touch.slice(0, 12);
     }
     document.querySelectorAll('body *').forEach(el => {
-      if (r.clipped.length >= 10 || !vis(el) || !el.childNodes.length) return;
+      if (r.clipped.length >= 10 || !vis(el) || !el.childNodes.length || srOnly(el)) return;
       const s = getComputedStyle(el);
       if (!/hidden|clip/.test(s.overflowX + s.overflow) || s.textOverflow === 'ellipsis') return;
       const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
@@ -96,7 +103,7 @@ async function pageChecks(page, vp) {
 
 // One step of a screen or a flow. Selectors "F|sel" or "in": "F" act inside the iframe plan.frames.F.
 async function runStep(page, s) {
-  const T = s.timeout || 3000;
+  const T = s.timeout || plan.timeout || 8000;   // same default as capture.js: a screen it captures does not fail here
   const loc = sel => {
     const m = /^([A-Za-z]\w*)\|(.*)$/.exec(sel), key = s.in || (m && FRAMES[m[1]] ? m[1] : null);
     if (key && !FRAMES[key]) throw new Error('frame ' + key + ' is not declared in plan.frames');

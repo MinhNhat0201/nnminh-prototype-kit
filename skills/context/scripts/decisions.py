@@ -242,6 +242,13 @@ def check_all(cfg):
     return recs, errs
 
 
+def rule_hint(did, status):
+    """An approved decision that states a rule the team must keep: offer to record it in the rules registry."""
+    if status == "approved":
+        print("NEXT if this decision is a rule the team must keep, offer: python3 <kit>/scripts/rules.py add --decision %s "
+              "--title \"...\" --category <category> --severity must|should [--applies-to <apps>] [--skills <skills>]" % did)
+
+
 # ---------- commands ----------
 
 def main():
@@ -264,9 +271,11 @@ def main():
         did, path = add_decision(cfg, a.title, a.status, a.scope, a.source, a.context, a.decision, a.alternatives,
                                  a.by, a.supersedes, a.consequences)
         print("Recorded %s (%s): %s" % (did, a.status, path.relative_to(cfg["_root"])))
+        rule_hint(did, a.status)
     elif a.cmd == "set":
         did = set_status(cfg, a.id, a.status, a.by, a.note)
         print("%s is now %s" % (did, a.status))
+        rule_hint(did, a.status)
     elif a.cmd == "list":
         recs, _ = load_all(cfg)
         rows = [r for r in recs if (not a.status or r["status"] == a.status)

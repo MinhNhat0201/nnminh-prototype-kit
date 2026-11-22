@@ -12,10 +12,12 @@ Commands:
 
   pkg.py layer    --config pkg.json --kind lock|hide (--into page.html ... | --out <file>)
       Render the scope layer from pkg.json > lock or > hide and inject it into each page (idempotent), or write it
-      to one file. lock = option (b): capture-phase listener + DS toast, nothing is disabled.
-      hide = option (c): display:none CSS block + guard script (shortcuts, hashes of dropped pages, defaults).
+      to one file. lock = option (b): capture-phase listener + DS toast, nothing is disabled; lock.open_block blocks
+      matching URLs even for pages of the package. hide = option (c): display:none CSS block + guard script
+      (shortcuts, hashes of dropped pages, defaults). lock.seed / hide.seed: a separate script at the top of <head>,
+      before app code. The app's own DS profile (apps[].ds of pkg.json > app) gives the toast pattern.
 
-  pkg.py capture  --manifest manifest.js --shots shots --base http://localhost:8791/ [--only S01,S02]
+  pkg.py capture  --manifest manifest.js --shots shots --base http://localhost:8791/ [--only S01,S02] [--app <id>]
       Run capture.js of the annotate skill (2x screenshots), keep the previous run in <shots>.prev, compare pixels
       and write <shots>/changed.json (new screens, changed screens). Only these need a visual check and a Figma update.
       --only captures just those screens (and runs the earlier screens of their flow that set up the state).
@@ -24,10 +26,14 @@ Commands:
       Finish the package after spec/*.md, requirements/ and README.md are written:
       1. screens/screens.json, slim: route, how to reach (text and runnable steps), pins, exits, Figma link.
       2. Remove screen images: delete screens/*.webp|png, replace image lines in spec/*.md with "Figma: ...".
-      3. Move replaced or removed units to spec/archive.md and fix links.
+      2b. Only the sentence of a line that points at screen images becomes the locale sentence; the rest stays.
+      3. Move replaced or removed units to spec/archive.md and fix links (an older name from handoff.specFiles.legacy
+         when the package already has that file or README/AGENTS/changelog point at it).
       4. Keep only pkg.json > changelog_keep versions (default 2) in requirements/changelog.md.
-      5. Write AGENTS.md: reading path per role (BA, QC, Dev, wireflow), code conventions, grep labels.
-      6. Checks: DS label against the <meta> of the package pages and spec/index.md (handoff.dsLabelCheck);
+      5. Write AGENTS.md: reading path per role (BA, QC, Dev, wireflow), code conventions, grep labels. The Dev path and
+         the archive line name the special files the package really has (older names included).
+      6. Checks: DS label against the <meta> of the package pages and spec/index.md (handoff.dsLabelCheck; older
+         frontmatter keys through handoff.specFields);
          every file reference (spec/..., screens/..., requirements/..., prototype/...) in README, AGENTS, spec and
          changelog points to a file in the package; CSV headers match handoff.csv; spec_md.py check (annotate skill),
          printing every WARN and ERROR line.
@@ -53,7 +59,8 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, t, version_label, spec_files, csv_header  # noqa: E402
+from kitconf import load, t, version_label, spec_files, csv_header, for_app  # noqa: E402
+import kitconf  # noqa: E402
 
 ANNOTATE = KIT / "skills" / "annotate" / "scripts"
 CAPTURE = ANNOTATE / "capture.js"
@@ -89,8 +96,8 @@ class _Safe(dict):
         return "{" + k + "}"
 
 
-def spec_meta(pkg):
-    """Frontmatter of spec/index.md as a dict ({} when missing)."""
+def spec_meta(pkg, cfg=None):
+    """Frontmatter of spec/index.md as a dict ({} when missing), with the key aliases of handoff.specFields."""
     p = Path(pkg) / "spec" / "index.md" if pkg else None
     if not p or not p.is_file():
         return {}
@@ -100,7 +107,7 @@ def spec_meta(pkg):
         if ":" in ln:
             k, v = ln.split(":", 1)
             out[k.strip()] = v.strip().strip('"')
-    return out
+    return kitconf.spec_meta(cfg, out) if cfg else out
 
 
 def page_versions(cfg, pkg):
@@ -130,7 +137,7 @@ def ds_label(cfg, pc, pkg=None):
     auto = pkg.json > ds_label, then spec/index.md frontmatter "ds", then ds.json; or pkg, spec, ds, prototype."""
     src = cfg["handoff"].get("dsLabel") or "auto"
     found = {"pkg": lambda: pc.get("ds_label") or "",
-             "spec": lambda: spec_meta(pkg).get("ds", ""),
+             "spec": lambda: spec_meta(pkg, cfg).get("ds", ""),
              "ds": lambda: version_label(cfg) if cfg.get("_ds") else "",
              "prototype": lambda: label_from_version(cfg, next(iter(page_versions(cfg, pkg)), "") if pkg else "")}
     for k in (("pkg", "spec", "ds") if src == "auto" else (src,)):
@@ -148,7 +155,7 @@ def ds_label_issues(cfg, pc, pkg, label):
         other = {v: p for v, p in pages.items() if v != lv.group(0)}
         for v, p in other.items():
             out.append("DS label \"%s\" but %d page(s) state version %s (%s)" % (label, len(p), v, ", ".join(p[:3])))
-    sv = spec_meta(pkg).get("ds", "")
+    sv = spec_meta(pkg, cfg).get("ds", "")
     if sv and label and sv != label:
         out.append("DS label \"%s\" but spec/index.md states ds: \"%s\"" % (label, sv))
     return out
@@ -181,7 +188,7 @@ def cmd_init(a):
           "codes": "", "archive": [], "changelog_keep": 2, "agents_note": ""}
     if a.treatment == "lock":
         pc["lock"] = {"pages": [], "page_keys": {}, "allow": [], "allow_when": [], "block": [], "nav_functions": [],
-                      "shortcuts": [], "open_allow": "", "seed": {},
+                      "shortcuts": [], "open_allow": "", "open_block": "", "seed": {},
                       "toast": {"function": "", "args": [], "container": "", "class": "", "close_class": "", "icon": "",
                                 "close_html": "", "ms": 5000}}
     if a.treatment == "hide":
@@ -204,7 +211,7 @@ def cmd_name(a):
 
 
 # ---------------- layer ----------------
-LOCK_ID, HIDE_ID, HIDE_CSS_ID = "x-handover-lock", "x-handover-hide-js", "x-handover-hide"
+LOCK_ID, HIDE_ID, HIDE_CSS_ID, SEED_ID = "x-handover-lock", "x-handover-hide-js", "x-handover-hide", "x-handover-seed"
 
 
 def layer_name(cfg, pc):
@@ -238,26 +245,44 @@ def render_layer(cfg, pc, kind):
         conf = {"name": name, "msg": t(cfg, "handoff.lock.toast", name=name), "close": t(cfg, "handoff.lock.close"),
                 "pages": L.get("pages", []), "pageKeys": pk, "allow": L["allow"], "allowWhen": L.get("allow_when", []),
                 "block": L.get("block", []), "navFunctions": L.get("nav_functions", []), "shortcuts": L.get("shortcuts", []),
-                "openAllow": L.get("open_allow", ""), "seed": L.get("seed", {}), "toast": toast}
+                "openAllow": L.get("open_allow", ""), "openBlock": L.get("open_block", ""), "toast": toast}
         if not toast.get("function") and not toast.get("class"):
             die("pkg.json > lock.toast needs 'function' (the app's toast function) or 'class' (the DS toast classes "
                 "from catalog.md, or ds.json > toast): the out-of-scope notice must be a DS toast")
+        for k in ("open_allow", "open_block"):
+            try:
+                re.compile(L.get(k) or "")
+            except re.error as e:
+                die(f"pkg.json > lock.{k} is not a valid regex: {e}")
         js = (ASSETS / "scope-lock.js").read_text(encoding="utf-8").replace("/*@CONFIG@*/{}", js_json(conf))
-        return {"script": f'<script id="{LOCK_ID}">\n{js}</script>', "style": "", "meta": t(cfg, "handoff.layer.lock", name=name)}
+        return {"script": f'<script id="{LOCK_ID}">\n{js}</script>', "style": "", "meta": t(cfg, "handoff.layer.lock", name=name),
+                "seed": seed_script(L.get("seed"))}
     H = pc.get("hide")
     if not H or not H.get("selectors"):
         die("pkg.json > hide.selectors is empty: list stable selectors (data-*, id, aria-label) of what to hide")
     css = ",\n".join(H["selectors"]) + "{display:none !important}"
     conf = {"shortcuts": H.get("shortcuts", []), "droppedHashes": H.get("dropped_hashes", []),
-            "entry": H.get("entry", ""), "defaults": H.get("defaults", []), "seed": H.get("seed", {})}
+            "entry": H.get("entry", ""), "defaults": H.get("defaults", [])}
     js = (ASSETS / "scope-hide.js").read_text(encoding="utf-8").replace("/*@CONFIG@*/{}", js_json(conf))
     return {"script": f'<script id="{HIDE_ID}">\n{js}</script>',
             "style": f'<style id="{HIDE_CSS_ID}">\n/* Handoff scope: hidden on purpose (see spec, "Out of scope") */\n{css}\n</style>',
-            "meta": t(cfg, "handoff.layer.hide", name=name)}
+            "meta": t(cfg, "handoff.layer.hide", name=name), "seed": seed_script(H.get("seed"))}
+
+
+def seed_script(seed):
+    """<script id="x-handover-seed">: storage keys the package needs, set when absent. Injected at the top of <head>,
+    before any script of the page, so app code that reads them while it loads sees the values."""
+    seed = {k: v for k, v in (seed or {}).items() if k in ("localStorage", "sessionStorage") and v}
+    if not seed:
+        return ""
+    js = ("(function(){var S=%s;['localStorage','sessionStorage'].forEach(function(k){var o=S[k];if(!o)return;"
+          "try{Object.keys(o).forEach(function(n){if(window[k].getItem(n)===null)window[k].setItem(n,String(o[n]));});}"
+          "catch(e){}});})();") % js_json(seed)
+    return f'<script id="{SEED_ID}">{js}</script>'
 
 
 def inject(html, layer):
-    for tag, i in (("script", LOCK_ID), ("script", HIDE_ID), ("style", HIDE_CSS_ID)):
+    for tag, i in (("script", LOCK_ID), ("script", HIDE_ID), ("style", HIDE_CSS_ID), ("script", SEED_ID)):
         html = re.sub(r'\n?<%s id="%s">.*?</%s>' % (tag, i, tag), "", html, flags=re.S)
     html = re.sub(r'\n?<meta name="x-handover"[^>]*>', "", html)
     meta = '<meta name="x-handover" content="%s">' % layer["meta"].replace("&", "&amp;").replace('"', "&quot;").replace("<", "&lt;")
@@ -266,6 +291,10 @@ def inject(html, layer):
         html = re.sub(r"</head>", head + "\n</head>", html, count=1, flags=re.I)
     else:
         html = head + "\n" + html
+    if layer.get("seed"):  # first thing in <head> (after <meta charset> when it opens the head), before every app script
+        m = re.search(r"<head\b[^>]*>(\s*<meta\s+charset[^>]*>)?", html, re.I)
+        at = m.end() if m else (re.search(r"<script\b", html, re.I).start() if re.search(r"<script\b", html, re.I) else 0)
+        html = html[:at] + "\n" + layer["seed"] + html[at:]
     if re.search(r"</body>", html, re.I):
         idx = [m.start() for m in re.finditer(r"</body>", html, re.I)][-1]
         html = html[:idx] + layer["script"] + "\n" + html[idx:]
@@ -275,12 +304,13 @@ def inject(html, layer):
 
 
 def cmd_layer(a):
-    cfg, pc = load(), read_json(a.config)
+    pc = read_json(a.config)
+    cfg = load(app=pc.get("app") or None)  # the app's own DS profile (apps[].ds): toast pattern
     if pc.get("lock") and pc.get("hide") and (pc["lock"].get("allow") and pc["hide"].get("selectors")):
         die("pkg.json has both lock and hide: one package uses one treatment, never both")
     layer = render_layer(cfg, pc, a.kind)
     if a.out:
-        body = (layer["style"] + "\n" if layer["style"] else "") + layer["script"] + "\n"
+        body = (layer["seed"] + "\n" if layer.get("seed") else "") + (layer["style"] + "\n" if layer["style"] else "") + layer["script"] + "\n"
         Path(a.out).write_text(body, encoding="utf-8")
         print(f"Wrote {a.out}")
         return
@@ -320,7 +350,8 @@ def cmd_capture(a):
         for sid in only:
             if (shots / (sid + ".png")).exists():
                 shutil.copy2(shots / (sid + ".png"), prev / (sid + ".png"))
-    cmd = ["node", str(CAPTURE), a.manifest, str(shots), a.base] + (["--only", ",".join(only)] if only else [])
+    cmd = ["node", str(CAPTURE), a.manifest, str(shots), a.base] + (["--only", ",".join(only)] if only else []) \
+        + (["--app", a.app] if a.app else [])
     r = subprocess.run(cmd, capture_output=True, text=True)
     sys.stdout.write(r.stdout[-3000:])
     sys.stderr.write(r.stderr[-3000:])
@@ -407,6 +438,38 @@ def slim_screens(cfg, pkg, shots, pc):
     return out
 
 
+IMG_REF = re.compile(r"\bscreens/[^\s`)]*\.(?:webp|png|jpe?g)\b")
+
+
+def image_sentences(cfg, line):
+    """Replace the sentences of a line that point at screen images by the locale sentence (once), keep the others.
+    When the line already points at the Figma board, the image sentences are only dropped."""
+    board = t(cfg, "handoff.spec.imagesOnBoard")
+    parts, out, hit = re.split(r"(?<=[.!?])\s+", line.strip()), [], False
+    for x in parts:
+        if IMG_REF.search(x):
+            if not hit:
+                out.append(None)
+            hit = True
+        else:
+            out.append(x)
+    has_board = any(x and (board in x or "figma" in x.lower()) for x in out)
+    return " ".join(x for x in ((board if not has_board else "") if x is None else x for x in out) if x)
+
+
+def special_name(cfg, pkg, kind):
+    """File name of a special spec file (kind archive or crossPage) in this package: the configured name, or an older
+    name (handoff.specFiles.legacy) when that file is in the package or README/AGENTS/changelog already point at it."""
+    sf = spec_files(cfg)
+    names = [sf[kind]] + sf["legacy"][kind]
+    for n in names:
+        if (pkg / "spec" / n).exists():
+            return n
+    text = "".join((pkg / f).read_text(encoding="utf-8") for f in ("README.md", "AGENTS.md", "requirements/changelog.md")
+                   if (pkg / f).is_file())
+    return next((n for n in names[1:] if "spec/" + n in text), sf[kind])
+
+
 def strip_images(cfg, pkg, pc):
     spec = pkg / "spec"
     if not spec.is_dir():
@@ -419,9 +482,10 @@ def strip_images(cfg, pkg, pc):
             u = figma_url(pc, m.group(1))
             return f"Figma: [{m.group(1)}]({u})\n" if u else ""
         s2 = re.sub(r"^!\[[^\]]*\]\(\.\./screens/(%s)\.(?:webp|png|jpe?g)\)\n?" % SCREEN, img, s, flags=re.M)
-        # other sentences that point at screen images (e.g. "Images are in `screens/<id>.webp`"): the locale sentence
-        s2 = re.sub(r"^(\s*(?:[-*]\s+)?)(?!\|)[^\n]*\bscreens/[^\s`)]*\.(?:webp|png|jpe?g)\b[^\n]*$",
-                    lambda m: m.group(1) + t(cfg, "handoff.spec.imagesOnBoard"), s2, flags=re.M)
+        # other sentences that point at screen images (e.g. "Images are in `screens/<id>.webp`"): only that sentence
+        # becomes the locale sentence; the rest of the line stays
+        s2 = re.sub(r"^(\s*(?:[-*]\s+)?)(?!\|)([^\n]*\bscreens/[^\s`)]*\.(?:webp|png|jpe?g)\b[^\n]*)$",
+                    lambda m: m.group(1) + image_sentences(cfg, m.group(2)), s2, flags=re.M)
         if p.name == "index.md":
             lines = s2.split("\n")
             for i, ln in enumerate(lines[:-1]):
@@ -448,7 +512,7 @@ def archive(cfg, pkg, pc):
     for m in re.finditer(rx, idx, re.M):
         ids.add(m.group(1))
     ids = sorted(i for i in ids if (spec / f"{i}.md").exists())
-    arc_name = spec_files(cfg)["archive"]
+    arc_name = special_name(cfg, pkg, "archive")
     arc = spec / arc_name
     before = re.findall(r'<a id="([a-z]+\d+)"></a>', arc.read_text(encoding="utf-8")) if arc.exists() else []
     if not ids:
@@ -508,8 +572,8 @@ def agents(cfg, pkg, pc, archived, label=None):
         board = base + ("&" if "?" in base else "?") + "node-id=" + pc["figma_board"].replace(":", "-")
     else:
         board = t(cfg, "handoff.agents.noBoard")
-    sf = spec_files(cfg)
-    dev_last = t(cfg, "handoff.agents.devCross", file=sf["crossPage"]) if has("spec/" + sf["crossPage"]) else t(cfg, "handoff.agents.devNoCross")
+    cross, arc = special_name(cfg, pkg, "crossPage"), special_name(cfg, pkg, "archive")
+    dev_last = t(cfg, "handoff.agents.devCross", file=cross) if has("spec/" + cross) else t(cfg, "handoff.agents.devNoCross")
     ds = cfg.get("_ds") or {}
     prefix = (ds.get("tokens") or {}).get("prefix", "")
     item = cfg["handoff"].get("itemLabel") or ""
@@ -524,7 +588,7 @@ def agents(cfg, pkg, pc, archived, label=None):
          t(cfg, "handoff.agents.codesTitle"), pc.get("codes", ""),
          t(cfg, "handoff.agents.grep", labels=grep_labels(cfg))]
     if archived:
-        L.append(t(cfg, "handoff.agents.archived", ids=", ".join(archived), file=sf["archive"]))
+        L.append(t(cfg, "handoff.agents.archived", ids=", ".join(archived), file=arc))
     label = ds_label(cfg, pc, pkg)[0] if label is None else label
     L += ["", t(cfg, "handoff.agents.tokens", ds=label or "—", prefix=prefix, local=cfg["local"]["prefix"]),
           "", (t(cfg, "handoff.agents.note") + " " + pc.get("agents_note", "")).strip(), ""]
@@ -565,7 +629,8 @@ def csv_issues(cfg, pkg):
 
 
 def cmd_finalize(a):
-    cfg, pc = load(), read_json(a.config)
+    pc = read_json(a.config)
+    cfg = load(app=pc.get("app") or None)  # the app's own DS profile (apps[].ds): DS label, version meta
     pkg = Path(a.pkg)
     if not pkg.is_dir():
         die(f"package folder not found: {pkg}")
@@ -685,10 +750,25 @@ def selftest():
     L = render_layer(cfg, pc, "lock")
     conf = json.loads(re.search(r"var C = (\{.*?\});\n", L["script"]).group(1))
     assert conf["toast"]["class"] == "acme-toast" and conf["toast"]["args"] == ["warning"], conf["toast"]
-    assert conf["pageKeys"] == {"tasks": "tasks/index.html"} and conf["allowWhen"][0]["sel"] == "#more" and conf["seed"]
+    assert conf["pageKeys"] == {"tasks": "tasks/index.html"} and conf["allowWhen"][0]["sel"] == "#more" and "seed" not in conf
     assert L["meta"].startswith("lock PBI 1234"), L["meta"]
-    html = inject("<html><head></head><body></body></html>", L)
+    html = inject('<html><head><meta charset="utf-8"><script src="app.js"></script></head><body></body></html>', L)
     assert html.count("x-handover-lock") == 1 and inject(html, L).count("x-handover-lock") == 1, "layer is idempotent"
+    assert html.index("x-handover-seed") < html.index('src="app.js"') and html.index("charset") < html.index("x-handover-seed"), \
+        "seed runs first in <head>, before app scripts"
+    assert inject(html, L).count("x-handover-seed") == 1
+    pc["lock"]["open_block"] = "#branch"
+    assert json.loads(re.search(r"var C = (\{.*?\});\n", render_layer(cfg, pc, "lock")["script"]).group(1))["openBlock"] == "#branch"
+    # K-2: only the image sentence of a line is replaced; a line that already points at Figma gets no locale sentence
+    board = t(cfg, "handoff.spec.imagesOnBoard")
+    assert image_sentences(cfg, "Each step: screen. Images are in `screens/<id>.webp`. Spec in [index](index.md).") == \
+        "Each step: screen. " + board + " Spec in [index](index.md).", image_sentences(cfg, "a. b `screens/x.webp`. c.")
+    assert image_sentences(cfg, "Images: `screens/S01.png`. Open the Figma board.") == "Open the Figma board."
+    # K-3: an older special-file name in the package (or named in README) is the one AGENTS points at
+    cfg["handoff"]["specFiles"]["legacy"] = {"archive": ["luu-tru.md"], "crossPage": ["old-cross.md"]}
+    (pkg / "spec" / "old-cross.md").write_text("# cross\n")
+    (pkg / "README.md").write_text("See `spec/luu-tru.md`.\n")
+    assert special_name(cfg, pkg, "crossPage") == "old-cross.md" and special_name(cfg, pkg, "archive") == "luu-tru.md"
     shutil.rmtree(d, ignore_errors=True)
     print("pkg.py selftest OK")
 
@@ -722,6 +802,7 @@ def main():
     c.add_argument("--shots", required=True)
     c.add_argument("--base", default="http://localhost:8791/")
     c.add_argument("--only", default="")
+    c.add_argument("--app", default="", help="app id: token names from its DS profile (apps[].ds); default manifest.app")
     c.add_argument("--threshold", type=float, default=0.001,
                    help="share of different pixels that marks a screen as changed (default 0.1%%)")
     f = sub.add_parser("finalize", help="slim screens.json, drop images, archive, AGENTS.md, check, zip")
