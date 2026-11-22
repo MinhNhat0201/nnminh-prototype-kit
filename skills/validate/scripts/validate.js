@@ -4,7 +4,21 @@
 //   node validate.js --url <file:// or http:// entry> --plan plan.json --out <run dir>
 //                    [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44]
 //                    [--theming '{"brand":"data-brand"}'] [--set-theme '<JS body using key, value>'] [--axe <axe.min.js or folder>]
-//                    [--waive '["#shell"]']
+//                    [--waive '["#shell"]'] [--parity]
+//   node validate.js --discover --url <served page> [--content-root 'main, #app, [role=main]']
+//
+// --discover: open the page, let its scripts run, and print one JSON line read from the rendered DOM (for validation.py
+// init --url, so routes and ids that a JS bundle builds are found): title and heading, hash routes (a[href^="#/"],
+// data-route / data-href / data-to attributes, and the hash a tab or nav button sets when clicked), and stable selectors
+// (ids, data-testid, aria-label) of visible elements inside the content root: the first selector of the list that
+// matches (plan / config contentRoot), never the shell around it.
+// --parity: no axe or focus check; every view also records a snapshot (visible text lines, interactive elements by
+// role and name, aria states) and every flow its URL after each step and localStorage at the end (validation.py parity).
+//
+// plan.prepare (a JS string, or {js, reload: true}) runs once after every page load of a screen and a flow, before its
+// own steps and prepare (for example to dismiss a shell overlay); reload: true reloads the page after it.
+// Before each screen and flow an http(s) URL is checked first: when the server does not answer, the run stops with one
+// ERROR line and exit code 2 (results so far are written, with "aborted").
 //
 // Screens may carry steps (same vocabulary as flows and as the capture manifest: goto, reset, click, hover, fill,
 // type, select, press, eval, reload, wait, waitFor, waitEval, waitUrl, files, expect*; "in": "F" or "F|sel" act inside the
@@ -12,11 +26,12 @@
 // (the capture.js default). Not reported: text for screen readers only, hidden file inputs, links inside a sentence.
 // "reload" (or goto with reload: true) reloads the page and waits for load: a goto that only changes the hash does not.
 //
-// States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: true} or named strings:
+// States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: false} or named strings:
 // "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2).
 // plan.states are added to every screen. Theme values (and dark mode) are set with --set-theme when given (a JS body run
-// in the page with key and value), else by setting the theming attribute on <html>. axe runs on the default state and on
-// theme states, at the widest viewport; plan.axe / screen.axe {include: [sel], exclude: [sel]} limit it.
+// in the page with key and value), else by setting the theming attribute on <html>. axe runs on every state of the plan
+// (default, prepared, named), at the widest viewport; a state with "axe": false (or a screen with "axe": false) opts out;
+// plan.axe / screen.axe {include: [sel], exclude: [sel]} limit it.
 //
 // For every screen x state x viewport x mode: page errors and console errors, horizontal overflow,
 // accessibility (axe-core, when installed), keyboard focus visibility, touch targets on phones, clipped text,
@@ -37,11 +52,14 @@ function args() {
   return a;
 }
 const A = args();
-if (A.help || !A.url || !A.plan || !A.out) {
-  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44] [--project <dir>] [--theming <json>] [--set-theme <js>] [--axe <path>] [--waive <json>]');
+if (A.help || !A.url || (!A.discover && (!A.plan || !A.out))) {
+  console.log('usage: node validate.js --url <entry URL> --plan plan.json --out <dir> [--viewports 390,768,1280] [--modes light,dark] [--mode-attr data-mode] [--touch-min 44] [--project <dir>] [--theming <json>] [--set-theme <js>] [--axe <path>] [--waive <json>] [--parity]\n' +
+    '       node validate.js --discover --url <served page> [--content-root <selector list>]');
   process.exit(A.help ? 0 : 1);
 }
-const plan = JSON.parse(fs.readFileSync(A.plan, 'utf8'));
+const plan = A.discover ? {} : JSON.parse(fs.readFileSync(A.plan, 'utf8'));
+const PARITY = !!A.parity;
+const PREP = typeof plan.prepare === 'string' ? { js: plan.prepare } : (plan.prepare || null);
 const viewports = String(A.viewports || plan.viewports || '390,768,1280').split(',').map(Number).filter(Boolean);
 const modes = String(A.modes || plan.modes || 'light').split(',').filter(Boolean);
 const modeAttr = A['mode-attr'] || plan.modeAttr || 'data-mode';
@@ -50,8 +68,8 @@ const FRAMES = plan.frames || {};
 const THEMING = Object.assign({ mode: modeAttr }, A.theming ? JSON.parse(A.theming) : {});
 const SET_THEME = A['set-theme'] || plan.setTheme || null;
 const WAIVE = A.waive ? JSON.parse(A.waive) : [];
-const out = path.resolve(A.out);
-fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
+const out = A.out ? path.resolve(A.out) : null;
+if (out) fs.mkdirSync(path.join(out, 'shots'), { recursive: true });
 
 // axe-core is optional: --axe (a file or a folder that holds it), else the project, the kit, and the current folder.
 let axePath = null, axeVersion = null;
@@ -60,7 +78,8 @@ function axeVer(f) {
   const m = /axe v?(\d+\.\d+\.\d+)/.exec(fs.readFileSync(f, 'utf8').slice(0, 400));
   return m ? m[1] : 'unknown';
 }
-if (A.axe) {
+if (A.discover || PARITY) { /* no axe: discovery and parity do not judge accessibility */ }
+else if (A.axe) {
   const p = path.resolve(String(A.axe));
   const cands = fs.existsSync(p) && fs.statSync(p).isDirectory()
     ? [path.join(p, 'axe.min.js'), path.join(p, 'axe-core', 'axe.min.js'), path.join(p, 'node_modules', 'axe-core', 'axe.min.js')] : [p];
@@ -200,9 +219,11 @@ async function axeCheck(page, scope) {
       const r = await window.axe.run(ctx, { resultTypes: ['violations'] });
       const inside = t => { let el = null; try { el = t.length === 1 ? document.querySelector(t[0]) : null; } catch (e) { /* bad selector */ }
         return el ? waive.filter(s => { try { return !!el.closest(s); } catch (e) { return false; } }) : []; };
+      const text = t => { let el = null; try { el = t.length === 1 ? document.querySelector(t[0]) : null; } catch (e) { /* bad selector */ }
+        return el ? (el.getAttribute('aria-label') || el.innerText || el.value || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').slice(0, 60) : ''; };
       return r.violations.map(v => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.length, target: (v.nodes[0] && v.nodes[0].target || []).join(' '),
         list: v.nodes.slice(0, 20).map(n => { const d = ((n.any || []).concat(n.all || [], n.none || []).find(c => c.data && c.data.contrastRatio) || {}).data;
-          const o = { target: (n.target || []).join(' '), inside: inside(n.target || []) };
+          const o = { target: (n.target || []).join(' '), inside: inside(n.target || []), text: text(n.target || []) };
           if (d) Object.assign(o, { ratio: d.contrastRatio, expected: d.expectedContrastRatio, fg: d.fgColor, bg: d.bgColor });
           return o; }) }));
     }, { scope: scope || null, waive: WAIVE });
@@ -231,6 +252,11 @@ async function openPage(ctx, route, mode, prepare, errors) {
   page.on('pageerror', e => errors.push('pageerror: ' + String(e.message || e).slice(0, 200)));
   page.on('console', m => { if (m.type() === 'error' && !IGNORE_CONSOLE.test(m.text())) errors.push('console: ' + m.text().slice(0, 200)); });
   await page.goto(urlFor(route), { waitUntil: 'load' });
+  if (PREP && (PREP.js || PREP.script)) {   // plan.prepare: once per page load, before the screen's or flow's own steps
+    await page.evaluate(code => (0, eval)(code), PREP.js || PREP.script);
+    if (PREP.reload) await page.reload({ waitUntil: 'load' });
+    await page.waitForTimeout(150);
+  }
   await page.evaluate(() => { document.documentElement.style.scrollBehavior = 'auto'; });
   if (mode) await setTheme(page, 'mode', mode);
   if (prepare) await page.evaluate(code => (0, eval)(code), prepare);
@@ -238,10 +264,68 @@ async function openPage(ctx, route, mode, prepare, errors) {
   return page;
 }
 
+// Parity snapshot of a view: visible text lines, interactive elements counted by role and name, aria states.
+async function snapshot(page) {
+  return page.evaluate(root => {
+    let R = null;   // the first selector of the list that matches (plan.contentRoot), else the whole body
+    for (const r of String(root || '').split(',').map(x => x.trim()).filter(Boolean)) { try { R = document.querySelector(r); } catch (e) { /* bad selector */ } if (R) { root = r; break; } }
+    R = R || document.body;
+    const norm = x => String(x || '').replace(/\s+/g, ' ').trim();
+    const vis = el => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== 'hidden' && s.display !== 'none' && b.width > 0 && b.height > 0; };
+    const implicit = el => { const t = el.tagName.toLowerCase(), ty = (el.getAttribute('type') || 'text').toLowerCase();
+      if (t === 'a' && el.hasAttribute('href')) return 'link';
+      if (t === 'button' || t === 'summary') return 'button';
+      if (t === 'select') return el.multiple ? 'listbox' : 'combobox';
+      if (t === 'textarea') return 'textbox';
+      if (t === 'input') return { checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton', search: 'searchbox',
+        button: 'button', submit: 'button', reset: 'button', image: 'button', hidden: '' }[ty] ?? 'textbox';
+      if (el.isContentEditable && el.getAttribute('contenteditable') !== null) return 'textbox';
+      return ''; };
+    const ROLES = /^(button|link|checkbox|radio|switch|tab|menuitem|menuitemcheckbox|menuitemradio|option|combobox|textbox|searchbox|listbox|slider|spinbutton|treeitem|menu|menubar|tablist|dialog|alertdialog)$/;
+    const label = el => { const lb = el.getAttribute('aria-labelledby');
+      const byId = lb ? lb.split(/\s+/).map(id => { const x = document.getElementById(id); return x ? x.textContent : ''; }).join(' ') : '';
+      return norm(el.getAttribute('aria-label') || byId || (el.labels && el.labels[0] && el.labels[0].innerText) || el.innerText || el.value ||
+        el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('alt')).slice(0, 60); };
+    const roles = {}, aria = {};
+    for (const el of R.querySelectorAll('*')) {
+      const role = (el.getAttribute('role') || '').split(/\s+/)[0] || implicit(el);
+      if (!ROLES.test(role) || !vis(el)) continue;
+      const key = role + ' "' + label(el) + '"';
+      roles[key] = (roles[key] || 0) + 1;
+      const st = ['expanded', 'selected', 'checked', 'pressed', 'current', 'disabled', 'invalid'].map(k => {
+        let v = el.getAttribute('aria-' + k);
+        if (v === null && k === 'disabled' && el.disabled) v = 'true';
+        if (v === null && k === 'checked' && (el.type === 'checkbox' || el.type === 'radio')) v = String(el.checked);
+        return v === null ? '' : k + '=' + v; }).filter(Boolean).join(' ');
+      if (st) { let k = key, n = 2; while (aria[k] !== undefined) k = key + ' #' + n++; aria[k] = st; }
+    }
+    const text = (R.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 400);
+    return { root: root && R !== document.body ? root : 'body', text, roles, aria };
+  }, plan.contentRoot || null);
+}
+
+// The page URL relative to the entry's folder (both builds of a parity run compare the same relative paths).
+function relUrl(u) {
+  const base = A.url.split('#')[0].replace(/[^/]*$/, '');
+  return u.startsWith(base) ? u.slice(base.length) : u;
+}
+
+// Does the server answer? file: URLs always do; any HTTP status counts (a 404 is the screen's own failure).
+async function answers(u) {
+  if (!/^https?:/.test(u)) return null;
+  return new Promise(done => {
+    const req = require(u.startsWith('https:') ? 'https' : 'http').request(u.split('#')[0], { method: 'HEAD', timeout: 5000 }, res => { res.resume(); done(null); });
+    req.on('timeout', () => { req.destroy(); done('no answer in 5 s'); });
+    req.on('error', e => done(String(e.code || e.message || e)));
+    req.end();
+  });
+}
+
 async function runFlow(browser, flow) {
   const ctx = await browser.newContext({ viewport: { width: flow.viewport || 1280, height: 900 } });
   const errors = [];
   const res = { name: flow.name, ok: true, steps: (flow.steps || []).length, failedStep: null, error: null, errors, shot: null };
+  if (PARITY) res.urls = [];
   let page;
   try {
     page = await openPage(ctx, flow.start || '', null, flow.prepare, errors);
@@ -249,11 +333,17 @@ async function runFlow(browser, flow) {
       const s = flow.steps[i];
       try {
         await runStep(page, s);
+        if (PARITY) res.urls.push(relUrl(page.url()));
       } catch (e) {
         res.ok = false; res.failedStep = i + 1; res.error = String(e.message || e).split('\n')[0].slice(0, 240); break;
       }
     }
     if (errors.length) res.ok = false;
+    if (PARITY) {
+      await page.waitForTimeout(150);
+      res.storage = await page.evaluate(() => { const o = {}; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); o[k] = localStorage.getItem(k); } return o; });
+      res.snap = await snapshot(page);
+    }
     const shot = 'flow__' + slug(flow.name) + '.png';
     await page.screenshot({ path: path.join(out, 'shots', shot) });
     res.shot = shot;
@@ -264,12 +354,96 @@ async function runFlow(browser, flow) {
   return res;
 }
 
+// --discover: routes, names and selectors read from the rendered page (validation.py init --url).
+async function discover(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await ctx.newPage();
+  await page.goto(A.url, { waitUntil: 'load' });
+  await page.waitForTimeout(600);
+  const roots = String(A['content-root'] || 'main, #app, [role=main]').split(',').map(x => x.trim()).filter(Boolean);
+  const info = await page.evaluate(roots => {
+    const norm = x => String(x || '').replace(/\s+/g, ' ').trim();
+    const vis = el => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== 'hidden' && s.display !== 'none' && b.width > 0 && b.height > 0; };
+    let root = null, rootSel = null;
+    for (const r of roots) { let el = null; try { el = document.querySelector(r); } catch (e) { /* bad selector */ } if (el && vis(el)) { root = el; rootSel = r; break; } }
+    const R = root || document.body;
+    const h = [...R.querySelectorAll('h1, h2, [role=heading]')].find(vis) || [...document.querySelectorAll('h1')].find(vis);
+    const routes = [];
+    const add = (r, name, via) => { if (r && r.startsWith('#/') && !routes.some(x => x.route === r)) routes.push(Object.assign({ route: r, name: norm(name).slice(0, 60) }, via ? { via } : {})); };
+    document.querySelectorAll('a[href^="#/"]').forEach(a => add(a.getAttribute('href'), a.innerText || a.getAttribute('aria-label')));
+    document.querySelectorAll('[data-route], [data-href], [data-to], [data-hash]').forEach(el => {
+      const at = ['data-route', 'data-href', 'data-to', 'data-hash'].find(x => el.getAttribute(x)), raw = at ? el.getAttribute(at) : '';
+      // a route ("#/x", "/x"), never a link to another page ("other/index.html", "https://…")
+      const v = /^#\//.test(raw) ? raw : /^\/[\w\-/]*$/.test(raw) && at !== 'data-href' ? '#' + raw : '';
+      add(v, el.innerText || el.getAttribute('aria-label'), at ? '[' + at + '="' + raw.replace(/["\\]/g, '\\$&') + '"]' : null);
+    });
+    const CTRL = 'button, a[href], input:not([type=hidden]), select, textarea, [role=button], [role=tab], [role=link], [role=menuitem], [role=checkbox], [role=switch], [role=combobox], [role=searchbox]';
+    const esc = v => v.replace(/["\\]/g, '\\$&');
+    const sels = [];
+    const push = x => { if (x && !sels.includes(x)) sels.push(x); };
+    const stable = el => {
+      if (el.id && /^[A-Za-z][\w-]*$/.test(el.id)) return '#' + el.id;
+      for (const a of ['data-testid', 'data-test', 'data-qa']) if (el.getAttribute(a)) return '[' + a + '="' + esc(el.getAttribute(a)) + '"]';
+      const al = el.getAttribute('aria-label');
+      if (al) return el.tagName.toLowerCase() + '[aria-label="' + esc(al) + '"]';
+      return null; };
+    R.querySelectorAll(CTRL).forEach(el => { if (vis(el)) push(stable(el)); });
+    R.querySelectorAll('[id]').forEach(el => { if (vis(el) && el !== R) push(stable(el)); });
+    const cssPath = el => {   // a stable selector, else nth-child steps from the closest ancestor that has one
+      const steps = [];
+      for (let n = el; n && n !== document.body; n = n.parentElement) {
+        const st = stable(n);
+        if (st) { steps.unshift(st); return steps.join(' > '); }
+        steps.unshift(n.tagName.toLowerCase() + ':nth-child(' + ([...n.parentElement.children].indexOf(n) + 1) + ')');
+      }
+      return 'body > ' + steps.join(' > '); };
+    const tabs = [...R.querySelectorAll('[role=tab], [role=tablist] button, nav button, nav [role=link]')].filter(vis).slice(0, 12).map(el => ({
+      css: cssPath(el), role: el.getAttribute('role') || 'button', name: norm(el.getAttribute('aria-label') || el.innerText).slice(0, 60) }));
+    return { title: norm(document.title), heading: h ? norm(h.innerText).slice(0, 80) : '', contentRoot: rootSel, routes, selectors: sels.slice(0, 40),
+      tabs, hash: location.hash };
+  }, roots);
+  // Buttons that change the hash (a router built in JS): click each tab-like control once (a DOM click, so a shell
+  // overlay does not block it) and read the hash it sets.
+  for (const tb of info.tabs) {
+    try {
+      if (!(await page.evaluate(sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; }, tb.css))) continue;
+      await page.waitForTimeout(200);
+      const h = await page.evaluate(() => location.hash);
+      // flows click it by role and name (survives a rebuild in another stack), else by its CSS path
+      const via = tb.name ? 'role=' + tb.role + '[name="' + tb.name.replace(/"/g, '\\"') + '"]' : tb.css;
+      if (h.startsWith('#/') && !info.routes.some(x => x.route === h)) info.routes.push({ route: h, name: tb.name, via });
+    } catch (e) { /* not clickable: skip */ }
+  }
+  delete info.tabs;
+  await ctx.close();
+  return info;
+}
+
 (async () => {
   const browser = await chromium.launch();
-  const results = { url: A.url, started: new Date().toISOString(), viewports, modes, modeAttr,
+  if (A.discover) {
+    const why = await answers(A.url);
+    if (why) { console.log('ERROR: ' + A.url.split('#')[0] + ' does not answer (' + why + ')'); await browser.close(); process.exit(2); }
+    console.log(JSON.stringify(await discover(browser)));
+    await browser.close();
+    return;
+  }
+  const results = { url: A.url, started: new Date().toISOString(), viewports, modes, modeAttr, parity: PARITY,
     axe: { available: !!axePath, version: axeVersion, path: axePath, scope: plan.axe || null }, items: [], flows: [] };
+  const save = () => { results.finished = new Date().toISOString(); fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 2)); };
+  const stopIfDown = async (u, what) => {
+    const why = await answers(u);
+    if (!why) return;
+    results.aborted = { before: what, url: u, error: why };
+    save();
+    await browser.close();
+    console.log('ERROR: the server at ' + new URL(u).origin + ' does not answer (' + why + '): stopped before ' + what + ' after ' +
+      results.items.length + ' screen views and ' + results.flows.length + ' flows. Start the server and run again.');
+    process.exit(2);
+  };
   const screens = plan.screens && plan.screens.length ? plan.screens : [{ id: 'S01', name: 'Entry', route: '' }];
   for (const sc of screens) {
+    await stopIfDown(urlFor(sc.route), 'screen ' + sc.id);
     const states = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || [], plan.states || []).map(normState);
     const vps = sc.viewports && sc.viewports.length ? sc.viewports.map(Number) : viewports;
     for (const st of states) {
@@ -290,8 +464,12 @@ async function runFlow(browser, flow) {
             if (st.prepare) await page.evaluate(code => (0, eval)(code), st.prepare);
             await page.waitForTimeout(150);
             Object.assign(item, await pageChecks(page, vp));
-            if (st.name === 'default' && mode === modes[0]) item.focus = await focusCheck(page);
-            if ((st.name === 'default' || st.theme || st.axe) && vp === vps[vps.length - 1]) item.axe = await axeCheck(page, sc.axe || plan.axe);
+            if (PARITY) item.snap = await snapshot(page);
+            else {
+              if (st.name === 'default' && mode === modes[0]) item.focus = await focusCheck(page);
+              // axe on every state of the plan at the widest width; "axe": false on the state or the screen opts out
+              if (st.axe !== false && sc.axe !== false && vp === vps[vps.length - 1]) item.axe = await axeCheck(page, sc.axe || plan.axe);
+            }
             const shot = [slug(sc.id), slug(st.name), vp, mode].join('__') + '.png';
             await page.evaluate(() => window.scrollTo(0, 0));
             await page.screenshot({ path: path.join(out, 'shots', shot), fullPage: true });
@@ -305,9 +483,11 @@ async function runFlow(browser, flow) {
       }
     }
   }
-  for (const f of plan.flows || []) results.flows.push(await runFlow(browser, f));
+  for (const f of plan.flows || []) {
+    await stopIfDown(urlFor(f.start || ''), 'flow "' + f.name + '"');
+    results.flows.push(await runFlow(browser, f));
+  }
   await browser.close();
-  results.finished = new Date().toISOString();
-  fs.writeFileSync(path.join(out, 'results.json'), JSON.stringify(results, null, 2));
+  save();
   console.log('Checked ' + results.items.length + ' screen views and ' + results.flows.length + ' flows. axe-core: ' + (axePath ? axeVersion : 'not installed'));
 })().catch(e => { console.log('ERROR: ' + (e.message || e)); process.exit(1); });
