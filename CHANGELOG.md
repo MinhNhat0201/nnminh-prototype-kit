@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.1 · 2026-11-22
+Fixes from a project that moved its Vue pages into one npm workspace (one package per host app, a shared vendor file, one page used by two host apps). Every new key has a default that keeps the 0.12.0 behaviour.
+
+Config and pages
+- `kitconf.py add-page`: when the like page lives in a package of an npm workspace (a parent folder up to the project root has `package.json` with `workspaces`), only its entry file (`main.ts`) is copied to the new page folder, nothing is installed, and the steps name the package's page list (`app.config.ts`, `pages.config.*`, with the like page's line renamed) and the workspace build. Standalone page apps work as before.
+- `apps[].output` takes a list (one page built into several host apps); `add-page`, its steps and `{output}` of `pageHook` read every entry (new helpers `kitconf.outputs`, `kitconf.js outputs`); `kitconf.py check` rejects anything else than a path or a non-empty list of paths.
+- `kitconf.py check`: the `local.vueCss` warning no longer fires when the key equals the default or when `local.vueStyle` is `css-file`.
+- `docs/stacks.md`: pattern "Workspace + external vendor" (layout, IIFE page builds with Vue and the DS Vue package external, vendor copied into each host app, typed shell bridge with a contract check, `file://` constraint).
+
+Validate
+- `parity`: flow URLs are compared relative to each side's entry folder, path only (scheme, host and port ignored), so a flow that leaves for another page of the same app matches on two servers.
+- `parity`: `plan.mask` (CSS selectors) is masked in screenshots and its text replaced before text and name compare (clocks, timestamps); optional `plan.normalize: ["time"]` replaces clock and relative times.
+- `init --url`: a `vue` or `react` page folder without `src/` is read itself; with no route in the files the URL as given is the first screen; other buttons of the content root are clicked once each in a fresh page (never one named like delete or reset, never one that leaves the page) and the hash they set becomes a screen. When the sample plan is still written, a NOTE says why and to pass `--routes`.
+
 ## 0.12.0 · 2026-11-22
 Fixes from the second real trial (a Vue page inside a multi-page html app, ported with a parity check; K11-1…K11-13). New commands: `validation.py parity`, `kitconf.py add-page`. Every new key has a default that keeps the 0.11 behaviour.
 

@@ -29,7 +29,7 @@ A layer kept as a folder in the project usually has its own `package.json`, and 
 
 ## A Vue page inside a multi-page html app
 
-An `html` app of type `multi` can get one page built in Vue (for example to try the DS Vue layer on one feature) without moving the whole app. The page is its own app entry. When the project already has one page app, start the next one with `python3 <kit>/scripts/kitconf.py add-page --like <page app> --id <new id> --host <host app> [--name "…"] [--dry-run]`: it copies the folder skeleton (package files, Vite and TypeScript config, `src/main.ts`, `env.d.ts`, `.gitignore`; not the components), renames it, adds this entry (`output`, `usedBy` and `pageContract` built like the other page's), and prints the host-side steps (host build, copy, host page, route). It runs the host's `apps[].pageHook` when the project has one; else those steps stay manual. Entry:
+An `html` app of type `multi` can get one page built in Vue (for example to try the DS Vue layer on one feature) without moving the whole app. The page is its own app entry. When the project already has one page app, start the next one with `python3 <kit>/scripts/kitconf.py add-page --like <page app> --id <new id> --host <host app> [--name "…"] [--dry-run]`: it copies the folder skeleton (package files, Vite and TypeScript config, `src/main.ts`, `env.d.ts`, `.gitignore`; not the components), renames it, adds this entry (`output`, `usedBy` and `pageContract` built like the other page's), and prints the host-side steps (host build, copy, host page, route). It runs the host's `apps[].pageHook` when the project has one; else those steps stay manual. For a like page inside an npm workspace see "Workspace + external vendor" below. Entry:
 
 ```json
 {"id": "acme-tasks", "name": "Tasks page", "path": "pages/tasks", "stack": "vue", "type": "page",
@@ -47,6 +47,33 @@ An `html` app of type `multi` can get one page built in Vue (for example to try 
 | CSS | DS CSS from the host page; local blocks go into the host app CSS (`/* LOCAL: <name> */` blocks), never into a `<style>` of a `.vue` file. |
 | Routes | Hash routes of the page stay the page's own (`#/`, `#/t/<id>`); links to other pages go through the host app's route table. |
 | Tests | `validate` on the host page (its entry), not on `dist/`; the page app's `check` must pass. |
+
+### Workspace + external vendor (several Vue pages)
+
+Once a project has several Vue pages, one npm project per page repeats the install and bundles Vue and the DS Vue components into every page file. Move them into one npm workspace:
+
+```
+pages/                         package.json with "workspaces": ["shared", "web", "web-v1"]; one lockfile, npm ci once
+  build.mjs                    builds the vendor and each page (Vite build() called in code), writes dist/manifest.json
+  shared/
+    vendor.ts                  vendor.js: an IIFE that sets window.Vue and window.AcmeVue (the DS Vue components the pages use)
+    bridge/                    shared types of the shell bridge (contract, check)
+    pages/tasks/               a page used by two host apps: mountTasks(shell) gets the bridge at start
+  web/                         one package per host app
+    app.config.ts              the page list: id, entry, mount element, destination file in the host app
+    src/bridge.ts              typed bridge to the shell globals (window.X); src/bridge.contract.ts its run-time contract
+    src/pages/notes/main.ts    one folder per page: main.ts, the page's components
+    dist/notes.js, dist/manifest.json
+```
+
+| Part | How |
+|---|---|
+| Build | Each page is a Vite library build in IIFE format with `vue` and the DS Vue package external (`rollupOptions.external`, `output.globals` = `Vue`, `AcmeVue`), so a page file holds only its own code. The vendor is built once from `shared/vendor.ts`. A page used by two host apps is built once per host package (`apps[].output` is then a list). |
+| Copy | Each host app's build reads `dist/manifest.json` and copies the page file next to its page and `vendor.js` into the host app (for example `apps/acme-web/shared/vendor.js`): one copy per host app, so each app stays self-contained. |
+| Host page | Plain `<script src>`: `vendor.js` first, then the page file. No `<script type="module">`: the handoff package is opened from `file://`, where module scripts and imports across files do not load. |
+| Bridge | Pages never read the shell's globals directly: they import `X` from the package's `src/bridge.ts`, typed by a `Shell` interface. A run-time contract (`bridge.contract.ts`, typed `Contract<Shell>` so a missing key fails the type check) is checked when the page loads (`console.error` per missing key, caught by `validate`) and by a test that the shell source still defines every key. A new shell function goes into both. |
+| Kit entries | One `apps[]` entry of type `page` per page: `path` is the page folder (`pages/web/src/pages/notes`), `build` runs the workspace build for that page, `output` the page file(s), `usedBy` the copies. `kitconf.py add-page` detects the workspace: it copies only the page's `main.ts`, installs nothing, and prints the line to add to the package's page list (`app.config.ts`, `pages.config.*`) and the workspace build. |
+| Tests | `npm run check` in the workspace: type check, bridge contract test, and a build check that the committed `dist/` matches the sources. |
 
 ## How html pages load the DS CSS
 

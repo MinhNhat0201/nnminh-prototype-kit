@@ -9,11 +9,13 @@
 //
 // --discover: open the page, let its scripts run, and print one JSON line read from the rendered DOM (for validation.py
 // init --url, so routes and ids that a JS bundle builds are found): title and heading, hash routes (a[href^="#/"],
-// data-route / data-href / data-to attributes, and the hash a tab or nav button sets when clicked), and stable selectors
+// data-route / data-href / data-to attributes, the hash a tab or nav button sets when clicked, and the hash another
+// button of the content root sets, each tried once in a fresh page, never a destructive one), and stable selectors
 // (ids, data-testid, aria-label) of visible elements inside the content root: the first selector of the list that
 // matches (plan / config contentRoot), never the shell around it.
 // --parity: no axe or focus check; every view also records a snapshot (visible text lines, interactive elements by
-// role and name, aria states) and every flow its URL after each step and localStorage at the end (validation.py parity).
+// role and name, aria states) and every flow its URL after each step (relative to the entry folder, path only) and
+// localStorage at the end (validation.py parity). plan.mask: selectors masked in screenshots, their text replaced by "▒".
 //
 // plan.prepare (a JS string, or {js, reload: true}) runs once after every page load of a screen and a flow, before its
 // own steps and prepare (for example to dismiss a shell overlay); reload: true reloads the page after it.
@@ -59,6 +61,8 @@ if (A.help || !A.url || (!A.discover && (!A.plan || !A.out))) {
 }
 const plan = A.discover ? {} : JSON.parse(fs.readFileSync(A.plan, 'utf8'));
 const PARITY = !!A.parity;
+const MASK = Array.isArray(plan.mask) ? plan.mask.filter(x => typeof x === 'string' && x) : [];   // plan.mask: CSS selectors
+const masks = page => MASK.length ? { mask: MASK.map(m => page.locator(m)) } : {};
 const PREP = typeof plan.prepare === 'string' ? { js: plan.prepare } : (plan.prepare || null);
 const viewports = String(A.viewports || plan.viewports || '390,768,1280').split(',').map(Number).filter(Boolean);
 const modes = String(A.modes || plan.modes || 'light').split(',').filter(Boolean);
@@ -266,7 +270,7 @@ async function openPage(ctx, route, mode, prepare, errors) {
 
 // Parity snapshot of a view: visible text lines, interactive elements counted by role and name, aria states.
 async function snapshot(page) {
-  return page.evaluate(root => {
+  return page.evaluate(({ root, mask }) => {
     let R = null;   // the first selector of the list that matches (plan.contentRoot), else the whole body
     for (const r of String(root || '').split(',').map(x => x.trim()).filter(Boolean)) { try { R = document.querySelector(r); } catch (e) { /* bad selector */ } if (R) { root = r; break; } }
     R = R || document.body;
@@ -299,15 +303,27 @@ async function snapshot(page) {
         return v === null ? '' : k + '=' + v; }).filter(Boolean).join(' ');
       if (st) { let k = key, n = 2; while (aria[k] !== undefined) k = key + ' #' + n++; aria[k] = st; }
     }
-    const text = (R.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 400);
-    return { root: root && R !== document.body ? root : 'body', text, roles, aria };
-  }, plan.contentRoot || null);
+    // plan.mask: the text of these elements (clocks, timestamps) is replaced by "▒" in text lines and names
+    const masked = [];
+    for (const m of mask) { try { document.querySelectorAll(m).forEach(el => norm(el.innerText || el.textContent).split(/\s{2,}|\n/).forEach(x => { x = norm(x); if (x) masked.push(x); })); } catch (e) { /* bad selector */ } }
+    masked.sort((a, b) => b.length - a.length);
+    const hide = x => masked.reduce((v, m) => v.split(m).join('▒'), x);
+    const text = (R.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 400).map(hide);
+    const hk = o => { const r = {}; for (const [k, v] of Object.entries(o)) { const h = hide(k); r[h] = typeof v === 'number' ? (r[h] || 0) + v : v; } return r; };
+    return { root: root && R !== document.body ? root : 'body', text, roles: hk(roles), aria: hk(aria) };
+  }, { root: plan.contentRoot || null, mask: MASK });
 }
 
-// The page URL relative to the entry's folder (both builds of a parity run compare the same relative paths).
-function relUrl(u) {
-  const base = A.url.split('#')[0].replace(/[^/]*$/, '');
-  return u.startsWith(base) ? u.slice(base.length) : u;
+// The page URL relative to the entry's folder, path only (scheme, host and port ignored): both builds of a parity run
+// compare the same relative paths, also when a flow leaves the page for another page of the same app ("../chat/#/c/1").
+function relUrl(u, entry) {
+  let b, x;
+  try { b = new URL(entry || A.url); x = new URL(u); } catch (e) { return u; }
+  const dir = b.pathname.replace(/[^/]*$/, '');
+  let rel = path.posix.relative(dir, x.pathname);
+  if (rel && x.pathname.endsWith('/') && !rel.endsWith('/')) rel += '/';
+  if (!rel && !x.pathname.endsWith('/')) rel = path.posix.basename(x.pathname);
+  return rel + x.search + x.hash;
 }
 
 // Does the server answer? file: URLs always do; any HTTP status counts (a 404 is the screen's own failure).
@@ -345,7 +361,7 @@ async function runFlow(browser, flow) {
       res.snap = await snapshot(page);
     }
     const shot = 'flow__' + slug(flow.name) + '.png';
-    await page.screenshot({ path: path.join(out, 'shots', shot) });
+    await page.screenshot(Object.assign({ path: path.join(out, 'shots', shot) }, masks(page)));
     res.shot = shot;
   } catch (e) {
     res.ok = false; res.error = String(e.message || e).split('\n')[0].slice(0, 240);
@@ -397,10 +413,18 @@ async function discover(browser) {
         steps.unshift(n.tagName.toLowerCase() + ':nth-child(' + ([...n.parentElement.children].indexOf(n) + 1) + ')');
       }
       return 'body > ' + steps.join(' > '); };
-    const tabs = [...R.querySelectorAll('[role=tab], [role=tablist] button, nav button, nav [role=link]')].filter(vis).slice(0, 12).map(el => ({
-      css: cssPath(el), role: el.getAttribute('role') || 'button', name: norm(el.getAttribute('aria-label') || el.innerText).slice(0, 60) }));
+    const TABS = '[role=tab], [role=tablist] button, nav button, nav [role=link]';
+    const desc = el => ({ css: cssPath(el), role: el.getAttribute('role') || (el.tagName === 'A' ? 'link' : 'button'),
+      name: norm(el.getAttribute('aria-label') || el.innerText).slice(0, 60) });
+    const tabs = [...R.querySelectorAll(TABS)].filter(vis).slice(0, 12).map(desc);
+    // other buttons and script links of the content root (cards, list rows, "open"): each is tried in a fresh page, as
+    // they may change data; never one whose name sounds destructive, never a form submit
+    const RISKY = /delete|remove|clear|reset|log ?out|sign ?out|discard|xo[áa]|x[óo]a|h[uủ]y|đăng xuất/i;
+    const buttons = [...R.querySelectorAll('button, [role=button], a:not([href]), a[href="#"], [role=link]:not(a[href]), [onclick]')]
+      .filter(el => vis(el) && !el.matches(TABS) && !el.disabled && !(el.type === 'submit' && el.form) && !RISKY.test(norm(el.getAttribute('aria-label') || el.innerText)))
+      .slice(0, 12).map(desc);
     return { title: norm(document.title), heading: h ? norm(h.innerText).slice(0, 80) : '', contentRoot: rootSel, routes, selectors: sels.slice(0, 40),
-      tabs, hash: location.hash };
+      tabs, buttons, hash: location.hash };
   }, roots);
   // Buttons that change the hash (a router built in JS): click each tab-like control once (a DOM click, so a shell
   // overlay does not block it) and read the hash it sets.
@@ -414,7 +438,23 @@ async function discover(browser) {
       if (h.startsWith('#/') && !info.routes.some(x => x.route === h)) info.routes.push({ route: h, name: tb.name, via });
     } catch (e) { /* not clickable: skip */ }
   }
+  for (const tb of info.buttons) {
+    const c2 = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    try {
+      const p2 = await c2.newPage();
+      await p2.goto(A.url, { waitUntil: 'load' });
+      await p2.waitForTimeout(400);
+      const start = p2.url().split('#')[0];
+      if (!(await p2.evaluate(sel => { const el = document.querySelector(sel); if (el) el.click(); return !!el; }, tb.css))) continue;
+      await p2.waitForTimeout(200);
+      const h = await p2.evaluate(() => location.hash);
+      if (p2.url().split('#')[0] !== start) continue;   // it left for another page: not a route of this one
+      if (h.startsWith('#/') && h !== info.hash && !info.routes.some(x => x.route === h))
+        info.routes.push({ route: h, name: tb.name, via: tb.name ? 'role=' + tb.role + '[name="' + tb.name.replace(/"/g, '\\"') + '"]' : tb.css });
+    } catch (e) { /* not clickable: skip */ } finally { await c2.close(); }
+  }
   delete info.tabs;
+  delete info.buttons;
   await ctx.close();
   return info;
 }
@@ -472,7 +512,7 @@ async function discover(browser) {
             }
             const shot = [slug(sc.id), slug(st.name), vp, mode].join('__') + '.png';
             await page.evaluate(() => window.scrollTo(0, 0));
-            await page.screenshot({ path: path.join(out, 'shots', shot), fullPage: true });
+            await page.screenshot(Object.assign({ path: path.join(out, 'shots', shot), fullPage: true }, masks(page)));
             item.shot = shot;
           } catch (e) {
             item.fatal = String(e.message || e).split('\n')[0].slice(0, 240);
