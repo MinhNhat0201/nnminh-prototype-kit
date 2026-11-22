@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Mock data is marked as mock in the code and, where a reader could take it for real, in the UI. No real personal data, no real API, no authentication, no persistence beyond `localStorage`.

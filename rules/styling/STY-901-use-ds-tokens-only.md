@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Colours, spacing, radius, font size, line height and shadows come from DS tokens (`ds.json > tokens.prefix`) or the alias variables the DS bundle defines. No hex, `rgb()`, named colours, raw gradients or loose px when a token exists; in React and Vue also no Tailwind arbitrary values and no inline style objects for these values.

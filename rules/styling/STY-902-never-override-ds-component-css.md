@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Never write CSS that changes the look of a DS component (its classes, variants or the elements they style), and never edit the embedded DS CSS or the copied bundle. A missing variant goes through the component gate of `prototype`.

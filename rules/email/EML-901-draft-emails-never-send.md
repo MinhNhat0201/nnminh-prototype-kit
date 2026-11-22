@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 The handoff email is created as a draft for the user to read and send. Never send, forward or schedule mail.

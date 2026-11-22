@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Never write passwords, tokens, keys, real site credentials or personal data into the repository, a config file, a PR, a package or a report.

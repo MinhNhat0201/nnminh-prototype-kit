@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 A handoff package has no loose `.js` (or other executable) file: scripts are inlined into the pages, and `optimize_package.py` removes what remains. The zip stays under `handoff.maxZipMB`.

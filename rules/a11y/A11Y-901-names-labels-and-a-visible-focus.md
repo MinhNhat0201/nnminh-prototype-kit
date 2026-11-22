@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Every control has an accessible name, every field a label, every interactive element a visible focus indicator, and text meets the DS contrast pairs. Touch targets on phones follow `validate.touchTarget`.

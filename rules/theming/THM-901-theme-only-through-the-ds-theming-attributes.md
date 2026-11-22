@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Brand, mode and density are set only through the attributes in `ds.json > theming`, on `<html>`. Never invent an attribute or a class for theming. Dark mode stays off unless the user asks for it.

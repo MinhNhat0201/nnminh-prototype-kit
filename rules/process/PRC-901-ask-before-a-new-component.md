@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Before building anything the DS does not have (a missing component or variant), stop and ask: compose existing components, a local block, or a local block with a proposal to the DS. A local block uses the local prefix, tokens only, its marker comment, and an entry in the local registry.

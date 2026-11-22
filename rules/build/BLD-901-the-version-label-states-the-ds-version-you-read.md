@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 The footer label (`ds.json > version_label.text`) and the `<meta name="<version_label.meta>">` of every page state the DS version the app was built or synced with. An app whose label differs from the profile is reported, and `sync` is suggested.

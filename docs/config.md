@@ -209,7 +209,8 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | `catalog_json` | Machine-readable catalogue (default `catalog.json`), built from `catalog` by `document/scripts/catalog.py build`. Adds fields people maintain: `figma` (component, key, node), `status` (`active`, `experimental`, `deprecated` with `replacedBy` and `reason`), `usage` (`use`, `avoid`) and `a11y`. Rebuilding keeps them. Read by `prototype`, `review`, `mockup`. |
 | `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override") as one document. A profile can split them into rule files in `rules/` (DS layer of the [rules registry](rules.md); `rules.py import-md` drafts them); until then `rules.py list` reminds skills to read this file. |
 | `figma` | Libraries, variable collections and modes for `mockup` and `adopt`. |
-| `preset` | The public DS the profile was adopted from, if any (`adopt`). |
+| `preset` | The preset the profile was adopted from, if any (`adopt`: `shadcn` or `atelier`). |
+| `contrast` | Optional. `skip`: contrast pairs the preset replaces with another check, each with the reason (`adopt`). |
 
 ## The DS profile folder
 

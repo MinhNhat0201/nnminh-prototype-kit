@@ -17,7 +17,7 @@
 (function () {
   var t = null;
   try { t = localStorage.getItem("theme"); } catch (e) {}
-  if (t !== "light" && t !== "dark") t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  if (t !== "light" && t !== "dark") t = "dark";
   document.documentElement.setAttribute("data-theme", t);
   var l = null;
   try { l = localStorage.getItem("lang"); } catch (e) {}
@@ -27,103 +27,135 @@
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&family=Manrope:wght@500;600;700&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #ffffff;
+  /* atelier preset, seed #f0dd99 (adopt --preset atelier): light mode */
+  --bg: #f5f5f5;
   --panel: #ffffff;
-  --panel-2: #f1f5f9;
-  --line: #e2e8f0;
-  --line-2: #cbd5e1;
-  --fg: #0f172a;
-  --muted: #475569;
-  --dim: #5b6b80;
-  --accent: #a17400;
-  --accent-2: #c99a1e;
-  --accent-soft: #7a5800;
-  --ok: #047857;
-  --title-a: #0f172a;
-  --title-b: #475569;
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-line: rgba(255, 255, 255, 0.7);
-  --glass-edge: rgba(15, 23, 42, 0.08);
-  --glass-shadow: 0 8px 32px -12px rgba(15, 23, 42, 0.18);
-  --cta-hover: #1e293b;
-  --hover-line: #94a3b8;
+  --panel-2: #fafafa;
+  --line: rgba(20, 20, 20, 0.08);
+  --line-2: rgba(20, 20, 20, 0.16);
+  --fg: #141414;
+  --muted: #545454;
+  --dim: #6e6e6e;
+  --accent: #a08500;
+  --accent-2: #f0dd99;
+  --accent-soft: #725e00;
+  --ok: #00733d;
+  --brand: #f0dd99;
+  --brand-hover: #f1e9cc;
+  --on-brand: #141414;
+  --stroke-brand: #725e00;
+  --focus: #866e00;
+  --sel-bg: rgba(217, 188, 92, 0.18);
+  --sel-line: rgba(122, 97, 24, 0.4);
+  --ring: 0 0 0 4px rgba(20, 20, 20, 0.08);
+  --btn-shadow: 0 1px 2px rgba(20, 20, 20, 0.08), 0 4px 10px -2px rgba(20, 20, 20, 0.08);
+  --glow-brand: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 1px 2px rgba(160, 133, 0, 0.3), 0 6px 14px -6px rgba(160, 133, 0, 0.45);
+  --title-a: #141414;
+  --title-b: #8a8a8a;
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-line: rgba(255, 255, 255, 0.8);
+  --glass-edge: rgba(20, 20, 20, 0.08);
+  --glass-shadow: 0 1px 2px rgba(20, 20, 20, 0.06), 0 8px 24px -4px rgba(20, 20, 20, 0.1);
+  --cta-hover: #2b2b2b;
+  --hover-line: rgba(20, 20, 20, 0.24);
   --glow: 10%;
   --bg-img: 0.3;
   --bg-layer: url("assets/bg-rays.webp");
-  --card-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px -12px rgba(15, 23, 42, 0.12);
+  --card-shadow: 0 1px 2px rgba(20, 20, 20, 0.05), 0 4px 12px -2px rgba(20, 20, 20, 0.06);
   color-scheme: light;
-  --display: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
-  --sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --display: Manrope, Geist, system-ui, sans-serif;
+  --sans: Geist, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --wide: 68.75rem;
   --gutter: 1.25rem;
 }
 :root[data-theme="dark"] {
-  --bg: #020203;
-  --panel: #09090c;
-  --panel-2: #0e0e13;
-  --line: #1b1b22;
-  --line-2: #26262f;
-  --fg: #f8fafc;
-  --muted: #94a3b8;
-  --dim: #64748b;
-  --accent: #d4a72c;
-  --accent-2: #f5d77a;
-  --accent-soft: #e8c15a;
-  --ok: #34d399;
+  --bg: #141414;
+  --panel: #1a1a1a;
+  --panel-2: #1f1f1f;
+  --line: rgba(245, 245, 245, 0.1);
+  --line-2: rgba(245, 245, 245, 0.18);
+  --fg: #f5f5f5;
+  --muted: #9e9e9e;
+  --dim: #858585;
+  --accent: #dabf5e;
+  --accent-2: #f0dd99;
+  --accent-soft: #f0dd99;
+  --ok: #8ad4a2;
+  --brand: #f0dd99;
+  --brand-hover: #f1e9cc;
+  --on-brand: #141414;
+  --stroke-brand: #dabf5e;
+  --focus: #dabf5e;
+  --sel-bg: rgba(240, 221, 153, 0.1);
+  --sel-line: rgba(240, 221, 153, 0.45);
+  --ring: 0 0 0 4px rgba(255, 255, 255, 0.06);
+  --btn-shadow: inset 0 0.6px 1.08px -0.92px rgba(255, 255, 255, 0.24), inset 0 2.29px 4.12px -1.83px rgba(255, 255, 255, 0.24), inset 0 10px 18px -2.75px rgba(255, 255, 255, 0.2), 0 0 20px 1px rgba(255, 255, 255, 0.03);
+  --glow-brand: inset 0 0.6px 0.6px -1.25px rgba(255, 255, 255, 0.72), inset 0 2.29px 2.29px -2.5px rgba(255, 255, 255, 0.64), inset 0 10px 10px -3.75px rgba(255, 255, 255, 0.25), 0 2.29px 2.29px -2.5px rgba(240, 221, 153, 0.45), 0 10px 10px -3.75px rgba(240, 221, 153, 0.25);
   --title-a: #ffffff;
-  --title-b: #9ca3af;
-  --glass-bg: rgba(18, 18, 24, 0.5);
-  --glass-line: rgba(255, 255, 255, 0.08);
-  --glass-edge: rgba(255, 255, 255, 0.06);
-  --glass-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.6);
-  --cta-hover: #e2e8f0;
-  --hover-line: #3a3a46;
-  --glow: 16%;
+  --title-b: #6e6e6e;
+  --glass-bg: rgba(26, 26, 26, 0.55);
+  --glass-line: rgba(255, 255, 255, 0.07);
+  --glass-edge: rgba(245, 245, 245, 0.1);
+  --glass-shadow: inset 0 0.56px 1.67px -1.13px rgba(255, 255, 255, 0.07), inset 0 1.69px 5.07px -2.25px rgba(255, 255, 255, 0.06), inset 0 4.47px 13.4px -3.38px rgba(255, 255, 255, 0.05), 0 8px 32px -12px rgba(0, 0, 0, 0.6);
+  --cta-hover: #dddddd;
+  --hover-line: rgba(245, 245, 245, 0.24);
+  --glow: 12%;
   --bg-img: 0.3;
   --bg-layer: radial-gradient(ellipse 42% 28% at 50% 48%, rgba(255, 220, 150, 0.32), rgba(212, 167, 44, 0.12) 45%, transparent 75%), url("assets/bg-rays-dark.webp");
-  --card-shadow: none;
+  --card-shadow: inset 0 0.56px 1.67px -1.13px rgba(255, 255, 255, 0.07), inset 0 1.69px 5.07px -2.25px rgba(255, 255, 255, 0.06), inset 0 4.47px 13.4px -3.38px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3);
   color-scheme: dark;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #020203;
-    --panel: #09090c;
-    --panel-2: #0e0e13;
-    --line: #1b1b22;
-    --line-2: #26262f;
-    --fg: #f8fafc;
-    --muted: #94a3b8;
-    --dim: #64748b;
-    --accent: #d4a72c;
-    --accent-2: #f5d77a;
-    --accent-soft: #e8c15a;
-    --ok: #34d399;
+/* no script: dark-first, like the atelier preset */
+@media all {
+  :root:not([data-theme]) {
+    --bg: #141414;
+    --panel: #1a1a1a;
+    --panel-2: #1f1f1f;
+    --line: rgba(245, 245, 245, 0.1);
+    --line-2: rgba(245, 245, 245, 0.18);
+    --fg: #f5f5f5;
+    --muted: #9e9e9e;
+    --dim: #858585;
+    --accent: #dabf5e;
+    --accent-2: #f0dd99;
+    --accent-soft: #f0dd99;
+    --ok: #8ad4a2;
+    --brand: #f0dd99;
+    --brand-hover: #f1e9cc;
+    --on-brand: #141414;
+    --stroke-brand: #dabf5e;
+    --focus: #dabf5e;
+    --sel-bg: rgba(240, 221, 153, 0.1);
+    --sel-line: rgba(240, 221, 153, 0.45);
+    --ring: 0 0 0 4px rgba(255, 255, 255, 0.06);
+    --btn-shadow: inset 0 0.6px 1.08px -0.92px rgba(255, 255, 255, 0.24), inset 0 2.29px 4.12px -1.83px rgba(255, 255, 255, 0.24), inset 0 10px 18px -2.75px rgba(255, 255, 255, 0.2), 0 0 20px 1px rgba(255, 255, 255, 0.03);
+    --glow-brand: inset 0 0.6px 0.6px -1.25px rgba(255, 255, 255, 0.72), inset 0 2.29px 2.29px -2.5px rgba(255, 255, 255, 0.64), inset 0 10px 10px -3.75px rgba(255, 255, 255, 0.25), 0 2.29px 2.29px -2.5px rgba(240, 221, 153, 0.45), 0 10px 10px -3.75px rgba(240, 221, 153, 0.25);
     --title-a: #ffffff;
-    --title-b: #9ca3af;
-    --glass-bg: rgba(18, 18, 24, 0.5);
-    --glass-line: rgba(255, 255, 255, 0.08);
-    --glass-edge: rgba(255, 255, 255, 0.06);
-    --glass-shadow: 0 8px 32px -12px rgba(0, 0, 0, 0.6);
-    --cta-hover: #e2e8f0;
-    --hover-line: #3a3a46;
-    --glow: 16%;
+    --title-b: #6e6e6e;
+    --glass-bg: rgba(26, 26, 26, 0.55);
+    --glass-line: rgba(255, 255, 255, 0.07);
+    --glass-edge: rgba(245, 245, 245, 0.1);
+    --glass-shadow: inset 0 0.56px 1.67px -1.13px rgba(255, 255, 255, 0.07), inset 0 1.69px 5.07px -2.25px rgba(255, 255, 255, 0.06), inset 0 4.47px 13.4px -3.38px rgba(255, 255, 255, 0.05), 0 8px 32px -12px rgba(0, 0, 0, 0.6);
+    --cta-hover: #dddddd;
+    --hover-line: rgba(245, 245, 245, 0.24);
+    --glow: 12%;
     --bg-img: 0.3;
     --bg-layer: radial-gradient(ellipse 42% 28% at 50% 48%, rgba(255, 220, 150, 0.32), rgba(212, 167, 44, 0.12) 45%, transparent 75%), url("assets/bg-rays-dark.webp");
-    --card-shadow: none;
+    --card-shadow: inset 0 0.56px 1.67px -1.13px rgba(255, 255, 255, 0.07), inset 0 1.69px 5.07px -2.25px rgba(255, 255, 255, 0.06), inset 0 4.47px 13.4px -3.38px rgba(255, 255, 255, 0.05), 0 1px 2px rgba(0, 0, 0, 0.3);
     color-scheme: dark;
   }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; scroll-padding-top: 6rem; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 400 1rem/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: clip; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 400 1rem/1.6 var(--sans); letter-spacing: -0.01em; -webkit-font-smoothing: antialiased; overflow-x: clip; }
 body::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--bg-layer) center / cover no-repeat; opacity: var(--bg-img); }
 a { color: inherit; text-decoration: none; }
-:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; border-radius: 6px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; border-radius: 6px; }
 h1, h2, h3, p { margin: 0; }
 code, pre { font-family: var(--mono); }
 p code, .a code { font-size: 0.875em; color: var(--fg); }
@@ -139,15 +171,15 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 
 /* nav */
 .nav { position: sticky; top: 1rem; z-index: 20; display: flex; justify-content: center; padding: 1rem var(--gutter) 0; margin-top: -1rem; }
-.nav__bar { width: 100%; max-width: 56rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.45rem 0.45rem 1.5rem; border: 1px solid var(--glass-edge); border-radius: 999px; background: var(--glass-bg); box-shadow: inset 0 1px 0 var(--glass-line), var(--glass-shadow); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%); }
-.logo { display: inline-flex; align-items: center; gap: 0.55rem; font: 700 1rem/1 var(--display); letter-spacing: -0.02em; margin-right: auto; white-space: nowrap; }
-.logo img { width: 2rem; height: 2rem; flex: none; filter: drop-shadow(0 2px 6px rgba(212, 140, 30, 0.35)); }
+.nav__bar { width: 100%; max-width: 56rem; display: flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.45rem 0.45rem 1.25rem; border: 1px solid var(--glass-edge); border-radius: 1.25rem; background: var(--glass-bg); box-shadow: inset 0 1px 0 var(--glass-line), var(--glass-shadow); backdrop-filter: blur(20px) saturate(170%); -webkit-backdrop-filter: blur(20px) saturate(170%); }
+.logo { display: inline-flex; align-items: center; gap: 0.55rem; font: 600 1rem/1 var(--display); letter-spacing: -0.02em; margin-right: auto; white-space: nowrap; }
+.logo img { width: 2rem; height: 2rem; flex: none; filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3)); }
 .nav__links { display: flex; gap: 0.25rem; }
-.nav__links a { font-size: 0.875rem; color: var(--muted); padding: 0.5rem 0.8rem; border-radius: 999px; }
+.nav__links a { font-size: 0.875rem; color: var(--muted); padding: 0.5rem 0.8rem; border-radius: 0.625rem; }
 .nav__links a:hover { color: var(--fg); }
-.nav__cta { display: inline-flex; align-items: center; height: 2.4rem; padding: 0 1.2rem; border-radius: 999px; background: var(--fg); color: var(--bg); font-size: 0.8125rem; font-weight: 600; white-space: nowrap; }
+.nav__cta { display: inline-flex; align-items: center; height: 2.4rem; padding: 0 1.1rem; border-radius: 0.75rem; background: var(--fg); color: var(--bg); font: 500 0.8125rem/1 var(--display); white-space: nowrap; }
 .nav__cta:hover { background: var(--cta-hover); }
-.theme-btn { width: 2.4rem; height: 2.4rem; display: grid; place-items: center; border-radius: 999px; border: 1px solid var(--glass-edge); background: transparent; color: var(--muted); cursor: pointer; flex: none; }
+.theme-btn { width: 2.4rem; height: 2.4rem; display: grid; place-items: center; border-radius: 0.75rem; border: 1px solid var(--glass-edge); background: transparent; color: var(--muted); cursor: pointer; flex: none; }
 .theme-btn:hover { color: var(--fg); border-color: var(--line-2); }
 .theme-btn svg { width: 1.1rem; height: 1.1rem; }
 .theme-btn .moon { display: none; }
@@ -156,32 +188,32 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 /* decision lifecycle + report cards */
 .lifecycle { list-style: none; margin: 1.75rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
 .lifecycle li { display: inline-flex; align-items: center; gap: 0.4rem; font: 500 0.75rem/1 var(--mono); }
-.lifecycle li span { padding: 0.45rem 0.65rem; border: 1px solid var(--line-2); border-radius: 999px; color: var(--muted); background: var(--panel-2); }
-.lifecycle li.on span { color: var(--fg); border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent); }
-.lifecycle li:not(:last-child)::after { content: "→"; color: var(--accent-soft); }
+.lifecycle li span { padding: 0.45rem 0.65rem; border: 1px solid var(--line-2); border-radius: 0.5rem; color: var(--muted); background: var(--panel-2); }
+.lifecycle li.on span { color: var(--accent-soft); border-color: var(--sel-line); background: var(--sel-bg); }
+.lifecycle li:not(:last-child)::after { content: "→"; color: var(--dim); }
 .gates { margin-top: 1.25rem !important; font-size: 0.8125rem !important; color: var(--dim) !important; }
-.report { margin-top: 1.75rem; border: 1px solid var(--line); border-radius: 0.875rem; overflow: hidden; background: var(--panel-2); }
+.report { margin-top: 1.75rem; border: 1px solid var(--line); border-radius: 0.75rem; overflow: hidden; background: var(--panel-2); }
 .report > div { display: grid; grid-template-columns: 9rem 2.5rem minmax(0, 1fr); gap: 0.75rem; align-items: center; padding: 0.7rem 1rem; border-top: 1px solid var(--line); font-size: 0.875rem; }
 .report > div:first-child { border-top: 0; }
 .r-k { font-weight: 600; }
-.r-v { font: 700 1.125rem/1 var(--display); color: var(--accent-soft); text-align: right; }
+.r-v { font: 600 1.125rem/1 var(--mono); color: var(--fg); text-align: right; }
 .r-bad { color: var(--ok); }
 .r-d { color: var(--muted); font-size: 0.8125rem; }
 @media (max-width: 639.98px) { .report > div { grid-template-columns: minmax(0, 1fr) auto; } .r-d { grid-column: 1 / -1; } }
 /* skill flow diagram */
 .c-12 { grid-column: 1 / -1; }
 .flowmap { margin-top: 2rem; display: grid; gap: 1.25rem; }
-.fm-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 0.75rem; padding: 0.85rem 1rem; border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line-2)); border-radius: 0.875rem; background: color-mix(in srgb, var(--accent) 5%, var(--panel-2)); font-size: 0.875rem; color: var(--muted); }
-.fm-down { width: 1.1rem; height: 1.1rem; margin-left: auto; color: var(--accent-soft); transform: rotate(90deg); }
+.fm-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 0.75rem; padding: 0.85rem 1rem; border: 1px dashed var(--line-2); border-radius: 0.75rem; background: var(--panel-2); font-size: 0.875rem; color: var(--muted); }
+.fm-down { width: 1.1rem; height: 1.1rem; margin-left: auto; color: var(--dim); transform: rotate(90deg); }
 .fm-loop-label { display: inline-flex; align-items: center; gap: 0.45rem; font-weight: 600; color: var(--fg); margin-right: 0.25rem; }
 .fm-loop-label svg { width: 1.15rem; height: 1.15rem; color: var(--accent-soft); }
-.fm-sep { color: var(--accent-soft); }
+.fm-sep { color: var(--dim); }
 .fm-back { margin-left: auto; font-size: 0.8125rem; color: var(--dim); }
-.fm-back::before { content: "\21BA  "; color: var(--accent-soft); }
+.fm-back::before { content: "\21BA  "; color: var(--dim); }
 .fm-stages { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1.5rem; }
-.fm-stage { position: relative; display: flex; flex-direction: column; gap: 0.65rem; padding: 1rem 0.9rem 0.9rem; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--panel-2); }
-.fm-step { position: absolute; top: -0.7rem; left: 0.8rem; width: 1.4rem; height: 1.4rem; border-radius: 50%; display: grid; place-items: center; font: 600 0.6875rem/1 var(--mono); color: var(--bg); background: var(--accent-soft); }
-.fm-stage h4 { margin: 0.2rem 0 0; font: 700 0.9375rem/1.25 var(--display); letter-spacing: -0.02em; }
+.fm-stage { position: relative; display: flex; flex-direction: column; gap: 0.65rem; padding: 1rem 0.9rem 0.9rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--panel-2); box-shadow: var(--card-shadow); }
+.fm-step { position: absolute; top: -0.7rem; left: 0.8rem; width: 1.4rem; height: 1.4rem; border-radius: 50%; display: grid; place-items: center; font: 600 0.6875rem/1 var(--mono); color: var(--bg); background: var(--fg); }
+.fm-stage h4 { margin: 0.2rem 0 0; font: 600 0.9375rem/1.25 var(--display); letter-spacing: -0.02em; }
 .fm-nodes { display: flex; flex-direction: column; gap: 0.4rem; }
 .fm-node { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; padding: 0.45rem 0.55rem; border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--panel); font: 400 0.8125rem/1.1 var(--mono); color: var(--fg); white-space: nowrap; }
 .fm-node svg { width: 1.05rem; height: 1.05rem; flex: none; color: var(--accent-soft); }
@@ -192,8 +224,8 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .fm-out { margin: auto 0 0 !important; padding-top: 0.35rem; border-top: 1px dashed var(--line-2); font-size: 0.75rem !important; line-height: 1.4; color: var(--dim) !important; }
 .fm-out code { font-size: 0.6875rem; }
 /* connectors */
-.fm-stage:not(:last-child)::after { content: ""; position: absolute; top: 50%; right: -1.5rem; width: 1.5rem; height: 2px; background: color-mix(in srgb, var(--accent) 70%, transparent); }
-.fm-stage:not(:last-child)::before { content: ""; position: absolute; top: 50%; right: calc(-1.5rem + 1px); width: 0.5rem; height: 0.5rem; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); transform: translateY(-50%) rotate(45deg); margin-top: 1px; }
+.fm-stage:not(:last-child)::after { content: ""; position: absolute; top: 50%; right: -1.5rem; width: 1.5rem; height: 2px; background: var(--line-2); }
+.fm-stage:not(:last-child)::before { content: ""; position: absolute; top: 50%; right: calc(-1.5rem + 1px); width: 0.5rem; height: 0.5rem; border-top: 2px solid var(--dim); border-right: 2px solid var(--dim); transform: translateY(-50%) rotate(45deg); margin-top: 1px; }
 @media (max-width: 1099.98px) {
   .fm-stages { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
   .fm-nodes { flex-direction: row; flex-wrap: wrap; }
@@ -212,10 +244,10 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .docs__index button svg { width: 1.15rem; height: 1.15rem; flex: none; opacity: 0.85; }
 .docs__index button[aria-selected="true"] svg { color: var(--accent-soft); opacity: 1; }
 /* language switch */
-.lang { display: inline-flex; padding: 0.2rem; gap: 0.15rem; border: 1px solid var(--glass-edge); border-radius: 999px; flex: none; }
-.lang button { min-width: 2.2rem; height: 1.95rem; padding: 0 0.55rem; border: 0; border-radius: 999px; background: transparent; color: var(--muted); font: 600 0.75rem/1 var(--sans); letter-spacing: 0.04em; cursor: pointer; }
+.lang { display: inline-flex; padding: 0.2rem; gap: 0.15rem; border: 1px solid var(--glass-edge); border-radius: 0.75rem; flex: none; }
+.lang button { min-width: 2.2rem; height: 1.95rem; padding: 0 0.55rem; border: 0; border-radius: 0.5rem; background: transparent; color: var(--muted); font: 600 0.75rem/1 var(--display); letter-spacing: 0.04em; cursor: pointer; }
 .lang button:hover { color: var(--fg); }
-.lang button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+.lang button[aria-pressed="true"] { background: var(--sel-bg); color: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--sel-line); }
 @media (max-width: 859.98px) { .nav__links { display: none; } }
 @media (max-width: 479.98px) { .nav__cta { display: none; } .nav__bar { padding-left: 1rem; } }
 @media (max-width: 389.98px) { .nav .logo span { display: none; } }
@@ -223,67 +255,68 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 /* hero */
 .hero { position: relative; overflow-x: clip; text-align: center; padding: 8rem 0 7rem; }
 .hero > .wrap { position: relative; z-index: 1; }
-.hero h1 { font: 800 clamp(2.4rem, 6.4vw, 4.25rem)/1.1 var(--display); letter-spacing: -0.045em; max-width: 60rem; margin: 0 auto; }
+.hero h1 { font: 500 clamp(2.4rem, 6.4vw, 4.25rem)/1.1 var(--display); letter-spacing: -0.04em; max-width: 60rem; margin: 0 auto; }
 .hero h1 span { display: block; padding-bottom: 0.12em; margin-bottom: -0.12em; background: linear-gradient(180deg, var(--title-a) 0%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero .lede { margin: 1.75rem auto 0; max-width: 39rem; color: var(--muted); font-size: 1.1875rem; line-height: 1.6; }
 .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 1rem; margin-top: 2.5rem; }
-.btn { display: inline-flex; align-items: center; gap: 0.55rem; height: 2.6rem; padding: 0 1.25rem; border-radius: 999px; font-size: 0.875rem; font-weight: 600; border: 1px solid var(--glass-edge); background: var(--glass-bg); box-shadow: inset 0 1px 0 var(--glass-line); backdrop-filter: blur(16px) saturate(160%); -webkit-backdrop-filter: blur(16px) saturate(160%); color: var(--fg); cursor: pointer; }
-.btn:hover { border-color: var(--hover-line); }
+.btn { display: inline-flex; align-items: center; gap: 0.55rem; height: 2.75rem; padding: 0 1.25rem; border-radius: 0.75rem; font: 500 0.875rem/1 var(--display); border: 1px solid var(--line-2); background: var(--panel); box-shadow: var(--btn-shadow); color: var(--muted); cursor: pointer; transition: background-color 0.2s cubic-bezier(0.22, 1, 0.36, 1), color 0.2s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.2s cubic-bezier(0.22, 1, 0.36, 1); }
+.btn:hover { color: var(--fg); background: var(--panel-2); box-shadow: var(--btn-shadow), var(--ring); }
+.btn:active { transform: translateY(1px); }
 .btn svg { width: 1rem; height: 1rem; }
-.btn--grad { border: 0; color: #1a1300; background: linear-gradient(90deg, #c9971c, #f2d06b); box-shadow: 0 8px 30px -6px color-mix(in srgb, var(--accent) 55%, transparent); }
-.btn--grad:hover { filter: brightness(1.08); }
+.btn--grad { border-color: var(--stroke-brand); color: var(--on-brand); background: var(--brand); box-shadow: var(--glow-brand); }
+.btn--grad:hover { color: var(--on-brand); background: var(--brand-hover); box-shadow: var(--glow-brand), var(--ring); }
 
 /* sections */
 .sec { position: relative; padding: 7rem 0; }
 .head { text-align: center; max-width: 40rem; margin: 0 auto 4rem; }
-.eyebrow { display: block; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-soft); margin-bottom: 1rem; }
-.head h2 { font: 800 clamp(2rem, 4.4vw, 2.5rem)/1.15 var(--display); padding-bottom: 0.12em; margin-bottom: -0.12em; letter-spacing: -0.03em; background: linear-gradient(180deg, var(--title-a) 30%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.eyebrow { display: block; font: 500 0.75rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); margin-bottom: 1rem; }
+.head h2 { font: 500 clamp(2rem, 4.4vw, 2.5rem)/1.15 var(--display); padding-bottom: 0.12em; margin-bottom: -0.12em; letter-spacing: -0.03em; background: linear-gradient(180deg, var(--title-a) 30%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .head p { margin-top: 1rem; color: var(--muted); font-size: 1.0625rem; }
 
 /* bento */
 .bento { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 1.5rem; }
-.card { position: relative; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); box-shadow: var(--card-shadow); padding: 2.5rem; display: flex; flex-direction: column; min-width: 0; }
+.card { position: relative; border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); box-shadow: var(--card-shadow); padding: 2.5rem; display: flex; flex-direction: column; min-width: 0; }
 .card .eyebrow { font-size: 0.6875rem; margin-bottom: 0.9rem; }
-.card h3 { font: 700 1.35rem/1.15 var(--display); letter-spacing: -0.03em; }
+.card h3 { font: 600 1.35rem/1.2 var(--display); letter-spacing: -0.03em; }
 .card > p { margin-top: 0.75rem; color: var(--muted); font-size: 0.9375rem; line-height: 1.6; }
 .c-8 { grid-column: span 8; } .c-4 { grid-column: span 4; } .c-6 { grid-column: span 6; }
 @media (max-width: 899.98px) { .c-8, .c-4, .c-6 { grid-column: 1 / -1; } .card { padding: 2rem 1.5rem; } }
-.visual { margin-top: 2rem; flex: 1; min-height: 11rem; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--panel-2); display: flex; align-items: center; justify-content: center; gap: 1.25rem; padding: 1.5rem; flex-wrap: wrap; }
+.visual { margin-top: 2rem; flex: 1; min-height: 11rem; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--panel-2); display: flex; align-items: center; justify-content: center; gap: 1.25rem; padding: 1.5rem; flex-wrap: wrap; }
 .chip { font: 400 0.8125rem/1 var(--mono); padding: 0.75rem 1rem; border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--bg); white-space: nowrap; }
-.chip--on { border-color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 24px -6px color-mix(in srgb, var(--accent) 60%, transparent); }
-.flow-arrow { color: var(--accent-soft); width: 1.4rem; height: 1.4rem; flex: none; }
+.chip--on { border-color: var(--sel-line); background: var(--sel-bg); color: var(--accent-soft); }
+.flow-arrow { color: var(--dim); width: 1.4rem; height: 1.4rem; flex: none; }
 @media (max-width: 639.98px) { .visual { flex-direction: column; gap: 0.75rem; } .flow-arrow { transform: rotate(90deg); } }
 .big { margin-top: 2.25rem; text-align: center; }
-.big strong { display: block; font: 800 3.5rem/1 var(--display); letter-spacing: -0.04em; background: linear-gradient(90deg, var(--accent), var(--accent-2)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.big strong { display: block; font: 500 3.5rem/1 var(--display); letter-spacing: -0.04em; background: linear-gradient(180deg, var(--title-a) 30%, var(--title-b) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .big span { display: block; margin-top: 0.9rem; font-size: 0.75rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
 .mini { margin-top: 1.75rem; padding-top: 1.5rem; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr 1fr; text-align: center; gap: 1rem; }
 .mini strong { display: block; font-weight: 600; }
 .mini span { font-size: 0.75rem; color: var(--muted); }
-.term-mini { margin: 2rem 0 0; flex: 1; border: 1px solid var(--line); border-radius: 0.875rem; background: var(--panel-2); padding: 1.5rem; font: 400 0.8125rem/1.75 var(--mono); overflow-x: auto; white-space: pre; }
+.term-mini { margin: 2rem 0 0; flex: 1; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--panel-2); padding: 1.5rem; font: 400 0.8125rem/1.75 var(--mono); overflow-x: auto; white-space: pre; }
 .term-mini .c { color: var(--dim); }
 .term-mini .a { color: var(--accent-soft); }
 
 /* timeline */
-.steps { --pad: 2.75rem; list-style: none; margin: 0 auto; padding: var(--pad); max-width: 44rem; position: relative; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); box-shadow: var(--card-shadow); }
+.steps { --pad: 2.75rem; list-style: none; margin: 0 auto; padding: var(--pad); max-width: 44rem; position: relative; border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); box-shadow: var(--card-shadow); }
 @media (max-width: 639.98px) { .steps { --pad: 1.5rem; } .steps li { padding-left: 2.75rem; } }
-.steps::before { content: ""; position: absolute; left: calc(var(--pad) + 0.85rem); top: calc(var(--pad) + 1rem); bottom: calc(var(--pad) + 1rem); width: 1px; background: linear-gradient(180deg, var(--accent) 0%, var(--line) 100%); opacity: 0.6; }
+.steps::before { content: ""; position: absolute; left: calc(var(--pad) + 0.85rem); top: calc(var(--pad) + 1rem); bottom: calc(var(--pad) + 1rem); width: 1px; border-left: 1px dashed var(--line-2); }
 .steps li { position: relative; padding: 0 0 3.25rem 3.5rem; }
 .steps li:last-child { padding-bottom: 0; }
 .steps .n { position: absolute; left: 0; top: 0.2rem; width: 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font: 500 0.75rem/1 var(--mono); color: var(--muted); background: var(--panel); border: 1px solid var(--line-2); }
-.steps h3 { font: 700 1.375rem/1.25 var(--display); letter-spacing: -0.03em; }
+.steps h3 { font: 600 1.375rem/1.25 var(--display); letter-spacing: -0.03em; }
 .steps p { margin-top: 0.6rem; color: var(--muted); font-size: 1rem; }
 .steps .skills { margin-top: 0.75rem; display: flex; gap: 0.4rem; flex-wrap: wrap; }
-.steps .skills code { font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 999px; border: 1px solid var(--line-2); color: var(--accent-soft); }
+.steps .skills code { font-size: 0.75rem; padding: 0.2rem 0.55rem; border-radius: 0.375rem; border: 1px solid var(--line-2); background: var(--panel-2); color: var(--muted); }
 
 /* console */
-.console { border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); overflow: hidden; box-shadow: var(--card-shadow), 0 40px 120px -40px color-mix(in srgb, var(--accent) 25%, transparent); }
+.console { border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); overflow: hidden; box-shadow: var(--card-shadow), 0 20px 60px -20px rgba(0, 0, 0, 0.35); }
 .console__bar { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem 0.75rem 1.5rem; border-bottom: 1px solid var(--line); }
 .dots { display: flex; gap: 0.45rem; }
 .dots i { width: 0.7rem; height: 0.7rem; border-radius: 50%; background: #7f1d1d; }
 .dots i:nth-child(2) { background: #854d0e; } .dots i:nth-child(3) { background: #14532d; }
 .tabs { display: flex; gap: 0.25rem; margin: 0 auto; overflow-x: auto; }
 .tabs button { font: 500 0.8125rem/1 var(--sans); color: var(--muted); background: transparent; border: 1px solid transparent; border-radius: 0.5rem; padding: 0.55rem 0.9rem; cursor: pointer; white-space: nowrap; }
-.tabs button[aria-selected="true"] { color: var(--fg); background: var(--panel-2); border-color: var(--line-2); }
+.tabs button[aria-selected="true"] { color: var(--accent-soft); background: var(--sel-bg); border-color: var(--sel-line); }
 .icon-btn { width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 0.5rem; border: 0; background: transparent; color: var(--muted); cursor: pointer; flex: none; }
 .icon-btn:hover { color: var(--fg); background: var(--panel-2); }
 .icon-btn svg { width: 1rem; height: 1rem; }
@@ -292,16 +325,16 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 @media (max-width: 639.98px) { .dots { display: none; } .console__bar { padding-left: 0.75rem; } .console pre { padding: 1.5rem 1.25rem; font-size: 0.8125rem; } }
 
 /* skills browser */
-.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr); border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); box-shadow: var(--card-shadow); overflow: hidden; }
+.docs { display: grid; grid-template-columns: 16rem minmax(0, 1fr); border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); box-shadow: var(--card-shadow); overflow: hidden; }
 .docs__index { border-right: 1px solid var(--line); padding: 2rem 1.25rem; }
 .docs__index .eyebrow { color: var(--dim); font-size: 0.6875rem; padding-left: 0.75rem; }
 .docs__index ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem; }
 .docs__index button { width: 100%; text-align: left; font: 400 0.84375rem/1.3 var(--sans); color: var(--muted); background: transparent; border: 0; border-left: 2px solid transparent; border-radius: 0 0.5rem 0.5rem 0; padding: 0.55rem 0.75rem; cursor: pointer; }
 .docs__index button:hover { color: var(--fg); }
-.docs__index button[aria-selected="true"] { color: var(--fg); font-weight: 600; background: var(--panel-2); border-left-color: var(--accent); }
+.docs__index button[aria-selected="true"] { color: var(--accent-soft); font-weight: 500; background: var(--sel-bg); border-left-color: var(--stroke-brand); }
 .docs__body { padding: 3rem 3.5rem; min-width: 0; }
-.docs__body .group { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent-soft); }
-.docs__body h3 { margin-top: 0.9rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); font: 800 2rem/1.15 var(--display); letter-spacing: -0.035em; }
+.docs__body .group { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
+.docs__body h3 { margin-top: 0.9rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--line); font: 500 2rem/1.15 var(--display); letter-spacing: -0.035em; }
 .docs__body p { margin-top: 1.5rem; color: var(--muted); font-size: 1rem; line-height: 1.75; max-width: 40rem; }
 .docs__foot { margin-top: 1.75rem; display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.25rem; }
 .docs__body .cmd { font: 400 0.8125rem/1 var(--mono); padding: 0.75rem 1rem; border: 1px solid var(--line-2); border-radius: 0.5rem; background: var(--bg); }
@@ -316,16 +349,16 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
             mask-image: linear-gradient(90deg, transparent 0, #000 1.25rem, #000 calc(100% - 2.5rem), transparent); }
   .docs__index ol::-webkit-scrollbar { display: none; }
   .docs__index li { flex: none; scroll-snap-align: center; }
-  .docs__index button { width: auto; white-space: nowrap; gap: 0.4rem; padding: 0.5rem 0.8rem; border: 1px solid var(--line-2); border-radius: 999px; font-size: 0.8125rem; }
-  .docs__index button[aria-selected="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel)); }
+  .docs__index button { width: auto; white-space: nowrap; gap: 0.4rem; padding: 0.5rem 0.8rem; border: 1px solid var(--line-2); border-radius: 0.625rem; font-size: 0.8125rem; }
+  .docs__index button[aria-selected="true"] { border-color: var(--sel-line); background: var(--sel-bg); }
   .docs__index button svg { width: 1rem; height: 1rem; }
   .docs__body { padding: 2rem 1.5rem; }
 }
 
 /* CTA */
-.cta { box-shadow: var(--card-shadow); max-width: 45rem; margin: 0 auto; text-align: center; border: 1px solid var(--line); border-radius: 1.5rem; padding: 5rem 2rem; background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 70%), var(--panel); }
-.pill { display: inline-block; font: 400 0.75rem/1 var(--mono); color: var(--accent-soft); padding: 0.6rem 1rem; border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.cta h2 { margin-top: 1.75rem; font: 800 clamp(1.75rem, 4vw, 2.1rem)/1.2 var(--display); letter-spacing: -0.035em; }
+.cta { box-shadow: var(--card-shadow); max-width: 45rem; margin: 0 auto; text-align: center; border: 1px solid var(--line); border-radius: 1.25rem; padding: 5rem 2rem; background: radial-gradient(60% 80% at 50% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%), var(--panel); }
+.pill { display: inline-block; font: 400 0.75rem/1 var(--mono); color: var(--muted); padding: 0.6rem 1rem; border: 1px solid var(--line-2); border-radius: 999px; background: var(--panel-2); }
+.cta h2 { margin-top: 1.75rem; font: 500 clamp(1.75rem, 4vw, 2.1rem)/1.2 var(--display); letter-spacing: -0.035em; }
 .cta > p { margin: 0.9rem auto 0; color: var(--muted); max-width: 30rem; }
 .cmdbox { position: relative; margin: 2rem auto 0; max-width: 34rem; text-align: left; border: 1px solid var(--line); border-radius: 0.75rem; background: var(--bg); }
 .cmdbox pre { margin: 0; padding: 1rem 3.25rem 1rem 1.25rem; font-size: 0.8125rem; line-height: 1.9; color: var(--muted); overflow-x: auto; }
@@ -333,11 +366,11 @@ p code, .a code { font-size: 0.875em; color: var(--fg); }
 .cmdbox .icon-btn { position: absolute; top: 0.5rem; right: 0.5rem; }
 
 /* FAQ */
-.faq { max-width: 47.5rem; margin: 0 auto; padding: 0.5rem 2rem; border: 1px solid var(--line); border-radius: 1.25rem; background: var(--panel); box-shadow: var(--card-shadow); }
+.faq { max-width: 47.5rem; margin: 0 auto; padding: 0.5rem 2rem; border: 1px solid var(--line); border-radius: 1rem; background: var(--panel); box-shadow: var(--card-shadow); }
 .faq details:last-child { border-bottom: 0; }
 @media (max-width: 639.98px) { .faq { padding: 0.25rem 1.25rem; } .faq .a { padding-right: 0; } }
-.faq details { border-bottom: 1px solid var(--line); }
-.faq summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.6rem 0; cursor: pointer; font-size: 1.0625rem; font-weight: 500; }
+.faq details { border-bottom: 1px dashed var(--line-2); }
+.faq summary { list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; padding: 1.6rem 0; cursor: pointer; font: 500 1.0625rem/1.4 var(--display); letter-spacing: -0.02em; }
 .faq summary::-webkit-details-marker { display: none; }
 .faq summary::after { content: "+"; font: 300 1.5rem/1 var(--sans); color: var(--muted); flex: none; transition: transform 0.2s; }
 .faq details[open] summary::after { transform: rotate(45deg); }
@@ -350,7 +383,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
 .foot__grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 2.5rem; }
 .foot__about p { margin-top: 1.25rem; color: var(--dim); font-size: 0.875rem; max-width: 18rem; }
 .foot__about small { display: block; margin-top: 1rem; color: var(--dim); font-size: 0.8125rem; }
-.foot h3 { font: 600 0.75rem/1 var(--sans); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.25rem; }
+.foot h3 { font: 500 0.75rem/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 1.25rem; }
 .foot ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.85rem; font-size: 0.875rem; }
 .foot ul a { color: var(--muted); }
 .foot ul a:hover { color: var(--fg); }
@@ -476,8 +509,8 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
         </article>
         <article class="card c-4">
           <span class="eyebrow" data-i18n="f3.eb">No design system yet</span>
-          <h3 data-i18n="f3.h">Start from shadcn</h3>
-          <p data-i18n="f3.p"><code>adopt</code> takes your brand colour, name, radius and font. The look comes from shadcn, the structure from Material Design 3.</p>
+          <h3 data-i18n="f3.h">Start from a preset</h3>
+          <p data-i18n="f3.p"><code>adopt</code> takes your brand colour, name, radius and font. The look comes from a preset (shadcn, or atelier: dark-first with a warm accent), the structure from Material Design 3.</p>
           <div class="big"><strong>~30</strong><span data-i18n="f3.big">Components</span></div>
           <div class="mini"><div><strong>48 px</strong><span data-i18n="f3.m1">Touch targets</span></div><div><strong>3</strong><span data-i18n="f3.m2">Platforms</span></div></div>
         </article>
@@ -586,7 +619,7 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
   <section class="sec" id="install" aria-labelledby="install-h">
     <div class="wrap">
       <div class="cta">
-        <span class="pill" data-i18n="ins.pill">Version 0.6.0 · MIT licence</span>
+        <span class="pill" data-i18n="ins.pill">Version 0.8.0 · MIT licence</span>
         <h2 id="install-h" data-i18n="ins.h">Ready to prototype with your design system?</h2>
         <p data-i18n="ins.p">Run these in Claude Code. The skills are then available as <code>/kit:&lt;skill&gt;</code>.</p>
         <div class="cmdbox">
@@ -611,8 +644,8 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
         <details><summary data-i18n="q9.q">Does the AI make design decisions for us?</summary><div class="a" data-i18n="q9.a">No. The kit proposes and a person decides at every gate: the plan, the design direction, every new component or page, proposals to the DS and any accepted deviation. Decisions are recorded with the name of who made them.</div></details>
         <details><summary data-i18n="q10.q">How do I know the prototype really works?</summary><div class="a" data-i18n="q10.a"><code>validate</code> opens every screen, state and flow at phone, tablet and desktop widths in light and dark mode and writes one report: what fails, what a person must look at, and what was skipped and why.</div></details>
         <details><summary data-i18n="q11.q">Can it check what developers built?</summary><div class="a" data-i18n="q11.a">Yes. <code>verify</code> compares their build with the approved prototype, screen by screen. A difference is either a defect for developers or an intended change covered by an approved decision.</div></details>
-        <details><summary data-i18n="q2.q">Is it free?</summary><div class="a" data-i18n="q2.a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.</div></details>
-        <details><summary data-i18n="q3.q">Do I need a design system first?</summary><div class="a" data-i18n="q3.a">No. Without one, run <code>adopt</code>: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
+        <details><summary data-i18n="q2.q">Is it free?</summary><div class="a" data-i18n="q2.a">Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT; the atelier preset comes from the author's own design system, MIT.</div></details>
+        <details><summary data-i18n="q3.q">Do I need a design system first?</summary><div class="a" data-i18n="q3.a">No. Without one, run <code>adopt</code>: it builds a base profile from a preset (shadcn or atelier) with your brand colour, name, radius and font. If you have one, write a <code>ds.json</code> profile for it and <code>kickoff</code> links it.</div></details>
         <details><summary data-i18n="q4.q">Which stacks does it support?</summary><div class="a" data-i18n="q4.a">HTML (the default, one file that opens anywhere), React and Vue. Each app can use its own stack, so they can live side by side in one repository.</div></details>
         <details><summary data-i18n="q5.q">Does it send emails or publish anything on its own?</summary><div class="a" data-i18n="q5.a">No. <code>share</code> only drafts the handoff email for you to review and send. Skills save files; they do not commit, push or publish unless you ask.</div></details>
         <details><summary data-i18n="q6.q">Do I need Figma?</summary><div class="a" data-i18n="q6.a">Only for <code>wireflow</code>, <code>mockup</code> and the optional Figma step of <code>adopt</code>, which need the Figma connector. Everything else works without it.</div></details>
@@ -644,16 +677,16 @@ footer { border-top: 1px solid var(--line); padding: 5rem 0 2.5rem; }
         <ul><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit">GitHub</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/LICENSE" data-i18n="ft.lic">Licence</a></li><li><a href="https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/presets/shadcn/NOTICE" data-i18n="ft.notice">shadcn notice</a></li></ul>
       </div>
     </div>
-    <div class="foot__base"><span data-i18n="ft.base">Released under the MIT licence. Contributions welcome.</span><span>v0.6.0</span></div>
+    <div class="foot__base"><span data-i18n="ft.base">Released under the MIT licence. Contributions welcome.</span><span>v0.8.0</span></div>
   </div>
 </footer>
 
 <script>
 (function () {
   var REPO = "https://github.com/MinhNhat0201/nnminh-prototype-kit/blob/main/skills/";
-  var VI = {"nav.features": "Tính năng", "nav.process": "Quy trình", "nav.console": "Console", "nav.skills": "Skill", "nav.faq": "Hỏi đáp", "nav.install": "Cài đặt", "hero.title": "Từ ý tưởng đến bàn giao cho developer, <span>với design system của bạn.</span>", "hero.lede": "Prototype Kit là bộ 14 skill miễn phí cho Claude Code. Kit lên kế hoạch, dựng prototype HTML, React hoặc Vue bằng design system của bạn, viết spec, đưa luồng màn hình lên Figma và đóng gói mọi thứ cho BA, QC và developer.", "hero.install": "Cài đặt kit", "hero.browse": "Xem các skill", "feat.h": "Kit làm được gì", "feat.p": "Các skill hiểu design system của bạn, cho mọi bước từ yêu cầu đến bàn giao.", "f1.eb": "Mọi design system", "f1.h": "Hai file nối kit với design system của bạn", "f1.p": "Không có gì bị gắn cứng. <code>kit.config.json</code> giữ ngôn ngữ, stack và các app. Profile <code>ds.json</code> giữ prefix token, gói CSS, theming và thư viện Figma.", "f1.chip": "14 skill", "f2.eb": "Kiểm tra tương phản", "f2.h": "Mọi cặp màu, cả sáng lẫn tối", "f2.p": "Chữ cần đạt 4.5:1, icon và viền cần 3:1. Ngưỡng không bao giờ bị hạ.", "f2.big": "0 lỗi", "f2.bigl": "Trong lần chạy thử", "f2.m1": "Cặp màu đã kiểm", "f2.m2": "Đạt sau khi chỉnh", "f3.eb": "Chưa có design system", "f3.h": "Bắt đầu từ shadcn", "f3.p": "<code>adopt</code> lấy màu thương hiệu, tên, độ bo góc và font của bạn. Phần giao diện lấy từ shadcn, phần cấu trúc lấy từ Material Design 3.", "f3.big": "Component", "f3.m1": "Vùng chạm", "f3.m2": "Nền tảng", "f4.eb": "Gói bàn giao", "f4.h": "Một file zip, mỗi vai trò một lối đọc riêng", "f4.p": "BA nhận spec và danh sách tính năng, QC nhận checklist, developer nhận <code>AGENTS.md</code> và prototype. Không có ảnh màn hình, không có file <code>.js</code> rời, nên bộ lọc email không chặn.", "f4.c1": "// cấu trúc một gói bàn giao", "f4.c2": "lối đọc cho BA, QC, developer", "f4.c3": "mỗi unit một file Markdown", "proc.eb": "Quy trình", "proc.h": "Kit hoạt động thế nào", "proc.p": "Một lộ trình từ yêu cầu đến bàn giao. Mỗi bước là một skill bạn cũng có thể chạy riêng.", "s1.h": "Dựng dự án", "s1.p": "Dựng một design system nền nếu bạn chưa có. Sau đó chọn ngôn ngữ, stack và design system, kit sẽ tạo sẵn app đầu tiên.", "s2.h": "Xác định phạm vi", "s2.p": "Biến yêu cầu của PM và BA thành câu hỏi mở, các đợt bàn giao và ma trận truy vết.", "s3.h": "Dựng prototype", "s3.p": "Màn hình chỉ dùng component của design system. Kit sẽ hỏi trước khi tạo component hoặc trang mới.", "s4.h": "Viết spec", "s4.p": "Ảnh chụp màn hình, ghim chú thích và style được ánh xạ sang tên token. Luồng và màn hình được đưa lên Figma.", "s5.h": "Bàn giao", "s5.p": "Đóng gói một file zip cho BA, QC và developer, rồi soạn email. Kit không bao giờ tự gửi.", "con.h": "Một lần chạy thật", "con.p": "Output khi dựng một dự án React bằng kit. Đã rút gọn, số liệu giữ nguyên.", "con.t3": "3. Build và audit", "sk.h": "14 skill", "sk.p": "Chọn một skill để xem nó làm gì. Mỗi skill đều có link tới hướng dẫn đầy đủ trên GitHub.", "sk.idx": "Danh sách skill", "sk.more": "Đọc SKILL.md trên GitHub", "ins.pill": "Phiên bản 0.1.1 · Giấy phép MIT", "ins.h": "Sẵn sàng dựng prototype với design system của bạn?", "ins.p": "Chạy các lệnh sau trong Claude Code. Sau đó các skill có sẵn dưới dạng <code>/kit:&lt;skill&gt;</code>.", "ins.gh": "Xem trên GitHub", "faq.h": "Câu hỏi thường gặp", "q1.q": "Prototype Kit là gì?", "q1.a": "Một plugin Claude Code (<code>kit@nnminh-prototype-kit</code>) gồm 14 skill đưa thiết kế từ ý tưởng đến bàn giao cho developer: phân tích yêu cầu, prototype dựng bằng design system của bạn, spec, board luồng trên Figma và một gói bàn giao.", "q2.q": "Có miễn phí không?", "q2.a": "Có. Kit phát hành theo giấy phép MIT. Preset shadcn đi kèm được dựng từ shadcn/ui và shadcn-vue, cũng theo giấy phép MIT.", "q3.q": "Có cần design system trước không?", "q3.a": "Không. Nếu chưa có, chạy <code>adopt</code>: skill này dựng một profile nền từ shadcn với màu thương hiệu, tên, độ bo góc và font của bạn. Nếu đã có, hãy viết một profile <code>ds.json</code> cho nó và <code>kickoff</code> sẽ liên kết vào.", "q4.q": "Kit hỗ trợ những stack nào?", "q4.a": "HTML (mặc định, một file mở được ở mọi nơi), React và Vue. Mỗi app có thể dùng stack riêng, nên chúng có thể nằm cạnh nhau trong một repo.", "q5.q": "Kit có tự gửi email hay tự đăng gì không?", "q5.a": "Không. <code>share</code> chỉ soạn nháp email bàn giao để bạn xem lại và tự gửi. Các skill chỉ lưu file; chúng không commit, push hay đăng gì trừ khi bạn yêu cầu.", "q6.q": "Có cần Figma không?", "q6.a": "Chỉ cần cho <code>wireflow</code>, <code>mockup</code> và bước Figma tuỳ chọn của <code>adopt</code>, vì các bước này dùng connector Figma. Mọi thứ khác chạy được mà không cần Figma.", "q7.q": "Tài liệu sinh ra có thể viết bằng ngôn ngữ nào?", "q7.a": "Câu trả lời và tài liệu sinh ra theo <code>kit.config.json &gt; language</code>. Kit có sẵn tiếng Anh và tiếng Việt; muốn thêm ngôn ngữ, sao chép <code>locales/en/</code> rồi dịch các giá trị.", "q8.q": "Cần cài những gì?", "q8.a": "Claude Code, Python 3.9+, Node 18+, Playwright kèm Chromium để chụp màn hình, và Pillow để tối ưu ảnh.", "ft.about": "Skill Claude Code cho prototype và bàn giao thiết kế, dùng với mọi design system.", "ft.copy": "© 2026 Prototype Kit bởi nnminh. Giấy phép MIT.", "ft.docs": "Tài liệu", "ft.proj": "Dự án", "ft.config": "Cấu hình", "ft.stacks": "Stack", "ft.auth": "Viết skill", "ft.log": "Nhật ký thay đổi", "ft.lic": "Giấy phép", "ft.notice": "Ghi chú shadcn", "ft.base": "Phát hành theo giấy phép MIT. Hoan nghênh đóng góp.", "meta.title": "Prototype Kit: Bộ skill Claude Code từ ý tưởng đến bàn giao thiết kế", "meta.desc": "14 skill Claude Code đưa thiết kế từ ý tưởng đến bàn giao cho developer với mọi design system: lên kế hoạch, dựng prototype HTML, React hoặc Vue, viết spec, board luồng trên Figma và một gói bàn giao."};
+  var VI = {"nav.features": "Tính năng", "nav.process": "Quy trình", "nav.console": "Console", "nav.skills": "Skill", "nav.faq": "Hỏi đáp", "nav.install": "Cài đặt", "hero.title": "Từ ý tưởng đến bàn giao cho developer, <span>với design system của bạn.</span>", "hero.lede": "Prototype Kit là bộ 14 skill miễn phí cho Claude Code. Kit lên kế hoạch, dựng prototype HTML, React hoặc Vue bằng design system của bạn, viết spec, đưa luồng màn hình lên Figma và đóng gói mọi thứ cho BA, QC và developer.", "hero.install": "Cài đặt kit", "hero.browse": "Xem các skill", "feat.h": "Kit làm được gì", "feat.p": "Các skill hiểu design system của bạn, cho mọi bước từ yêu cầu đến bàn giao.", "f1.eb": "Mọi design system", "f1.h": "Hai file nối kit với design system của bạn", "f1.p": "Không có gì bị gắn cứng. <code>kit.config.json</code> giữ ngôn ngữ, stack và các app. Profile <code>ds.json</code> giữ prefix token, gói CSS, theming và thư viện Figma.", "f1.chip": "14 skill", "f2.eb": "Kiểm tra tương phản", "f2.h": "Mọi cặp màu, cả sáng lẫn tối", "f2.p": "Chữ cần đạt 4.5:1, icon và viền cần 3:1. Ngưỡng không bao giờ bị hạ.", "f2.big": "0 lỗi", "f2.bigl": "Trong lần chạy thử", "f2.m1": "Cặp màu đã kiểm", "f2.m2": "Đạt sau khi chỉnh", "f3.eb": "Chưa có design system", "f3.h": "Bắt đầu từ một preset", "f3.p": "<code>adopt</code> lấy màu thương hiệu, tên, độ bo góc và font của bạn. Phần giao diện lấy từ một preset (shadcn, hoặc atelier: nền tối với một màu nhấn ấm), phần cấu trúc lấy từ Material Design 3.", "f3.big": "Component", "f3.m1": "Vùng chạm", "f3.m2": "Nền tảng", "f4.eb": "Gói bàn giao", "f4.h": "Một file zip, mỗi vai trò một lối đọc riêng", "f4.p": "BA nhận spec và danh sách tính năng, QC nhận checklist, developer nhận <code>AGENTS.md</code> và prototype. Không có ảnh màn hình, không có file <code>.js</code> rời, nên bộ lọc email không chặn.", "f4.c1": "// cấu trúc một gói bàn giao", "f4.c2": "lối đọc cho BA, QC, developer", "f4.c3": "mỗi unit một file Markdown", "proc.eb": "Quy trình", "proc.h": "Kit hoạt động thế nào", "proc.p": "Một lộ trình từ yêu cầu đến bàn giao. Mỗi bước là một skill bạn cũng có thể chạy riêng.", "s1.h": "Dựng dự án", "s1.p": "Dựng một design system nền nếu bạn chưa có. Sau đó chọn ngôn ngữ, stack và design system, kit sẽ tạo sẵn app đầu tiên.", "s2.h": "Xác định phạm vi", "s2.p": "Biến yêu cầu của PM và BA thành câu hỏi mở, các đợt bàn giao và ma trận truy vết.", "s3.h": "Dựng prototype", "s3.p": "Màn hình chỉ dùng component của design system. Kit sẽ hỏi trước khi tạo component hoặc trang mới.", "s4.h": "Viết spec", "s4.p": "Ảnh chụp màn hình, ghim chú thích và style được ánh xạ sang tên token. Luồng và màn hình được đưa lên Figma.", "s5.h": "Bàn giao", "s5.p": "Đóng gói một file zip cho BA, QC và developer, rồi soạn email. Kit không bao giờ tự gửi.", "con.h": "Một lần chạy thật", "con.p": "Output khi dựng một dự án React bằng kit. Đã rút gọn, số liệu giữ nguyên.", "con.t3": "3. Build và audit", "sk.h": "14 skill", "sk.p": "Chọn một skill để xem nó làm gì. Mỗi skill đều có link tới hướng dẫn đầy đủ trên GitHub.", "sk.idx": "Danh sách skill", "sk.more": "Đọc SKILL.md trên GitHub", "ins.pill": "Phiên bản 0.1.1 · Giấy phép MIT", "ins.h": "Sẵn sàng dựng prototype với design system của bạn?", "ins.p": "Chạy các lệnh sau trong Claude Code. Sau đó các skill có sẵn dưới dạng <code>/kit:&lt;skill&gt;</code>.", "ins.gh": "Xem trên GitHub", "faq.h": "Câu hỏi thường gặp", "q1.q": "Prototype Kit là gì?", "q1.a": "Một plugin Claude Code (<code>kit@nnminh-prototype-kit</code>) gồm 14 skill đưa thiết kế từ ý tưởng đến bàn giao cho developer: phân tích yêu cầu, prototype dựng bằng design system của bạn, spec, board luồng trên Figma và một gói bàn giao.", "q2.q": "Có miễn phí không?", "q2.a": "Có. Kit phát hành theo giấy phép MIT. Preset shadcn đi kèm được dựng từ shadcn/ui và shadcn-vue, cũng theo giấy phép MIT; preset atelier lấy từ design system riêng của tác giả, giấy phép MIT.", "q3.q": "Có cần design system trước không?", "q3.a": "Không. Nếu chưa có, chạy <code>adopt</code>: skill này dựng một profile nền từ một preset (shadcn hoặc atelier) với màu thương hiệu, tên, độ bo góc và font của bạn. Nếu đã có, hãy viết một profile <code>ds.json</code> cho nó và <code>kickoff</code> sẽ liên kết vào.", "q4.q": "Kit hỗ trợ những stack nào?", "q4.a": "HTML (mặc định, một file mở được ở mọi nơi), React và Vue. Mỗi app có thể dùng stack riêng, nên chúng có thể nằm cạnh nhau trong một repo.", "q5.q": "Kit có tự gửi email hay tự đăng gì không?", "q5.a": "Không. <code>share</code> chỉ soạn nháp email bàn giao để bạn xem lại và tự gửi. Các skill chỉ lưu file; chúng không commit, push hay đăng gì trừ khi bạn yêu cầu.", "q6.q": "Có cần Figma không?", "q6.a": "Chỉ cần cho <code>wireflow</code>, <code>mockup</code> và bước Figma tuỳ chọn của <code>adopt</code>, vì các bước này dùng connector Figma. Mọi thứ khác chạy được mà không cần Figma.", "q7.q": "Tài liệu sinh ra có thể viết bằng ngôn ngữ nào?", "q7.a": "Câu trả lời và tài liệu sinh ra theo <code>kit.config.json &gt; language</code>. Kit có sẵn tiếng Anh và tiếng Việt; muốn thêm ngôn ngữ, sao chép <code>locales/en/</code> rồi dịch các giá trị.", "q8.q": "Cần cài những gì?", "q8.a": "Claude Code, Python 3.9+, Node 18+, Playwright kèm Chromium để chụp màn hình, và Pillow để tối ưu ảnh.", "ft.about": "Skill Claude Code cho prototype và bàn giao thiết kế, dùng với mọi design system.", "ft.copy": "© 2026 Prototype Kit bởi nnminh. Giấy phép MIT.", "ft.docs": "Tài liệu", "ft.proj": "Dự án", "ft.config": "Cấu hình", "ft.stacks": "Stack", "ft.auth": "Viết skill", "ft.log": "Nhật ký thay đổi", "ft.lic": "Giấy phép", "ft.notice": "Ghi chú shadcn", "ft.base": "Phát hành theo giấy phép MIT. Hoan nghênh đóng góp.", "meta.title": "Prototype Kit: Bộ skill Claude Code từ ý tưởng đến bàn giao thiết kế", "meta.desc": "14 skill Claude Code đưa thiết kế từ ý tưởng đến bàn giao cho developer với mọi design system: lên kế hoạch, dựng prototype HTML, React hoặc Vue, viết spec, board luồng trên Figma và một gói bàn giao."};
   Object.assign(VI, {"fm.eb": "Luồng skill", "fm.h": "14 skill nối với nhau thế nào", "fm.p": "Bắt đầu ở bất kỳ đâu với <code>brief</code>. Mỗi bước chuyển kết quả cho bước sau, còn nhóm skill design system giữ prototype và design system luôn khớp nhau.", "fm.brief": "đọc yêu cầu của bạn và chuyển tới đúng bước", "fm.opt": "nếu chưa có DS", "fm.s1": "Dựng dự án", "fm.o1": "<code>kit.config.json</code>, app đầu tiên", "fm.s2": "Xác định", "fm.o2": "Câu hỏi, các đợt, truy vết", "fm.s3": "Dựng", "fm.o3": "Màn hình dựng bằng DS", "fm.s4": "Đặc tả", "fm.o4": "Spec, board luồng Figma", "fm.s5": "Bàn giao", "fm.o5": "Một file zip, email nháp", "fm.loop": "Vòng design system", "fm.back": "quay lại bước Dựng dự án và Dựng"});
-  Object.assign(VI, {"hero.lede": "Prototype Kit là quy trình thiết kế miễn phí gồm 18 skill cho Claude Code. Kit lên kế hoạch, khám phá các hướng thiết kế, dựng prototype HTML, React hoặc Vue bằng design system của bạn, kiểm tra trên trình duyệt, viết spec, đưa luồng lên Figma, đóng gói cho BA, QC và developer, rồi kiểm tra bản developer làm so với bản đã duyệt.", "meta.desc": "Quy trình thiết kế gồm 18 skill Claude Code, dùng với mọi design system: lên kế hoạch, khám phá hướng thiết kế, dựng prototype, kiểm tra trên trình duyệt, spec, luồng Figma, gói bàn giao và kiểm tra bản developer làm. Người quyết định ở mọi bước duyệt.", "fm.s1": "Dựng dự án", "fm.o1": "<code>kit.config.json</code>, bộ nhớ sản phẩm", "fm.s2": "Xác định", "fm.o2": "Câu hỏi, các đợt, truy vết", "fm.s3": "Khám phá", "fm.o3": "Một hướng, do người chọn", "fm.s4": "Dựng", "fm.o4": "Màn hình đã kiểm tra trên trình duyệt", "fm.s5": "Đặc tả", "fm.o5": "Spec, board luồng Figma", "fm.s6": "Bàn giao", "fm.o6": "Một file zip, email nháp", "fm.after": "Sau khi phát triển", "fm.afterText": "so bản developer làm với thiết kế đã duyệt; quyết định chuyển sang đã kiểm chứng", "fm.h": "18 skill nối với nhau thế nào", "fm.p": "Bắt đầu ở bất kỳ đâu với <code>brief</code>. Mỗi bước chuyển kết quả cho bước sau. Người quyết định ở mọi bước duyệt; <code>context</code> ghi nhớ ai đã quyết định gì và vì sao.", "s1.h": "Dựng dự án", "s1.p": "Dựng design system nền nếu chưa có, chọn ngôn ngữ, stack và design system, và lưu bộ nhớ sản phẩm: người dùng, nguyên tắc, luật và các quyết định.", "s2.h": "Xác định phạm vi", "s2.p": "Biến yêu cầu của PM và BA thành câu hỏi mở, các đợt bàn giao và ma trận truy vết. Kế hoạch được duyệt trước khi dựng bất cứ thứ gì.", "s3.h": "Khám phá các hướng", "s3.p": "Với một câu hỏi thiết kế thật, dựng 2–4 hướng bằng DS và đặt cạnh nhau. Người chọn một hướng và lý do được ghi lại.", "s4.h": "Dựng và kiểm tra prototype", "s4.p": "Màn hình chỉ dùng component của design system; kit hỏi trước khi tạo component hoặc trang mới. Sau đó kiểm tra lỗi, accessibility, focus, trạng thái và luồng trên trình duyệt.", "s5.h": "Viết spec", "s5.p": "Ảnh chụp màn hình, ghim chú thích và style ánh xạ sang tên token. Luồng và màn hình được đưa lên Figma.", "s6.h": "Bàn giao", "s6.p": "Đóng gói một file zip cho BA, QC và developer, kèm các quyết định đằng sau thiết kế, rồi soạn email. Kit không bao giờ tự gửi.", "s7.h": "Kiểm chứng bản dựng", "s7.p": "Khi developer đã dựng xong, so bản của họ với prototype đã duyệt. Mỗi khác biệt là lỗi hoặc sai lệch đã duyệt; sau đó các quyết định được đánh dấu đã kiểm chứng.", "proc.p": "Một lộ trình từ yêu cầu đến bản dựng đã kiểm chứng. Người quyết định ở mọi bước duyệt; mỗi bước là một skill bạn cũng có thể chạy riêng.", "g1.eb": "Người quyết định", "g1.h": "Mỗi quyết định có người chịu trách nhiệm và trạng thái", "g1.p": "Kit đề xuất; một người được nêu tên duyệt hoặc từ chối. Nhật ký quyết định ghi nhớ ai quyết định gì và vì sao, xuyên suốt các phiên làm việc, và theo dõi từng quyết định đến khi bản dựng được kiểm chứng.", "g1.st1": "Quan sát", "g1.st2": "Đề xuất", "g1.st3": "Đã duyệt", "g1.st4": "Đã dựng", "g1.st5": "Đã kiểm chứng", "g1.gates": "Các bước duyệt: kế hoạch · hướng thiết kế · component mới · trang mới · đề xuất vào DS · chấp nhận sai lệch", "g2.eb": "Được kiểm chứng, không chỉ được sinh ra", "g2.h": "Một báo cáo nói rõ cái gì hỏng và cái gì cần người xem", "g2.p": "<code>validate</code> chạy mọi màn hình, trạng thái và luồng ở ba kích thước, cả sáng lẫn tối. <code>verify</code> so bản developer làm với prototype đã duyệt.", "g2.r1": "Lỗi", "g2.r1d": "lỗi trang, tràn ngang, a11y nghiêm trọng, luồng hỏng", "g2.r2": "Cần người xem", "g2.r2d": "vùng chạm, focus, thay đổi hình ảnh", "g2.r3": "Bỏ qua", "g2.r3d": "luôn kèm lý do, không bao giờ tính là đạt", "sk.h": "18 skill", "q1.a": "Một plugin Claude Code (<code>kit@nnminh-prototype-kit</code>) gồm 18 skill đưa thiết kế từ yêu cầu đến bàn giao cho developer và ngược lại: phân tích yêu cầu, các hướng thiết kế, prototype dựng bằng design system của bạn, kiểm tra trên trình duyệt, spec, board luồng Figma, một gói bàn giao, và kiểm tra bản developer làm.", "q9.q": "AI có tự quyết định thiết kế thay chúng tôi không?", "q9.a": "Không. Kit đề xuất và người quyết định ở mọi bước duyệt: kế hoạch, hướng thiết kế, mọi component hoặc trang mới, đề xuất vào DS và mọi sai lệch được chấp nhận. Mỗi quyết định được ghi kèm tên người quyết định.", "q10.q": "Làm sao biết prototype thật sự chạy đúng?", "q10.a": "<code>validate</code> mở mọi màn hình, trạng thái và luồng ở cỡ điện thoại, máy tính bảng và máy tính, cả sáng lẫn tối, rồi viết một báo cáo: cái gì lỗi, cái gì cần người xem, cái gì bị bỏ qua và vì sao.", "q11.q": "Kit có kiểm tra được bản developer làm không?", "q11.a": "Có. <code>verify</code> so bản của họ với prototype đã duyệt, từng màn hình một. Mỗi khác biệt hoặc là lỗi để developer sửa, hoặc là thay đổi có chủ đích được một quyết định đã duyệt bao quát.", "f1.chip": "18 skill", "ins.pill": "Phiên bản 0.6.0 · Giấy phép MIT"});
+  Object.assign(VI, {"hero.lede": "Prototype Kit là quy trình thiết kế miễn phí gồm 18 skill cho Claude Code. Kit lên kế hoạch, khám phá các hướng thiết kế, dựng prototype HTML, React hoặc Vue bằng design system của bạn, kiểm tra trên trình duyệt, viết spec, đưa luồng lên Figma, đóng gói cho BA, QC và developer, rồi kiểm tra bản developer làm so với bản đã duyệt.", "meta.desc": "Quy trình thiết kế gồm 18 skill Claude Code, dùng với mọi design system: lên kế hoạch, khám phá hướng thiết kế, dựng prototype, kiểm tra trên trình duyệt, spec, luồng Figma, gói bàn giao và kiểm tra bản developer làm. Người quyết định ở mọi bước duyệt.", "fm.s1": "Dựng dự án", "fm.o1": "<code>kit.config.json</code>, bộ nhớ sản phẩm", "fm.s2": "Xác định", "fm.o2": "Câu hỏi, các đợt, truy vết", "fm.s3": "Khám phá", "fm.o3": "Một hướng, do người chọn", "fm.s4": "Dựng", "fm.o4": "Màn hình đã kiểm tra trên trình duyệt", "fm.s5": "Đặc tả", "fm.o5": "Spec, board luồng Figma", "fm.s6": "Bàn giao", "fm.o6": "Một file zip, email nháp", "fm.after": "Sau khi phát triển", "fm.afterText": "so bản developer làm với thiết kế đã duyệt; quyết định chuyển sang đã kiểm chứng", "fm.h": "18 skill nối với nhau thế nào", "fm.p": "Bắt đầu ở bất kỳ đâu với <code>brief</code>. Mỗi bước chuyển kết quả cho bước sau. Người quyết định ở mọi bước duyệt; <code>context</code> ghi nhớ ai đã quyết định gì và vì sao.", "s1.h": "Dựng dự án", "s1.p": "Dựng design system nền nếu chưa có, chọn ngôn ngữ, stack và design system, và lưu bộ nhớ sản phẩm: người dùng, nguyên tắc, luật và các quyết định.", "s2.h": "Xác định phạm vi", "s2.p": "Biến yêu cầu của PM và BA thành câu hỏi mở, các đợt bàn giao và ma trận truy vết. Kế hoạch được duyệt trước khi dựng bất cứ thứ gì.", "s3.h": "Khám phá các hướng", "s3.p": "Với một câu hỏi thiết kế thật, dựng 2–4 hướng bằng DS và đặt cạnh nhau. Người chọn một hướng và lý do được ghi lại.", "s4.h": "Dựng và kiểm tra prototype", "s4.p": "Màn hình chỉ dùng component của design system; kit hỏi trước khi tạo component hoặc trang mới. Sau đó kiểm tra lỗi, accessibility, focus, trạng thái và luồng trên trình duyệt.", "s5.h": "Viết spec", "s5.p": "Ảnh chụp màn hình, ghim chú thích và style ánh xạ sang tên token. Luồng và màn hình được đưa lên Figma.", "s6.h": "Bàn giao", "s6.p": "Đóng gói một file zip cho BA, QC và developer, kèm các quyết định đằng sau thiết kế, rồi soạn email. Kit không bao giờ tự gửi.", "s7.h": "Kiểm chứng bản dựng", "s7.p": "Khi developer đã dựng xong, so bản của họ với prototype đã duyệt. Mỗi khác biệt là lỗi hoặc sai lệch đã duyệt; sau đó các quyết định được đánh dấu đã kiểm chứng.", "proc.p": "Một lộ trình từ yêu cầu đến bản dựng đã kiểm chứng. Người quyết định ở mọi bước duyệt; mỗi bước là một skill bạn cũng có thể chạy riêng.", "g1.eb": "Người quyết định", "g1.h": "Mỗi quyết định có người chịu trách nhiệm và trạng thái", "g1.p": "Kit đề xuất; một người được nêu tên duyệt hoặc từ chối. Nhật ký quyết định ghi nhớ ai quyết định gì và vì sao, xuyên suốt các phiên làm việc, và theo dõi từng quyết định đến khi bản dựng được kiểm chứng.", "g1.st1": "Quan sát", "g1.st2": "Đề xuất", "g1.st3": "Đã duyệt", "g1.st4": "Đã dựng", "g1.st5": "Đã kiểm chứng", "g1.gates": "Các bước duyệt: kế hoạch · hướng thiết kế · component mới · trang mới · đề xuất vào DS · chấp nhận sai lệch", "g2.eb": "Được kiểm chứng, không chỉ được sinh ra", "g2.h": "Một báo cáo nói rõ cái gì hỏng và cái gì cần người xem", "g2.p": "<code>validate</code> chạy mọi màn hình, trạng thái và luồng ở ba kích thước, cả sáng lẫn tối. <code>verify</code> so bản developer làm với prototype đã duyệt.", "g2.r1": "Lỗi", "g2.r1d": "lỗi trang, tràn ngang, a11y nghiêm trọng, luồng hỏng", "g2.r2": "Cần người xem", "g2.r2d": "vùng chạm, focus, thay đổi hình ảnh", "g2.r3": "Bỏ qua", "g2.r3d": "luôn kèm lý do, không bao giờ tính là đạt", "sk.h": "18 skill", "q1.a": "Một plugin Claude Code (<code>kit@nnminh-prototype-kit</code>) gồm 18 skill đưa thiết kế từ yêu cầu đến bàn giao cho developer và ngược lại: phân tích yêu cầu, các hướng thiết kế, prototype dựng bằng design system của bạn, kiểm tra trên trình duyệt, spec, board luồng Figma, một gói bàn giao, và kiểm tra bản developer làm.", "q9.q": "AI có tự quyết định thiết kế thay chúng tôi không?", "q9.a": "Không. Kit đề xuất và người quyết định ở mọi bước duyệt: kế hoạch, hướng thiết kế, mọi component hoặc trang mới, đề xuất vào DS và mọi sai lệch được chấp nhận. Mỗi quyết định được ghi kèm tên người quyết định.", "q10.q": "Làm sao biết prototype thật sự chạy đúng?", "q10.a": "<code>validate</code> mở mọi màn hình, trạng thái và luồng ở cỡ điện thoại, máy tính bảng và máy tính, cả sáng lẫn tối, rồi viết một báo cáo: cái gì lỗi, cái gì cần người xem, cái gì bị bỏ qua và vì sao.", "q11.q": "Kit có kiểm tra được bản developer làm không?", "q11.a": "Có. <code>verify</code> so bản của họ với prototype đã duyệt, từng màn hình một. Mỗi khác biệt hoặc là lỗi để developer sửa, hoặc là thay đổi có chủ đích được một quyết định đã duyệt bao quát.", "f1.chip": "18 skill", "ins.pill": "Phiên bản 0.8.0 · Giấy phép MIT"});
   var ARIA_VI = {"aria.flow": "Sơ đồ luồng skill", "aria.lang": "Ngôn ngữ", "aria.home": "Prototype Kit, về đầu trang", "aria.main": "Điều hướng chính", "aria.runsteps": "Các bước của lần chạy", "aria.copyrun": "Sao chép output", "aria.skills": "Danh sách skill", "aria.copyins": "Sao chép lệnh cài đặt"};
   var THEME_LABEL = {"en": ["Switch to dark mode", "Switch to light mode"], "vi": ["Chuyển sang chế độ tối", "Chuyển sang chế độ sáng"]};
   var RUN_VI = {"// Build a base design system from shadcn": "// Dựng một design system nền từ shadcn", "// Create the first app from the React template": "// Tạo app đầu tiên từ template React", "// Build, then audit the app against the design system": "// Build, rồi audit app theo design system"};

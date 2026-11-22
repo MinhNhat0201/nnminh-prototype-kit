@@ -1,6 +1,6 @@
 # Landing page content: Prototype Kit
 
-The copy of the live landing page (`site/index.html`, version 0.6.0), section by section, in English and Vietnamese.
+The copy of the live landing page (`site/index.html`, version 0.8.0), section by section, in English and Vietnamese.
 English is the HTML source; Vietnamese comes from the page's language dictionary and shows when a visitor picks **VI** (or the browser language is Vietnamese).
 
 Rules for the copy: every claim comes from the repository or from a real test run of the kit. No invented statistics, star counts, logos or testimonials.
@@ -151,11 +151,11 @@ Notes in *[brackets and italics]* describe layout, not page text.
   - EN: No design system yet
   - VI: Chưa có design system
 - **Heading**
-  - EN: Start from shadcn
-  - VI: Bắt đầu từ shadcn
+  - EN: Start from a preset
+  - VI: Bắt đầu từ một preset
 - **Text**
-  - EN: `adopt` takes your brand colour, name, radius and font. The look comes from shadcn, the structure from Material Design 3.
-  - VI: `adopt` lấy màu thương hiệu, tên, độ bo góc và font của bạn. Phần giao diện lấy từ shadcn, phần cấu trúc lấy từ Material Design 3.
+  - EN: `adopt` takes your brand colour, name, radius and font. The look comes from a preset (shadcn, or atelier: dark-first with a warm accent), the structure from Material Design 3.
+  - VI: `adopt` lấy màu thương hiệu, tên, độ bo góc và font của bạn. Phần giao diện lấy từ một preset (shadcn, hoặc atelier: nền tối với một màu nhấn ấm), phần cấu trúc lấy từ Material Design 3.
 - **Big number**
   - EN: Components
   - VI: Component
@@ -367,8 +367,8 @@ Notes in *[brackets and italics]* describe layout, not page text.
 *[Centred card with a soft gold glow. Command box with a Copy button, then a gold GitHub button.]*
 
 - **Version pill**
-  - EN: Version 0.6.0 · MIT licence
-  - VI: Phiên bản 0.6.0 · Giấy phép MIT
+  - EN: Version 0.8.0 · MIT licence
+  - VI: Phiên bản 0.8.0 · Giấy phép MIT
 - **Heading**
   - EN: Ready to prototype with your design system?
   - VI: Sẵn sàng dựng prototype với design system của bạn?
@@ -421,14 +421,14 @@ Notes in *[brackets and italics]* describe layout, not page text.
 ### Is it free?
 
 - VI question: Có miễn phí không?
-- EN: Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT.
-- VI: Có. Kit phát hành theo giấy phép MIT. Preset shadcn đi kèm được dựng từ shadcn/ui và shadcn-vue, cũng theo giấy phép MIT.
+- EN: Yes. The kit is released under the MIT licence. The shadcn preset it ships with is derived from shadcn/ui and shadcn-vue, also MIT; the atelier preset comes from the author's own design system, MIT.
+- VI: Có. Kit phát hành theo giấy phép MIT. Preset shadcn đi kèm được dựng từ shadcn/ui và shadcn-vue, cũng theo giấy phép MIT; preset atelier lấy từ design system riêng của tác giả, giấy phép MIT.
 
 ### Do I need a design system first?
 
 - VI question: Có cần design system trước không?
-- EN: No. Without one, run `adopt`: it builds a base profile from shadcn with your brand colour, name, radius and font. If you have one, write a `ds.json` profile for it and `kickoff` links it.
-- VI: Không. Nếu chưa có, chạy `adopt`: skill này dựng một profile nền từ shadcn với màu thương hiệu, tên, độ bo góc và font của bạn. Nếu đã có, hãy viết một profile `ds.json` cho nó và `kickoff` sẽ liên kết vào.
+- EN: No. Without one, run `adopt`: it builds a base profile from a preset (shadcn or atelier) with your brand colour, name, radius and font. If you have one, write a `ds.json` profile for it and `kickoff` links it.
+- VI: Không. Nếu chưa có, chạy `adopt`: skill này dựng một profile nền từ một preset (shadcn hoặc atelier) với màu thương hiệu, tên, độ bo góc và font của bạn. Nếu đã có, hãy viết một profile `ds.json` cho nó và `kickoff` sẽ liên kết vào.
 
 ### Which stacks does it support?
 
@@ -492,4 +492,4 @@ Notes in *[brackets and italics]* describe layout, not page text.
 - **Base line**
   - EN: Released under the MIT licence. Contributions welcome.
   - VI: Phát hành theo giấy phép MIT. Hoan nghênh đóng góp.
-- **Version:** v0.6.0
+- **Version:** v0.8.0

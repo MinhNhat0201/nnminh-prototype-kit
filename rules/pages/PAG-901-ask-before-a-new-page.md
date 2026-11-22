@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 A new page (own entry point, flow and states; not a dialog, tab or step) is announced and the user chooses: an own file or route, or a screen inside the current file. No file, folder or route is created before the choice. Unattended run: build inside the current file and say so at the top of the report.

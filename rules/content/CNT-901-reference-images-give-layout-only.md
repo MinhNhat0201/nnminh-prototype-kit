@@ -16,7 +16,7 @@ superseded_by:
 supersedes:
 exceptions:
 history:
-  - 2026-11-22 · active · kit 0.8.0
+  - 2026-11-22 · active · kit 0.9.0
 ---
 
 Reference images and screenshots of other apps give layout, order, behaviour and content only. Never copy their colours, fonts, radii, shadows or icons; rebuild with DS tokens and components, and list what the image does not show (hover, focus, error, empty, loading).
