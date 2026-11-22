@@ -19,7 +19,8 @@
     checklist-qc.csv
     flows.json              wireflow data (with a spec)
     spec-map.json           unit <-> screen map with confidence (with a spec)
-  screens/screens.json      NO images: route, how to reach (text + runnable steps), pins, exits, Figma link per screen
+  screens/screens.json      NO images: route (with the query of the last goto), how to reach (text + runnable steps), pins
+                            (without style: styles are in the spec tables), exits, Figma link per screen
   assets/                   WebP images split out of base64 (img-<hash>.webp), shared by all pages
   attachments/              sample files (PDF, PPTX, DOCX, XLSX) after optimize_attachments.py
 ```

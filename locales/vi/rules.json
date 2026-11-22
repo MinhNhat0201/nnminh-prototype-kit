@@ -66,5 +66,7 @@
  "rules.import.colSection": "Mục",
  "rules.import.colTitle": "Tiêu đề",
  "rules.import.colConfirm": "Cần xác nhận",
- "rules.readme": "# Quy tắc dự án\n\nMỗi quy tắc một tệp Markdown, mỗi nhóm một thư mục (`<nhóm>/<ID>-<slug>.md`). Tạo bằng `rules.py add`, xem quy tắc cho một app và một skill bằng `rules.py list --app <app> --skill <skill>`. Định dạng và lệnh: `docs/rules.md` của kit.\n"
+ "rules.import.mustWords": "cấm, không được, bắt buộc, phải, không bao giờ, tuyệt đối không, không tự",
+ "rules.readme": "# Quy tắc dự án\n\nMỗi quy tắc một tệp Markdown, mỗi nhóm một thư mục (`<nhóm>/<ID>-<slug>.md`). Tạo bằng `rules.py add`, xem quy tắc cho một app và một skill bằng `rules.py list --app <app> --skill <skill>`. Định dạng và lệnh: `docs/rules.md` của kit.\n",
+ "rules.check.skipWords": "BỎ QUA, BO QUA"
 }

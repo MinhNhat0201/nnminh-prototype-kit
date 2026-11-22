@@ -10,5 +10,6 @@
   "wireflow.pageChange": "Page change",
   "wireflow.outOfScope": "Out of scope",
   "wireflow.offflow": "Screens outside the flows",
-  "wireflow.start": "Start: {start}"
+  "wireflow.start": "Start: {start}",
+  "wireflow.imageSuffix": " · image"
 }

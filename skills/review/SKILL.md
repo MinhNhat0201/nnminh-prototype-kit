@@ -30,9 +30,11 @@ Scripts run from the project folder (or take `--project`).
 python3 <kit>/skills/review/scripts/audit_app.py [app ...] --json <scratchpad>/audit.json
 ```
 
-Rules registry: `audit_app.py` also runs the `check` command of every active rule for `review` (`rules.py check`): one row per rule and app, a failing `must` rule is a Deviation, a failing `should` or `note` rule a Note. Report the rules without an automated check that matter for the audit (`rules.py coverage`) as checked by reading. `--no-rules` skips them.
+Rules registry: `audit_app.py` also runs the `check` command of every active rule for `review` (`rules.py check`): one row per rule and app, a failing `must` rule is a Deviation, a failing `should` or `note` rule a Note, and a check that did not run (its server is down, it does not apply to the app, it scanned nothing) is Skipped with the reason: report it as not checked, never as passed. Report the rules without an automated check that matter for the audit (`rules.py coverage`) as checked by reading. `--no-rules` skips them.
 
-Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines; `{app}` = app id, `{path}` = app folder) to the app's table, or to "Project checks" when it is not per app. Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines; `{app}` = app id, `{path}` = app folder, `{platform}` = `apps[].platform`, `{stack}` = the app's stack) to the app's table, or to "Project checks" when it is not per app. With `parse`, a row is Pass only when the exit code is 0 **and** no matched line counts something (a number other than 0). Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+
+Counted once: an app whose sources are built into generated files inside it (`multi` shells) declares `apps[].generated` (globs from the project root: skipped) and, when sources live outside the app folder, `apps[].sources` (globs: scanned); identical CSS rules in several files count once either way. Utility classes the DS uses everywhere (icons, scroll fades) go in `ds.json > review.genericClasses`: they are not counted as overrides and not measured in the browser step. A DS file the pages link (`css.load: "link"`) is DS CSS. Each app is measured against its own DS profile (`apps[].ds`); the report header names the DS per app when they differ.
 
 DS with its own Vue component layer (`ds.json > components.vue`): vue apps get a "DS Vue components" row: local `.vue` files named like a DS component (rebuilt instead of used) and shadcn-vue imports are hard-rule violations. With `ds.json > tailwind: false` there is no Tailwind row and Tailwind is never asked for.
 
@@ -129,7 +131,7 @@ Read `references/remediation.md` and follow it. In short:
    ```
    python3 <kit>/skills/review/scripts/audit_map_tokens.py [app ...] --csv <scratchpad>/map.csv
    ```
-   Confidence: **Exact** (replace, nothing visible changes), **By role** (user picks by meaning), **Near** (visible change: check Figma first), **None** (check Figma; never invent a token). Semantic tokens only (`ds.json > tokens.roles`); never a primitive to get around it.
+   Confidence: **Exact** (replace, nothing visible changes), **By role** (user picks by meaning), **Near** (visible change: check Figma first), **None** (check Figma; never invent a token). Semantic tokens only (`ds.json > tokens.roles`); never a primitive to get around it. Each app is mapped against its own DS profile.
 2. **Never change DOM or behaviour.** Options change CSS values only (and values in style attributes, style objects, Tailwind classes swapped for token-based ones). Anything that needs DOM, class names used by scripts, text, data, flow, routes or events is a separate "needs a product decision" item.
 3. **Prefer Figma; never force DS controls.** Figma is the design source; the DS is its normalised copy. A home-made control that matches Figma stays; it becomes a local block and may be proposed through `contribute`.
 4. **At least two options per group**, one recommended, split into batches the user approves one by one.

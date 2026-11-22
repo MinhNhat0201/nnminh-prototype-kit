@@ -9,7 +9,7 @@ Script: `python3 <kit>/scripts/rules.py` (`--help` lists every command). Configu
 | Layer | Folder | Holds | Ids |
 |---|---|---|---|
 | `kit` | `<kit>/rules/` | Generic rules every project inherits (DS tokens only, no CSS over DS components, ask before a new page, keep business rules when a page is rebuilt, mock data marked, no loose `.js` in packages…). Read-only for projects. | `XXX-900`–`999` |
-| `ds` | `<DS profile>/rules/` | Rules of one DS profile. They apply to the apps that use that profile (`apps[].ds`, else the top-level `ds`). | `XXX-500`–`899` |
+| `ds` | `<DS profile>/rules/` | Rules of one DS profile. They apply to the apps that use that profile (`apps[].ds`, else the top-level `ds`). A profile with `ds.json > rules: {"from": "<path to another profile>"}` (relative to its own folder) inherits that profile's DS rules: they then apply to the apps of both profiles, are read once, and are never reported as duplicates (a mobile profile that shares the web profile's rules). | `XXX-500`–`899` |
 | `project` | `<paths.rules>/` (default `rules/`) | Rules of this project. | `XXX-001`–`499` |
 | `app` | same folder, `layer: app` | Rules of some apps only; `applies_to` is required. | `XXX-001`–`499` |
 
@@ -68,12 +68,12 @@ Front matter format (read with the Python standard library, no YAML package):
 | `category` | yes | one of the categories below, or one declared in `kit.config.json > rules.categories` |
 | `layer` | yes | `kit`, `ds`, `project`, `app` (must match the folder) |
 | `applies_to` | `app` layer | app ids from `kit.config.json > apps`; empty = every app |
-| `skills` | no | skills that must load the rule; empty = every skill |
+| `skills` | no | skills that must load the rule; empty or `["*"]` = every skill. Also activity groups for work that is not a skill: `scripts` (editing the project's scripts), `pr` (branch, commit message, pull request), `commit`, `deploy`, `release`. A rule that names only activities is left out of `list --skill prototype`; agents load it with `list --skill pr` before that step |
 | `severity` | yes | `must` (a failure blocks), `should` (a person judges), `note` |
 | `status` | yes | `proposed`, `active`, `deprecated`, `superseded` |
 | `since` | yes | date `YYYY-MM-DD`; `Unconfirmed` only while `proposed` |
 | `decision` | active project and app rules, when the project keeps a decision log | decision id (`D-003`) of `context`; must be approved, implemented or verified for an active rule; `Unconfirmed` only while proposed |
-| `check` | no | shell command run in the project root; exit 0 = followed. `{app}`, `{path}` (app folder), `{root}` are replaced; with `{app}` or `{path}` it runs once per app in scope |
+| `check` | no | shell command run in the project root; exit 0 = followed. `{app}`, `{path}` (app folder), `{platform}` (`apps[].platform`), `{stack}` (the app's stack), `{root}` are replaced; with `{app}`, `{path}`, `{platform}` or `{stack}` it runs once per app in scope. Result **pass**, **fail** or **skipped** (with the reason): skipped when the command names an `http(s)://` URL whose host and port do not answer (start the server and run again), when `{path}` does not exist, or when the command exits 77 or prints a line `SKIP: <reason>` (or the project-language word of locale `rules.check.skipWords`; the check does not apply to this app or stack, or scanned nothing; a check must never pass on nothing) |
 | `overrides`, `reason` | together | id of an earlier-layer rule this one replaces, and why |
 | `superseded_by`, `supersedes` | set by `supersede` | successor and predecessor |
 | `exceptions` | no | `- app:` / `note:` / `decision:` (optional) |
@@ -113,11 +113,11 @@ A project adds its own in `kit.config.json > rules.categories`, for example `{"m
 | `except <id> --app A --note … [--decision D-004]` | Adds an app exception to a project or DS rule. |
 | `deprecate <id> --reason … [--decision …]` | Retires a rule. |
 | `supersede <old> --by <new> [--decision …]` | Marks the old rule superseded and links both. Reminds you to move exceptions that still hold. |
-| `check [--app A] [--skill S] [--category C] [--id ID] [--json <file>\|-]` | Runs the `check` commands of the active rules in scope; exit 1 when a `must` rule fails. |
-| `coverage [--json]` | Must and should rules with and without an automated check, per category and per app. |
+| `check [--app A] [--skill S] [--category C] [--id ID] [--json <file>\|-]` | Runs the `check` commands of the active rules in scope: `ok`, `FAIL` or `skip` per rule and app (JSON: `status`, `reason`, `perApp`; `ok` is false only for a failure); exit 1 when a `must` rule fails. |
+| `coverage [--json]` | Must and should rules with and without an automated check, per category and per app, and how many checks need a running server. |
 | `conflicts` | Format errors; two overrides of one rule for the same app; overrides from the same or an earlier layer; exceptions on deprecated or superseded rules; superseded rules without a valid successor; unknown apps, skills, categories or decisions. Exit 1 on error. |
 | `export [--format md\|html\|claude] [--app A] [--out f] [--into CLAUDE.md]` | A "Project rules" page grouped by category (Markdown or self-contained HTML), or the compact block for `CLAUDE.md` between `<!-- kit:rules:begin -->` and `<!-- kit:rules:end -->` (replaced in place on every run). |
-| `import-md <file> [--layer project\|app] [--category process] [--map "heading words=category"]… [--dry-run]` | Splits an existing rules document into draft rule files: one per top-level bullet or numbered item, category from the heading (a category name in it, or `--map`), status `proposed`, severity `should`, `since` and `decision` `Unconfirmed`, the source section quoted in the body. Writes `<rules>/_import-review.md` listing what to confirm for each draft. It never guesses decisions or dates. |
+| `import-md <file> [--layer project\|app\|ds] [--app A] [--category process] [--map "heading words=category"]… [--dry-run]` | Splits an existing rules document into draft rule files: one per top-level bullet or numbered item, category from the heading (a category name in it, or `--map`), status `proposed`, `since` and `decision` `Unconfirmed`, the source section quoted in the body. The title is the first sentence (cut at `.`, `!` or `?`, never at `:`); code spans keep their text (`/* LOCAL`, `FLAG_NAME`); file names fold diacritics (`d` for the stroked d). Severity is `must` when the bullet uses a must word (English always, plus the project language: locale `rules.import.mustWords`), else `should`. `--layer ds` writes into the DS profile's `rules/` folder (`--app`: that app's profile). Writes `_import-review.md` next to the drafts listing what to confirm for each. It never guesses decisions or dates. |
 
 ## How skills use it
 
@@ -125,7 +125,7 @@ A project adds its own in `kit.config.json > rules.categories`, for example `{"m
 |---|---|---|
 | Every skill that builds, reviews or packages (`define`, `explore`, `prototype`, `annotate`, `mockup`, `wireflow`, `handoff`, `share`, `verify`, `review`, `validate`, `sync`, `contribute`, `document`) | `rules.py list --app <app> --skill <name>` at the start; follows the result. Long rule documents (`rules.md` of a DS profile not split into files yet) are read only when `list` says so. | — |
 | `review` | `audit_app.py` runs the checks of the rules for `review`: one row per rule and app (a failing `must` rule = Deviation, others = Note). `--no-rules` skips them. | — |
-| `validate` | `validation.py run` runs the checks of the rules for `validate` and puts failures in the report: `must` = Fail, others = Needs a human. `--no-rules` skips them. | — |
+| `validate` | `validation.py run` runs the checks of the rules for `validate` and puts failures in the report: `must` = Fail, others = Needs a human, skipped checks = Skipped. Only checks of the validated app (`{app}`, `{path}`) can fail the run by default; failing project-wide checks are listed as "Outside the scope" (`--rules-scope all` or a list of rule ids changes that). `--no-rules` skips them. | — |
 | `context` | Decisions | An approved decision that states a rule: offers `rules.py add --decision <id>`. |
 | `kickoff` | — | Creates the project rules folder (`paths.rules`) with a README. |
 | `brief` | — | Routes "add a rule", "why is this a rule", "which rules apply" requests to `context` (rules registry). |

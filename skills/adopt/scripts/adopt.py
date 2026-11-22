@@ -903,7 +903,7 @@ def check(a):
     for k in ("name", "label", "version", "platforms", "tokens", "css", "version_label", "theming", "breakpoints", "catalog", "rules", "figma", "preset"):
         if k not in ds:
             errs.append(f"ds.json: missing key '{k}'")
-    need = [ds["tokens"]["file"], ds["css"]["bundle"], ds["catalog"], ds["rules"], ds.get("library", {}).get("page", "library.html"),
+    need = [ds["tokens"]["file"], ds["css"]["bundle"], ds["catalog"], (ds["rules"] if isinstance(ds["rules"], str) else ds["rules"].get("file", "rules.md")), ds.get("library", {}).get("page", "library.html"),
             "NOTICE", "CHANGELOG.md", ds["figma"].get("variables", "figma-variables.json"), ds.get("icons", {}).get("file", "icons.json")]
     need += ds["css"]["sources"]
     for n in need:

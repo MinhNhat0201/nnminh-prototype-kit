@@ -68,8 +68,10 @@ import datetime as dt
 import json
 import re
 import shlex
+import socket
 import subprocess
 import sys
+import unicodedata
 from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[1]
@@ -92,6 +94,12 @@ REQUIRED = ("id", "title", "category", "layer", "severity", "status", "since")
 UNCONFIRMED = "Unconfirmed"
 RANGES = {"kit": (900, 999), "ds": (500, 899), "project": (1, 499), "app": (1, 499)}
 ID_RX = re.compile(r"^([A-Z][A-Z0-9]{1,5})-(\d{3,})$")
+# Activity groups a rule may name in `skills` instead of (or with) skill names: rules for work that is not a skill.
+# A rule that names only activities is left out of `list --skill <skill>`. "*" = every skill and activity (like []).
+ACTIVITIES = ("scripts", "pr", "commit", "deploy", "release")
+PLACEHOLDERS = ("app", "path", "root", "platform", "stack")
+SKIP_EXIT = 77   # a check command exits 77 (or prints a line "SKIP: <reason>") when it does not apply or scanned nothing
+URL_RX = re.compile(r"https?://([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(?::(\d+))?")
 BLOCK = ("<!-- kit:rules:begin -->", "<!-- kit:rules:end -->")
 
 
@@ -104,8 +112,14 @@ def today():
     return dt.date.today().isoformat()
 
 
+def ascii_fold(s):
+    """Letters without diacritics (NFKD), d for the stroked d, so file names stay readable in any language."""
+    s = s.replace("đ", "d").replace("Đ", "D").replace("ß", "ss").replace("ø", "o").replace("Ø", "O").replace("ł", "l")
+    return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+
+
 def slugify(s):
-    s = re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+    s = re.sub(r"[^a-z0-9]+", "-", ascii_fold(s).lower()).strip("-")
     return s[:48].strip("-") or "rule"
 
 
@@ -207,12 +221,26 @@ def categories(cfg):
 
 
 def sources(cfg):
-    """[(folder, expected layer, profile path or None, app ids of that profile or None)]"""
+    """[(folder, expected layer, profile path or None, app ids of that profile or None)]
+    A profile whose ds.json has rules.from inherits the DS-layer rules of that profile: its folder is read once and
+    applies to the apps of both profiles (so inherited rules never count twice)."""
     out = [(KIT / "rules", "kit", None, None)]
+    folders = {}   # resolved rules folder -> [owner profile path, app ids]
     for rel, apps in kitconf.profiles(cfg).items():
-        _ds, d = kitconf.read_profile(cfg["_root"], rel)
-        if d:
-            out.append((Path(d) / "rules", "ds", rel, apps))
+        ds, d = kitconf.read_profile(cfg["_root"], rel)
+        seen, cur_rel = set(), rel
+        while d and d not in seen:   # this profile's folder, then the chain of rules.from
+            seen.add(d)
+            key = str((Path(d) / "rules").resolve())
+            ent = folders.setdefault(key, [cur_rel, []])
+            ent[1] += [a for a in apps if a not in ent[1]]
+            frm = kitconf.ds_rules(ds)[1]
+            if not frm:
+                break
+            cur_rel = (Path(cur_rel) / frm).as_posix()
+            ds, d = kitconf.read_profile(cfg["_root"], cur_rel)
+    for key, (owner, apps) in folders.items():
+        out.append((Path(key), "ds", owner, apps))
     out.append((rules_dir(cfg), "project", None, None))
     return out
 
@@ -277,6 +305,11 @@ def in_scope(rule, app):
     return not rule["applies_to"] or app is None or app in rule["applies_to"]
 
 
+def skill_match(rule, skill):
+    """[] and ["*"] = every skill and activity; else the skill or activity must be listed."""
+    return not skill or not rule["skills"] or "*" in rule["skills"] or skill in rule["skills"]
+
+
 def exception_for(rule, app):
     return next((e for e in rule["exceptions"] if isinstance(e, dict) and e.get("app") == app), None) if app else None
 
@@ -295,7 +328,7 @@ def resolve(cfg, rules, app=None, skill=None, category=None, severity=None, stat
             continue
         if category and r["category"] != category or severity and r["severity"] != severity or layer and r["layer"] != layer:
             continue
-        if skill and r["skills"] and skill not in r["skills"]:
+        if not skill_match(r, skill):
             continue
         if not in_scope(r, app):
             continue
@@ -361,8 +394,8 @@ def validate(cfg, rules, parse_errs=()):
             if a not in apps:
                 err.append("%s: applies_to names unknown app '%s'" % (where, a))
         for s in r["skills"]:
-            if s not in SKILLS:
-                err.append("%s: unknown skill '%s'" % (where, s))
+            if s not in SKILLS and s not in ACTIVITIES and s != "*":
+                err.append("%s: unknown skill '%s' (skills: %s; activities: %s; or *)" % (where, s, ", ".join(SKILLS), ", ".join(ACTIVITIES)))
         for x in r["exceptions"]:
             if not isinstance(x, dict) or not x.get("app") or not x.get("note"):
                 err.append("%s: every exception needs app and note" % where)
@@ -379,8 +412,9 @@ def validate(cfg, rules, parse_errs=()):
             _check_decision(err, warn, log, where, r["decision"], r["status"])
         elif log is not None and r["layer"] in ("project", "app") and r["status"] == "active":
             err.append("%s: an active %s rule needs a decision (the project keeps a decision log)" % (where, r["layer"]))
-        if r["check"] and re.search(r"\{(?!app\}|path\}|root\})\w+\}", r["check"]):
-            err.append("%s: check uses an unknown placeholder (known: {app}, {path}, {root})" % where)
+        bad = [x for x in re.findall(r"\{(\w+)\}", r["check"] or "") if x not in PLACEHOLDERS]
+        if bad:
+            err.append("%s: check uses an unknown placeholder {%s} (known: %s)" % (where, bad[0], ", ".join("{%s}" % x for x in PLACEHOLDERS)))
     for r in rules:
         where = "%s (%s)" % (r["id"], rel(cfg, r["_path"]))
         if r["status"] == "superseded":
@@ -527,33 +561,89 @@ def add_history(r, line):
 
 # ---------- checks ----------
 
+def needs_server(cmd):
+    """(host, port) of the first http(s) URL in a check command, or None: such a check needs a running server."""
+    m = URL_RX.search(cmd or "")
+    if not m:
+        return None
+    return m.group(1).strip("[]"), int(m.group(2) or (443 if cmd[m.start():m.start() + 5] == "https" else 80))
+
+
+def reachable(host, port, timeout=1.0):
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def skip_words(cfg):
+    """Words that open a "skipped" line: SKIP, SKIPPED, plus the project language (locale rules.check.skipWords)."""
+    words = ["SKIPPED", "SKIP"]
+    w = t((cfg or {}).get("language") or "en", "rules.check.skipWords")
+    if w != "rules.check.skipWords":
+        words += [x.strip() for x in w.split(",") if x.strip()]
+    return list(dict.fromkeys(words))
+
+
+def skip_line(lines, words=("SKIPPED", "SKIP")):
+    """The reason of a check that says it does not apply or scanned nothing ("SKIP: reason", "SKIPPED ..."), or None."""
+    rx = re.compile(r"^\s*(?:%s)(?![\w])[:\s-]*(.*)$" % "|".join(re.escape(w) for w in words), re.I)
+    for x in (lines[:1] + lines[-1:]) if lines else []:   # the first or the last line says so, not a word in the middle
+        m = rx.match(x)
+        if m:
+            return m.group(1).strip() or "the check reported %s" % x.strip()
+    return None
+
+
 def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900):
     """Run the check commands of the active rules in scope. One result per rule and app:
-    {id, title, severity, category, app, command, exit, ok, summary}."""
+    {id, title, severity, category, app, command, exit, status, ok, reason, summary}.
+    status: pass (exit 0), fail, or skipped: the command needs a server or URL that is not reachable, the app folder
+    ({path}) does not exist, or the command exited 77 / printed "SKIP: <reason>" (not applicable, scanned nothing).
+    ok is True unless the status is fail."""
     rules, _ = load_rules(cfg)
     apps = {a.get("id"): a for a in cfg.get("apps") or []}
-    out = []
+    out, probed, words = [], {}, skip_words(cfg)
     for r in rules:
         if r["status"] != "active" or not r["check"] or (rid and r["id"] != rid.upper()):
             continue
-        if category and r["category"] != category or skill and r["skills"] and skill not in r["skills"]:
+        if category and r["category"] != category or not skill_match(r, skill):
             continue
-        per_app = "{app}" in r["check"] or "{path}" in r["check"]
+        per_app = any("{%s}" % k in r["check"] for k in ("app", "path", "platform", "stack"))
         if per_app:
             targets = [a for a in ([app] if app else list(apps)) if a in apps and in_scope(r, a) and not exception_for(r, a)
                        and not overriders(rules, r, a)]
         else:
             targets = [app] if (not app or (in_scope(r, app) and not exception_for(r, app) and not overriders(rules, r, app))) else []
         for a in targets:
-            vals = {"app": a or "", "path": (apps.get(a) or {}).get("path", ""), "root": cfg["_root"]}
-            line = re.sub(r"\{(app|path|root)\}", lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", r["check"])
-            try:
-                p = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True, timeout=timeout)
-                code, lines = p.returncode, [x.rstrip() for x in (p.stdout + "\n" + p.stderr).splitlines() if x.strip()]
-            except subprocess.TimeoutExpired:
-                code, lines = 124, ["timed out"]
-            out.append({"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
-                        "app": a if per_app else app, "command": line, "exit": code, "ok": code == 0, "summary": lines[-3:]})
+            ap = apps.get(a) or {}
+            vals = {"app": a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
+                    "stack": (ap.get("stack") or cfg.get("stack") or "") if a else ""}
+            line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", r["check"])
+            res = {"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
+                   "app": a if per_app else app, "perApp": per_app, "command": line, "exit": None, "status": "skipped", "ok": True,
+                   "reason": "", "summary": []}
+            srv = needs_server(line)
+            if srv and srv not in probed:
+                probed[srv] = reachable(*srv)
+            if srv and not probed[srv]:
+                res["reason"] = "needs a server at %s:%d, not reachable (start it, then run again)" % srv
+            elif "{path}" in r["check"] and a and not (Path(cfg["_root"]) / ap.get("path", "")).exists():
+                res["reason"] = "app folder %s not found: nothing to scan" % ap.get("path", "")
+            else:
+                try:
+                    p = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True, timeout=timeout)
+                    code, lines = p.returncode, [x.rstrip() for x in (p.stdout + "\n" + p.stderr).splitlines() if x.strip()]
+                except subprocess.TimeoutExpired:
+                    code, lines = 124, ["timed out"]
+                why = skip_line(lines, words) if code in (0, SKIP_EXIT) else None
+                res.update(exit=code, summary=lines[-3:])
+                if code == SKIP_EXIT or why:
+                    res["reason"] = why or "the check exited %d (does not apply)" % SKIP_EXIT
+                else:
+                    res.update(status="pass" if code == 0 else "fail", ok=code == 0)
+            out.append(res)
     return out
 
 
@@ -660,8 +750,46 @@ def export_html(cfg, md):
 
 # ---------- import ----------
 
-def import_md(cfg, src, layer="project", category="process", maps=(), dry=False):
+CODE_SPAN = re.compile(r"`([^`]*)`")
+
+
+def plain_text(md):
+    """Markdown of one bullet -> plain text: links keep their text, code spans keep their content as written
+    (`/* LOCAL`, `FLAG_NAME`), emphasis markers (**x**, *x*, __x__, _x_) are dropped only around words."""
+    keep = []
+    s = CODE_SPAN.sub(lambda m: keep.append(m.group(1)) or "\x00%d\x00" % (len(keep) - 1), md)
+    s = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", s)
+    s = re.sub(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1", r"\2", s)
+    s = re.sub(r"(?<![\w*])\*(?=[^\s*])([^*\n]+?)(?<=\S)\*(?![\w*])", r"\1", s)
+    s = re.sub(r"(?<![\w])_(?=[^\s_])([^_\n]+?)(?<=\S)_(?![\w])", r"\1", s)
+    return re.sub(r"\x00(\d+)\x00", lambda m: keep[int(m.group(1))], s)
+
+
+def must_words(cfg):
+    """Words that make an imported bullet a must rule: English always, plus the project language (locale
+    rules.import.mustWords, comma separated). A language without the list keeps every draft at should."""
+    words = []
+    for lang in dict.fromkeys(["en", (cfg or {}).get("language") or "en"]):
+        w = t(lang, "rules.import.mustWords")
+        if w != "rules.import.mustWords":
+            words += [x.strip().lower() for x in w.split(",") if x.strip()]
+    return words
+
+
+def infer_severity(text, words):
+    low = " " + re.sub(r"\s+", " ", text.lower()) + " "
+    return "must" if any(re.search(r"(?<![\w])%s(?![\w])" % re.escape(w), low) for w in words) else "should"
+
+
+def import_md(cfg, src, layer="project", category="process", maps=(), dry=False, app=None):
     p = Path(src)
+    if layer == "ds":
+        c = kitconf.for_app(cfg, app) if app else cfg
+        if not c.get("_ds_dir"):
+            die("no DS profile to import ds rules into (kit.config.json > ds, or apps[].ds of --app)")
+        dest, prof = Path(c["_ds_dir"]) / "rules", c.get("ds")
+    else:
+        dest, prof = rules_dir(cfg), None
     if not p.is_file():
         die("file not found: %s" % src)
     cats = categories(cfg)
@@ -698,22 +826,25 @@ def import_md(cfg, src, layer="project", category="process", maps=(), dry=False)
             cur = None
     rules, _ = load_rules(cfg)
     made, review = [], []
+    words = must_words(cfg)
     for it in items:
         text = " ".join(it["lines"]).strip()
         hl = it["heading"].lower()
         cat = next((c for w, c in mapping if w in hl), None) or next((c for c in cats if re.search(r"\b%s\b" % re.escape(c), hl)), None)
         confirmed_cat = bool(cat)
         cat = cat or category
-        plain = re.sub(r"[*`_]|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", text)
-        title = re.split(r"(?<=[.!?:;])\s", plain, maxsplit=1)[0].rstrip(".:;")
+        plain = plain_text(text)
+        title = re.split(r"(?<=[.!?])\s", plain, maxsplit=1)[0].rstrip(".:; ")
         title = title if len(title) <= 90 else title[:87].rsplit(" ", 1)[0] + "…"
+        sev = infer_severity(plain, words)
         rid = next_id(cfg, rules + made, cat, layer)
         body = "%s\n\n%s" % (text, T(cfg, "import.source", file=p.name, section=it["heading"] or "—", date=today()))
-        rec = norm({"id": rid, "title": title, "category": cat, "layer": layer, "severity": "should", "status": "proposed",
+        rec = norm({"id": rid, "title": title, "category": cat, "layer": layer, "severity": sev, "status": "proposed",
                     "since": UNCONFIRMED, "decision": UNCONFIRMED if layer in ("project", "app") else "",
                     "history": ["%s · proposed · %s" % (today(), T(cfg, "import.historyNote", file=p.name))]})
-        rec.update(_path=rules_dir(cfg) / cat / ("%s-%s.md" % (rid, slugify(title))), _body=body, _src="project",
-                   _profile=None, _profile_apps=None)
+        rec.update(_path=dest / cat / ("%s-%s.md" % (rid, slugify(title))), _body=body,
+                   _src="ds" if layer == "ds" else "project", _profile=prof,
+                   _profile_apps=kitconf.profiles(cfg).get(prof, []) if prof else None)
         made.append(rec)
         todo = ["severity", "since"] + (["decision"] if layer in ("project", "app") else []) + ([] if confirmed_cat else ["category"])
         if layer == "app":
@@ -725,10 +856,10 @@ def import_md(cfg, src, layer="project", category="process", maps=(), dry=False)
             save(r)
         L = ["# " + T(cfg, "import.reviewTitle", file=p.name), "", T(cfg, "import.reviewIntro"), "",
              "| ID | %s | %s | %s |" % (T(cfg, "import.colSection"), T(cfg, "import.colTitle"), T(cfg, "import.colConfirm")), "|---|---|---|---|"]
-        L += ["| [%s](%s) | %s | %s | %s |" % (r["id"], r["_path"].relative_to(rules_dir(cfg)).as_posix(), (h or "—").replace("|", "/"),
+        L += ["| [%s](%s) | %s | %s | %s |" % (r["id"], r["_path"].relative_to(dest).as_posix(), (h or "—").replace("|", "/"),
                                               r["title"].replace("|", "/"), UNCONFIRMED + ": " + ", ".join(todo)) for r, h, todo in review]
-        rules_dir(cfg).mkdir(parents=True, exist_ok=True)
-        (rules_dir(cfg) / "_import-review.md").write_text("\n".join(L) + "\n", encoding="utf-8")
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / "_import-review.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     return made, review, skipped
 
 
@@ -763,8 +894,9 @@ def cmd_list(cfg, a):
     if not (KIT / "rules").is_dir() and not keep:
         print("No rules found.")
     ds = c.get("_ds") or {}
-    if ds and c.get("_ds_dir") and not (Path(c["_ds_dir"]) / "rules").is_dir() and (Path(c["_ds_dir"]) / (ds.get("rules") or "rules.md")).is_file():
-        print("NOTE the DS profile keeps its rules in %s, not as rule files: read it too, or split it with import-md." % (ds.get("rules") or "rules.md"))
+    doc, frm = kitconf.ds_rules(ds)
+    if ds and c.get("_ds_dir") and not frm and not (Path(c["_ds_dir"]) / "rules").is_dir() and (Path(c["_ds_dir"]) / doc).is_file():
+        print("NOTE the DS profile keeps its rules in %s, not as rule files: read it too, or split it with import-md --layer ds." % doc)
     return 1 if perr else 0
 
 
@@ -858,26 +990,33 @@ def cmd_check(cfg, a):
             Path(a.json).write_text(txt, encoding="utf-8")
     if a.json != "-":
         for x in res:
-            print("%-4s %-9s %-6s %s%s · exit %d%s" % ("ok" if x["ok"] else "FAIL", x["id"], x["severity"], x["title"],
-                                                      (" · " + x["app"]) if x["app"] else "", x["exit"],
-                                                      ("\n     " + "\n     ".join(x["summary"])) if not x["ok"] and x["summary"] else ""))
-        must = [x for x in res if not x["ok"] and x["severity"] == "must"]
-        print("Rule checks: %d run, %d failed (%d must)" % (len(res), sum(not x["ok"] for x in res), len(must)))
-    return 1 if any(not x["ok"] and x["severity"] == "must" for x in res) else 0
+            tag = {"pass": "ok", "fail": "FAIL", "skipped": "skip"}[x["status"]]
+            code = "" if x["exit"] is None else " · exit %d" % x["exit"]
+            print("%-4s %-9s %-6s %s%s%s%s" % (tag, x["id"], x["severity"], x["title"], (" · " + x["app"]) if x["app"] else "", code,
+                                             (" · " + x["reason"]) if x["status"] == "skipped" else
+                                             ("\n     " + "\n     ".join(x["summary"])) if x["status"] == "fail" and x["summary"] else ""))
+        must = [x for x in res if x["status"] == "fail" and x["severity"] == "must"]
+        print("Rule checks: %d run, %d failed (%d must), %d skipped" % (
+            sum(x["status"] != "skipped" for x in res), sum(x["status"] == "fail" for x in res), len(must),
+            sum(x["status"] == "skipped" for x in res)))
+    return 1 if any(x["status"] == "fail" and x["severity"] == "must" for x in res) else 0
 
 
 def coverage(cfg, rules):
+    """Per category and app: {"must": [with check, without], "should": [...], "server": n checks that need a server}."""
     active = [r for r in rules if r["status"] == "active" and r["severity"] in ("must", "should")]
     by_cat, by_app = {}, {}
     for r in active:
-        c = by_cat.setdefault(r["category"], {"must": [0, 0], "should": [0, 0]})
+        c = by_cat.setdefault(r["category"], {"must": [0, 0], "should": [0, 0], "server": 0})
         c[r["severity"]][0 if r["check"] else 1] += 1
+        c["server"] += bool(needs_server(r["check"]))
     for a in app_ids(cfg):
         keep, _, _ = resolve(kitconf.for_app(cfg, a), rules, app=a)
-        c = by_app.setdefault(a, {"must": [0, 0], "should": [0, 0]})
+        c = by_app.setdefault(a, {"must": [0, 0], "should": [0, 0], "server": 0})
         for r in keep:
-            if r["severity"] in c:
+            if r["severity"] in ("must", "should"):
                 c[r["severity"]][0 if r["check"] else 1] += 1
+                c["server"] += bool(needs_server(r["check"]))
     return {"categories": by_cat, "apps": by_app}
 
 
@@ -888,13 +1027,15 @@ def cmd_coverage(cfg, a):
         print(json.dumps(cov, ensure_ascii=False, indent=1))
         return 0
     for title, rows in (("Category", cov["categories"]), ("App", cov["apps"])):
-        print("| %s | must with check | must without | should with check | should without |" % title)
-        print("|---|---|---|---|---|")
+        print("| %s | must with check | must without | should with check | should without | checks that need a server |" % title)
+        print("|---|---|---|---|---|---|")
         for k, v in rows.items():
-            print("| %s | %d | %d | %d | %d |" % (k, v["must"][0], v["must"][1], v["should"][0], v["should"][1]))
+            print("| %s | %d | %d | %d | %d | %d |" % (k, v["must"][0], v["must"][1], v["should"][0], v["should"][1], v["server"]))
         print()
     tot = [sum(v[s][i] for v in cov["categories"].values()) for s in ("must", "should") for i in (0, 1)]
-    print("Automated: %d of %d must rules, %d of %d should rules" % (tot[0], tot[0] + tot[1], tot[2], tot[2] + tot[3]))
+    srv = sum(v["server"] for v in cov["categories"].values())
+    print("Automated: %d of %d must rules, %d of %d should rules (%d check(s) need a running server: skipped when it is down)"
+          % (tot[0], tot[0] + tot[1], tot[2], tot[2] + tot[3], srv))
     return 0
 
 
@@ -938,12 +1079,12 @@ def cmd_export(cfg, a):
 
 
 def cmd_import(cfg, a):
-    made, review, skipped = import_md(cfg, a.file, a.layer, a.category, a.map, a.dry_run)
+    made, review, skipped = import_md(cfg, a.file, a.layer, a.category, a.map, a.dry_run, a.app)
     for r, h, todo in review:
         print("%s %-9s %s  [%s] (%s: %s)" % ("would write" if a.dry_run else "draft", r["id"], r["title"][:70], h[:30] or "-",
                                             UNCONFIRMED, ", ".join(todo)))
     print("%d draft rule(s)%s; %d line(s) outside bullets not imported" % (
-        len(made), "" if a.dry_run else ", review list %s" % rel(cfg, rules_dir(cfg) / "_import-review.md"), skipped))
+        len(made), "" if a.dry_run else ", review list %s" % rel(cfg, (made[0]["_path"].parents[1] if made else rules_dir(cfg)) / "_import-review.md"), skipped))
     if not a.dry_run and made:
         print("NEXT confirm each draft with the user (severity, category, since, decision), then set status: active.")
     return 0
@@ -1040,6 +1181,49 @@ def selftest():
         err, _ = validate(cfg, rules, perr)
         assert not [e for e in err if any(m["id"] in e for m in made)], err
         assert (d / "rules" / "_import-review.md").is_file()
+        # 0.10: import keeps code spans and underscores, titles are not cut at ":", must words, readable file names
+        assert slugify("Thư viện đầu tiên") == "thu-vien-dau-tien", slugify("Thư viện đầu tiên")
+        assert plain_text("Each `/* LOCAL: … */` block and the `FLAG_NAME` flag, **never** _hex_") == "Each /* LOCAL: … */ block and the FLAG_NAME flag, never hex"
+        assert infer_severity("Never override DS CSS", must_words(cfg)) == "must"
+        assert infer_severity("Cấm dùng mã màu", must_words(cfg)) == "must" and infer_severity("Use tokens", must_words(cfg)) == "should"
+        src.write_text("## Pages\n\n- Two groups: STOP and ask first. Then build.\n- Each `/* LOCAL: x */` block has a name.\n")
+        made, _, _ = import_md(cfg, src, dry=True)
+        assert made[0]["title"] == "Two groups: STOP and ask first" and "/* LOCAL: x */" in made[1]["title"], [m["title"] for m in made]
+        made, _, _ = import_md(cfg, src, layer="ds", app="phone")
+        assert made[0]["_path"].parent.parent == d / "ds" / "mob" / "rules" and made[0]["id"].endswith("-500"), made[0]["_path"]
+        # 0.10: check results pass / fail / skipped
+        py = shlex.quote(sys.executable)
+        for rid, cmd in (("STY-020", py + " -c \"import sys; sys.exit(77)\" {app}"),
+                         ("STY-021", py + " -c \"print('SKIP: vue apps are not scanned')\" {app}"),
+                         ("STY-022", "curl -s http://127.0.0.1:9/apps/{app}/"),
+                         ("STY-023", "ls {path}")):
+            (d / "rules" / "styling" / (rid + ".md")).write_text(
+                "---\nid: %s\ntitle: t\ncategory: styling\nlayer: project\nskills: [review]\nseverity: must\nstatus: active\n"
+                "since: 2026-01-01\ndecision: %s\ncheck: %s\n---\nx\n" % (rid, did, cmd))
+        res = {(x["id"], x["app"]): x for x in run_checks(cfg, skill="review") if x["id"] in ("STY-020", "STY-021", "STY-022", "STY-023")}
+        assert {k[0] for k, x in res.items() if x["status"] == "skipped"} == {"STY-020", "STY-021", "STY-022", "STY-023"}, res
+        assert "vue apps" in res[("STY-021", "web")]["reason"] and "not reachable" in res[("STY-022", "web")]["reason"]
+        assert "not found" in res[("STY-023", "web")]["reason"] and all(x["ok"] for x in res.values())
+        cov = coverage(cfg, load_rules(cfg)[0])
+        assert cov["categories"]["styling"]["server"] == 1, cov["categories"]["styling"]
+        # 0.10: activity groups in skills; "*"
+        for rid, sk in (("PRC-020", "[pr]"), ("PRC-021", "[\"*\"]")):
+            (d / "rules" / "process").mkdir(exist_ok=True)
+            (d / "rules" / "process" / (rid + ".md")).write_text(
+                "---\nid: %s\ntitle: t\ncategory: process\nlayer: project\nskills: %s\nseverity: should\nstatus: active\n"
+                "since: 2026-01-01\ndecision: %s\n---\nx\n" % (rid, sk, did))
+        rules, perr = load_rules(cfg)
+        assert not [e for e in validate(cfg, rules, perr)[0] if "PRC-02" in e], validate(cfg, rules, perr)[0]
+        ids = lambda sk: {r["id"] for r in resolve(cfg, rules, skill=sk)[0]}
+        assert "PRC-020" not in ids("prototype") and "PRC-020" in ids("pr") and "PRC-021" in ids("prototype") and "PRC-021" in ids("pr")
+        # 0.10: ds.json > rules.from: the mobile profile inherits the web profile's DS rules, read once
+        (d / "ds" / "mob" / "ds.json").write_text(json.dumps({"name": "mob", "version": "2.0.0", "rules": {"from": "../acme"}}))
+        shutil.rmtree(d / "ds" / "mob" / "rules")
+        rules, perr = load_rules(cfg)
+        assert sum(r["id"] == "STY-501" for r in rules) == 1, "inherited rules are read once"
+        keep_p, _, _ = resolve(kitconf.for_app(cfg, "phone"), rules, app="phone")
+        assert "STY-501" in {r["id"] for r in keep_p}, "inherited through rules.from"
+        assert not [e for e in validate(cfg, rules, perr)[0] if "duplicate" in e or "STY-501" in e], validate(cfg, rules, perr)[0]
         print("rules.py selftest OK")
     finally:
         shutil.rmtree(d, ignore_errors=True)
@@ -1080,7 +1264,8 @@ def main():
     p.add_argument("--format", choices=("md", "html", "claude"), default="md"); p.add_argument("--app")
     p.add_argument("--out"); p.add_argument("--into", help="claude format: replace the block in this file")
     p = sub.add_parser("import-md", help="draft rule files from an existing rules document")
-    p.add_argument("file"); p.add_argument("--layer", default="project", choices=("project", "app"))
+    p.add_argument("file"); p.add_argument("--layer", default="project", choices=("project", "app", "ds"))
+    p.add_argument("--app", help="ds layer: the DS profile of this app (apps[].ds); default the top-level ds")
     p.add_argument("--category", default="process"); p.add_argument("--map", action="append", default=[])
     p.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()

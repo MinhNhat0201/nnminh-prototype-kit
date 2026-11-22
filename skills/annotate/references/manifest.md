@@ -68,7 +68,7 @@ Older manifests may use frame-prefixed step names: `fclick: sel` is read as `{ c
      "leftPct": 50, "topPct": 21.6, "xpage": false }] }]
 ```
 
-Token matching: every custom property that starts with `ds.json > tokens.prefix` is resolved on `<html>`. For each property only names of the matching role are kept (`color` → `text`, `icon`; `backgroundColor` → `bg`; `borderColor` → `stroke`; `borderRadius` → `radius`; `fontSize`; `lineHeight`; `gap`, `padding` → `spacing`; `boxShadow` → `shadow`). With no role match, primitives (prefix but no role) are returned. `padding` tokens describe `padding-top` only.
+Token matching: every custom property that starts with `ds.json > tokens.prefix` is resolved on `<html>`. For each property only names of the matching role are kept (`color` → `text`, `icon`; `backgroundColor` → `bg`; `borderColor` → `stroke`; `borderRadius` → `radius`; `fontSize`; `lineHeight`; `gap`, `padding` → `spacing`; `boxShadow` → `shadow`). With no role match, primitives (prefix but no role) are returned. `padding` tokens describe `padding-top` only. Values `0`, `none`, `normal`, `auto` and `transparent` get no token, and tokens that start with one of `ds.json > tokens.ignorePrefixes` are never named. `search` records the query of the page (or of the last `goto`), so `screens.json` routes in a package keep it (`?demo=1`).
 
 `screens.json` merges with the previous run, so `--only` keeps the other screens. Exit code 1 when a screen's steps fail.
 

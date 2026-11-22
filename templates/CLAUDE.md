@@ -54,7 +54,7 @@ Which skill does what:
 - Only DS tokens (`{{TOKEN_PREFIX}}*` and the alias variables the bundle defines, such as `--background`, `--primary`, `--border`, `--radius`) and DS components, variants, page patterns, icons and logos listed in `catalog.md`.
 - No hex, `rgb()`, named colours, raw gradients or loose px for colour, spacing, radius or font size when a token exists. React and Vue: no Tailwind arbitrary values (`bg-[#fff]`, `p-[13px]`) and no inline style objects or `:style` bindings for colour or spacing.
 - Never write CSS that overrides a DS component. A missing variant goes through the component gate (section 4).
-- Never edit the embedded DS CSS (between the `ds.json > css.marker` comments) or the copied bundle in `src/ds/`. `sync` replaces them.
+- Never edit the embedded DS CSS (between the `ds.json > css.marker` comments), the linked DS file (`css.linkPath`) or the copied bundle in `src/ds/`. `sync` replaces them.
 - Brand, mode and density only through the attributes in `ds.json > theming`, set on `<html>`{{THEMING_ATTRS_NOTE}}. Never invent attributes. Dark mode stays off unless asked.
 - Density: every app uses `{{DENSITY_DEFAULT}}` unless the product needs one fixed level; then set it once and use it everywhere. Never redefine density values.
 - Line height and reading text: use the DS text tokens; never set your own px line heights.

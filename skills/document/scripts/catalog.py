@@ -27,7 +27,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, app as app_cfg, DS_DEFAULTS, _merge  # noqa: E402
+from kitconf import load, app as app_cfg, DS_DEFAULTS, _merge, css_load  # noqa: E402
 
 SCHEMA = "kit-catalog/1"
 STATUSES = ("active", "experimental", "deprecated")
@@ -310,6 +310,25 @@ def cmd_set(cfg, d, a):
     print("Updated %s" % a.id)
 
 
+def is_ds_copy(cfg, app, f):
+    ds = cfg.get("_ds") or {}
+    b = (ds.get("css") or {}).get("bundle")
+    if b and "://" not in b and f.name == Path(b).name:
+        return True
+    lp = css_load(cfg, app.get("id"))["linkPath"]
+    return bool(lp) and f.resolve() == (Path(cfg["_root"]) / app["path"] / lp).resolve()
+
+
+def strip_ds(cfg, text):
+    """Text without the embedded DS CSS: the region between ds.json > css.marker and <style id="<css.styleBlocks>…">."""
+    css = ((cfg.get("_ds") or {}).get("css") or {})
+    mk = css.get("marker") or {"begin": "@ds:begin", "end": "@ds:end"}
+    text = re.sub(r"/\*\s*%s[^*]*\*/.*?/\*\s*%s[^*]*\*/" % (re.escape(mk["begin"]), re.escape(mk["end"])), " ", text, flags=re.S)
+    if css.get("styleBlocks"):
+        text = re.sub(r"<style[^>]*\bid\s*=\s*[\"']%s[^\"']*[\"'][^>]*>.*?</style>" % re.escape(css["styleBlocks"]), " ", text, flags=re.S | re.I)
+    return text
+
+
 def cmd_scan(cfg, d, a):
     if "apps" not in cfg:
         die("scan needs a project (kit.config.json)")
@@ -317,9 +336,11 @@ def cmd_scan(cfg, d, a):
     data = read_cat(cfg, d)
     base = Path(cfg["_root"]) / app["path"]
     text = ""
-    for f in base.rglob("*"):
+    for f in sorted(base.rglob("*")):
         if f.is_file() and f.suffix in EXT_SCAN and not ({"node_modules", "dist", "src/ds"} & set(f.parts)) and "/ds/" not in f.as_posix():
-            text += f.read_text(encoding="utf-8", errors="ignore") + "\n"
+            if is_ds_copy(cfg, app, f):
+                continue  # a copy of the DS bundle (same name, or the app's css.linkPath) defines every class: not use
+            text += strip_ds(cfg, f.read_text(encoding="utf-8", errors="ignore")) + "\n"
     first = lambda c: (c["code"].get("react") or "").split(" ")[0].strip(",")
     owners = {}
     for c in data["components"]:
@@ -344,7 +365,24 @@ def cmd_scan(cfg, d, a):
         sys.exit(1)
 
 
+def selftest():
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="catalog-selftest-"))
+    (d / "apps" / "w").mkdir(parents=True)
+    cfg = {"_root": str(d), "_ds": {"css": {"bundle": "dist/acme.css", "marker": {"begin": "@ds:begin", "end": "@ds:end"}, "styleBlocks": "lib"}},
+           "apps": [{"id": "w", "path": "apps/w", "css": {"load": "link", "linkPath": "shared/ds.css"}}]}
+    app = cfg["apps"][0]
+    assert is_ds_copy(cfg, app, d / "apps" / "w" / "acme.css") and is_ds_copy(cfg, app, d / "apps" / "w" / "shared" / "ds.css")
+    assert not is_ds_copy(cfg, app, d / "apps" / "w" / "app.css")
+    t = strip_ds(cfg, '<style>/* @ds:begin */.btn{}/* @ds:end */</style><style id="libA">.card{}</style><b class="btn">')
+    assert ".btn{}" not in t and ".card{}" not in t and 'class="btn"' in t, t
+    print("catalog.py selftest OK")
+
+
 def main():
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description="Machine-readable component catalogue (catalog.json).",
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     ap.add_argument("--ds", help="DS profile folder (default: kit.config.json > ds)")

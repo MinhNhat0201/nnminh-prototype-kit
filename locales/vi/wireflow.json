@@ -10,5 +10,6 @@
   "wireflow.pageChange": "Chuyển trang",
   "wireflow.outOfScope": "Ngoài phạm vi",
   "wireflow.offflow": "Màn ngoài luồng",
-  "wireflow.start": "Bắt đầu: {start}"
+  "wireflow.start": "Bắt đầu: {start}",
+  "wireflow.imageSuffix": " · ảnh"
 }

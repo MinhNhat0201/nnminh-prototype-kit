@@ -468,12 +468,12 @@ def style_changes(cfg, sid, pin, old):
         if k == "backgroundColor" and x in ("rgba(0, 0, 0, 0)", "transparent"):
             return tr("transparent")
         names = [] if raw or k not in TOKEN_KEYS else (tok.get(k) or [])
-        return "var(%s)" % names[0] if names else x
+        return names[0] if names else x   # token name as the spec writes it, never var(--…)
 
     out = []
     for k in PROPS:
-        if o.get(k) == n.get(k):
-            continue
+        if o.get(k) == n.get(k) or o.get(k) is None or n.get(k) is None:
+            continue  # same value, or one capture did not record the property (older format): nothing to compare
         if k in ("width", "height"):
             try:
                 if abs(float(o[k][:-2]) - float(n[k][:-2])) <= 2:  # sub-pixel and rounding noise
@@ -517,7 +517,19 @@ def styles(a):
         Path(a.json).write_text(json.dumps(rows, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
+def selftest():
+    old = {"style": {"props": {"color": "rgb(0, 0, 0)", "fontSize": "14px"}, "tokens": {"color": ["--acme-text-main"]}}}
+    new = {"style": {"props": {"color": "rgb(1, 1, 1)", "fontSize": "14px", "gap": "8px", "borderWidth": "1px"},
+                     "tokens": {"color": ["--acme-text-sub"]}}}
+    ch = style_changes({"language": "en"}, "S01", new, old)
+    assert len(ch) == 1 and "--acme-text-main → --acme-text-sub" in ch[0] and "var(" not in ch[0] and "None" not in ch[0], ch
+    print("spec_md.py selftest OK")
+
+
 def main():
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description="Markdown spec checker, HTML viewer and style diff for the annotate skill.",
                                  epilog="Commands: check, html, styles. Run '<command> --help' for options.")
     sub = ap.add_subparsers(dest="cmd", required=True)

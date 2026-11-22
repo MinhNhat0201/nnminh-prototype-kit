@@ -110,6 +110,6 @@ Figma link with the board `node-id`; number of flows, screens, edges (page chang
 
 ## Rules
 - Never read HTML into the context. Never embed base64 images in code. Never write per-package Figma code; change data only.
-- Template change (layout, symbols): edit `assets/wireflow-template.js` in the kit; it applies to every later board. Layer names (`<id> · image`, `Board title`) are matched by scripts: keep them.
+- Template change (layout, symbols): edit `assets/wireflow-template.js` in the kit; it applies to every later board. Layer names (`<id> · image`, `Board title`) are matched by scripts: keep them. `mapjs`, `retitlejs` and the `mockup` audit also accept the locale suffix (`wireflow.imageSuffix`, e.g. a board built in another language or by another tool) and `kit.config.json > figma.imageSuffix`, which is also the suffix new boards are built with.
 - Never edit the prototype or the images. A wrong screen: recapture with `annotate`.
 - The Figma file belongs to the user: never delete pages or nodes outside the board this skill made (the board is found by its title).

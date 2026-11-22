@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.10.0 · 2026-11-22
+Fixes and extension points from three trial runs on a real project (handoff, rules and prototype, review and sync). Every new key has a default that keeps the 0.9 behaviour; behaviour changes only where 0.9 was wrong (listed under Fixes).
+
+Fixes
+- K-S1 `review`: the DS version label counts only as visible page text (comments, `<script>` and `<style>` are ignored: "since x.y.z" notes no longer make "several versions"); the `<meta>` version wins when a page has one.
+- K-S2 `review`: identical CSS rules count once across files (a shared shell and its generated copy with other wrappers); see `apps[].generated` below.
+- K-S3 `review`: LOCAL headers that span lines (`*` continuation) or hold a `*` (`.x-*`) are read whole; names compared with whitespace collapsed, so they match the registry.
+- K-S4 `review`: "CSS lines" counts non-empty lines after the DS region is masked (a linked or embedded bundle no longer adds its lines).
+- K-S5 `audit_map_tokens.py`: linear time (0.9 rescanned long blank runs and sliced the text per declaration: minutes on large apps; now under a second), a selector never starts with whitespace in the shared rule regex, each app mapped against its own DS profile (`apps[].ds`), `--selftest` with a time bound.
+- K-S8 `catalog.py scan`: copies of the DS bundle (same file name, the app's `css.linkPath`) and embedded DS regions (`css.marker`, `css.styleBlocks`) are not counted as component use.
+- K-S10 `review.extraChecks`: `{platform}` (`apps[].platform`) and `{stack}` placeholders; with `parse`, a row is Pass only at exit 0 when no matched line counts something (a number other than 0).
+- K-S12 `review`: the report header names the DS per app when `apps[].ds` differ.
+- K-R1 `rules.py import-md`: titles end at `.`, `!` or `?` (never at `:`), code spans keep their text (`/* LOCAL`, `FLAG_NAME`), emphasis is dropped only around words; severity `must` when the bullet uses a must word (English always, plus the project language: locale `rules.import.mustWords`), else `should`.
+- K-R2 rule file names fold diacritics (NFKD, `d` for the stroked d) instead of dropping letters.
+- K-R4 `rules.py check`: results are pass, fail or **skipped** with the reason: the command names an `http(s)://` URL that does not answer, `{path}` does not exist, or the command exits 77 or prints `SKIP: <reason>` (or the project-language word of locale `rules.check.skipWords`) on its first or last line. Skipped checks never pass silently; `review` shows them as Skipped, `validate` lists them under Skipped. `coverage` counts the checks that need a server. JSON results gain `status`, `reason`, `perApp` (`ok` is false only for a failure).
+- K-R9 `validation.py run --rules-scope app` (default): only rule checks of the validated app (`{app}`, `{path}`, `{platform}`, `{stack}`) can fail the run; failing project-wide checks go to the new section "Outside the scope". `--rules-scope all` restores the 0.9 behaviour; a comma list of rule ids limits the blocking checks to those.
+- K-R10 `prototype`: fill notes for every new **and changed** local registry entry.
+- K-12 `spec_md.py styles`: properties a capture did not record are skipped (no "None → …"); token names are printed as names, not `var(--…)`. New `--selftest`.
+- K-13 `capture.js`: values `0`, `none`, `normal`, `auto`, `transparent` get no token; `ds.json > tokens.ignorePrefixes` keeps primitive scales out of style notes.
+- K-14 Wireflow image frames: `mapjs`, `retitlejs` and the `mockup` audit accept the English suffix, the locale suffix (`wireflow.imageSuffix`) and `kit.config.json > figma.imageSuffix` (also the suffix new boards get; default `" · image"` as before).
+- K-16 `capture.js` records `search` (the query of the page or of the last `goto`); `pkg.py finalize` keeps it in each route (`index.html?demo=1#/x`), also for older captures (read from the steps).
+- K-17 AGENTS.md grep labels add the locale labels for intentional deviations and "no screen for this item".
+- K-21 `share`: in a `.md`/`.txt` email template the HTML body links Figma and demo URLs with the locale labels (`share.openFigma`, `share.openDemo`); `draft_email.py` and the SKILL warn that some mail connectors refuse an attachment on a draft without recipients.
+
+Handoff
+- K-15 `pkg.py capture --baseline <screens.json | image folder of the previous package>`: new and changed screens against the delivered version (route, pin styles, pixels; images at another scale are resized and softened first); `changed.json` says why.
+- K-18 `pkg.json > csv` (`{feature, qc}`, the shape of `handoff.csv`) overrides the project headers for one package.
+- K-20 `pkg.py proto --pages … --into <package>/prototype (--app | --root)`: copies the pages and only the files they load (href, src, srcset, `url()`, `@import`, file paths named in scripts and JSON, followed transitively), keeps relative paths, leaves other pages out and lists them, lists references it could not resolve.
+
+Validate
+- K-19 every `validation.py` command takes `--dir <folder>` (plan, runs, baseline outside `paths.validation`).
+- K-R8 `validation.py init` reads the app: one screen per page and hash route (`href="#/…"`, `"#/…"` in route tables, router paths), one flow per hash link, control ids as `_selectors` hints. `--blank` writes the 0.9 template.
+
+Extension points (all off by default)
+- K-S2 `apps[].generated` (globs: build output of the app's own sources, skipped by `review`) and `apps[].sources` (globs: sources outside the app folder, scanned with it).
+- K-S6 `ds.json > changelog` (`path`, `format` `md` | `json`, `versionKey`, `match`, `fields`): `sync_ds.py changes` reads the DS changelog where the project keeps it; a missing file is an ERROR that names the key.
+- K-S7 `sync.prepare` (before the sync, e.g. rebuild the DS library from source) and `sync.post` (after it); after every `apply` the script lists the files that changed per app and the LOCAL blocks added, removed or changed; `status` says it checks the built DS, not DS sources. The SKILL follows the project's own branch and PR rules; scripts still never commit, push or publish.
+- K-S9 `ds.json > rules` may be `{"file": "rules.md", "from": "<other profile>"}`: a profile inherits another profile's DS-layer rules, read once and applied to the apps of both (no duplicate ids in `conflicts`).
+- K-S11 `ds.json > review.genericClasses`: utility classes never counted as overrides and never measured by the browser step.
+- K-R3 `rules.py import-md --layer ds [--app A]` drafts straight into the profile's `rules/` folder.
+- K-R5 rule `skills` may name activity groups (`scripts`, `pr`, `commit`, `deploy`, `release`) and `"*"` (every skill, like `[]`): a rule that names only activities stays out of `list --skill prototype`.
+- `prototype.post`: optional project step after a build, run with `kitconf.py hook prototype.post --app <id>` (the generic runner for optional project commands: `{app}`, `{path}`, `{root}`).
+
+Generalised
+- K-R6 `ds.json > css.load` (`embed` default | `link`) with `css.linkPath`, per app `apps[].css`: `kickoff` writes one DS file and links it from every page, `sync` (built-in) rewrites that file, `review` treats it as DS CSS, `catalog.py scan` skips it, `pkg.py proto` copies it with the pages; `prototype`, `kickoff` and [docs/stacks.md](docs/stacks.md) no longer say every html page embeds the DS.
+- K-R7 `prototype`: step 0 (which DS profile and design source apply: `apps[].ds`, optional `apps[].designSource` note, `css.load`), a build ladder (reuse a DS component, compose, local block, propose), edge states and edge data in the tests, PRs through the project's own rules; no artifact or publish step in the kit (optional `prototype.post`).
+
+New keys (defaults keep 0.9): `apps[].generated`, `apps[].sources`, `apps[].designSource`, `apps[].css` (`null`), `sync.prepare`, `sync.post`, `prototype.post` (`null`), `figma.imageSuffix` (`null`), `ds.json > css.load` (`embed`), `css.linkPath` (`null`), `tokens.ignorePrefixes` (`[]`), `changelog` (`null` = `CHANGELOG.md`), `review.genericClasses` (`[]`), `rules` object form, `pkg.json > csv`. `kitconf.py check` validates `css.load`, `apps[].css`, `apps[].generated`/`sources`, `changelog.format`, `rules.from`, `ignorePrefixes`, `genericClasses`.
+
+Tests: `tests/e2e.py` 107 checks (89 in 0.9): skipped rule checks and their reasons, activity groups, `rules.from`, `import-md --layer ds`, `css.load link` through kickoff, sync and review, `sync.prepare`/`post` with the change report, review dedupe and `apps[].generated`, `validate init` from the app with `--dir`, `prototype.post` through `kitconf.py hook`, `pkg.py proto`; new `--selftest` of `audit_map_tokens.py` (time bound), `spec_md.py` and `catalog.py`, more cases in every changed script.
+
 ## 0.9.0 · 2026-11-22
 The rules registry, eleven fixes from a second real-package pilot, a DS profile per app and a project email layout. Every new key has a default that keeps the 0.7 behaviour; behaviour changes only where 0.7 was wrong (listed under Fixes).
 

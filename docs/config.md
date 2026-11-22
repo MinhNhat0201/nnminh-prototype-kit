@@ -62,8 +62,10 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "type": "none",
     "site": null
   },
-  "sync": { "command": null, "check": null },
+  "sync": { "command": null, "check": null, "prepare": null, "post": null },
   "review": { "extraChecks": [] },
+  "prototype": { "post": null },
+  "figma": { "imageSuffix": null },
   "validate": { "touchTarget": { "default": 44, "desktop": 24 } },
   "skills": {},
   "rules": { "categories": {} },
@@ -91,7 +93,10 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `apps[].usedBy`, `apps[].output` | `page` apps: files of other apps that the build output becomes (paths from the project root, required for `page`), and the build output itself | `null` | `review` skips the `usedBy` files when it audits the apps that hold them (they are audited with the page app); `kitconf.py check` |
 | `apps[].ds` | path to a DS profile folder for this app | the top-level `ds` | Every script that reads the DS for one app (capture, validate, review, sync, handoff, share, kickoff, catalogue scan, verify, explore, wireflow, rules): a project can keep a web profile and a mobile profile, each with its own version numbers. `kitconf.py check` validates the profile (ds.json, prefix, bundle); `kitconf.py --app <id>` prints the merged configuration for that app. |
 | `apps[].build`, `apps[].check` | shell commands, or `null` | `null` | Run after editing a shared shell (`multi`) or before a handoff (`spa`) |
-| `apps[].platform` | free word, e.g. `desktop`, `web`, `mobile`, `tablet` | `null` | `validate`: picks the touch-target size from `validate.touchTarget` |
+| `apps[].platform` | free word, e.g. `desktop`, `web`, `mobile`, `tablet` | `null` | `validate`: picks the touch-target size from `validate.touchTarget`; `{platform}` in `review.extraChecks` and rule checks |
+| `apps[].generated`, `apps[].sources` | glob patterns from the project root (`**` allowed): files built from the app's own sources (skipped by `review`, so a shell and its generated copy count once), and source files outside the app folder (scanned with the app) | `null` | `review` (`audit_app.py`, `audit_map_tokens.py`); `kitconf.py check` |
+| `apps[].designSource` | free text: where layouts and components come from when it is not the DS catalogue alone (for example a named Figma library) | `null` | `prototype` step 0 |
+| `apps[].css` | `{"load": "embed" \| "link", "linkPath": "<file relative to the app folder>"}`: overrides `ds.json > css.load` / `css.linkPath` for this app | `null` (the profile's) | `kickoff`, `prototype`, `review`, `sync`, `handoff`; `kitconf.py check` |
 | `local.prefix` | CSS class prefix of local (not-yet-in-DS) components | `x-` | `prototype`, `contribute`, `review` |
 | `local.marker` | Comment marker that opens a local block: `/* LOCAL: <name> */` | `LOCAL` | same |
 | `local.registry` | JSON registry of local components | `docs/local-components.json` | same |
@@ -103,13 +108,14 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `handoff.dsLabelCheck` | label differs from the pages' `<meta name="<version_label.meta>">` or from `spec/index.md`: `warn`, `error` (finalize stops), `off` | `warn` | `handoff` |
 | `handoff.specFiles` | names of the special spec files: `archive`, `crossPage`; `legacy` lists older names still read as special files (not counted as units). `legacy` may also be `{"archive": [...], "crossPage": [...]}`: then AGENTS.md (Dev reading path, archive line) and the archive step use the older file when the package has it (or README, AGENTS or the changelog already point at it) | `archive.md`, `cross-page.md`, `[]` | `handoff`, `annotate` |
 | `handoff.specFields` | older frontmatter keys of `spec/index.md`: `{kit key: old key or list}`, e.g. `{"ds": "acmeVersion"}`. Kit keys: `pbi`, `title`, `version`, `date`, `ds`, `prototype`. A DS alias that holds only a version (`2.4.1`) becomes the version label of the profile. The kit key wins when both are set | `{}` | `annotate` (`spec_md.py`), `handoff` |
-| `handoff.csv.feature`, `handoff.csv.qc` | CSV headers: `null` (locale), a comma string or list in the standard column order, or an object `{role: header}` (roles: feature `code, feature, group, screen, behaviour, inputs, expected, status, dependencies`; qc `id, unit, preconditions, steps, expected, result, notes`). `init` writes them; `finalize` warns when the package header differs | `null` | `handoff`, `share` |
+| `handoff.csv.feature`, `handoff.csv.qc` | CSV headers: `null` (locale), a comma string or list in the standard column order, or an object `{role: header}` (roles: feature `code, feature, group, screen, behaviour, inputs, expected, status, dependencies`; qc `id, unit, preconditions, steps, expected, result, notes`). `init` writes them; `finalize` warns when the package header differs. `pkg.json > csv` (same shape) overrides them for one package (headers kept from its earlier versions) | `null` | `handoff`, `share` |
 | `handoff.pre`, `handoff.post` | project commands run before and after `pkg.py finalize` (after the zip). `{pkg}`, `{config}`, `{zip}`, `{root}` are replaced (shell-quoted); also in the environment as `KIT_PKG`, `KIT_CONFIG`, `KIT_ZIP`. A failing command stops finalize | `null` | `handoff` |
 | `email.subject` | subject template | as above | `share` |
 | `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
 | `email.demoLinks` | `false`: the email has no demo, prototype or flow link at all | `true` | `share` |
 | `email.maxItems` | items kept in the feature or changelog section; the rest points to the file in the package | `12` | `share` |
 | `email.template` | path (project root) of the project's email layout: `.md` / `.txt` (plain body; the HTML body is built from it) or `.html` (HTML body; the plain body is its text). `{language}` in the path is the project language. Placeholders: `{greeting}`, `{intro}`, `{figma}`, `{demo}`, `{sections}`, `{package}`, `{how_to_open}`, `{feedback}`, `{thanks}`, `{signature}`, `{feature}`, `{version}`, `{app}`, `{pbi}`, `{subject}`, `{attachment}`; unknown ones stay as written (NOTE) | `null` (the kit layout) | `share` |
+| `figma.imageSuffix` | layer-name suffix of the screen image frames on the wireflow board, e.g. `" · image"` | `null` (`" · image"`; `mapjs`, `retitlejs` and the `mockup` audit also accept the locale suffix `wireflow.imageSuffix` and the English one) | `wireflow`, `mockup` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 | `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
@@ -128,10 +134,13 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | Key | Replaces | Notes |
 |---|---|---|
 | `sync.command` | `sync_ds.py apply` | Runs in the project root. `{app}` becomes the `--app` value. `apply --dry-run` prints the command and runs `sync.check` instead. May also be set in `ds.json > sync` (the kit config wins). |
-| `sync.check` | `sync_ds.py status` | Exit code other than 0 = apps are behind or out of step. |
+| `sync.check` | `sync_ds.py status` | Exit code other than 0 = apps are behind or out of step. `status` checks the DS as built in the profile, not its sources (it says so). |
+| `sync.prepare` | runs before `sync_ds.py apply` (project or built-in sync) | For example a project that must rebuild its DS library from source before syncing apps. A failing command stops the sync. `{app}`, `{root}`. |
+| `sync.post` | runs after `apply` and its change report | For example the project's own docs or publish check. Output and exit code printed, never parsed; exit other than 0 makes `apply` exit 1. After every `apply` the script also lists the files that changed per app and the LOCAL blocks added, removed or changed. |
+| `prototype.post` | optional step after a `prototype` build | `python3 <kit>/scripts/kitconf.py hook prototype.post --app <id>` runs it (`{app}`, `{path}`, `{root}`); for example the project's own preview or publish script. The kit never publishes by itself. |
 | `local.command.update`, `local.command.check` | `registry.py update`, `registry.py check` | The project owns the registry (for example it also builds pages from it). `--builtin` runs the kit's own command. |
 | `local.fields` | field names of the registry | `{kit field: project field}`, e.g. `{"vs_ds": "compare", "removed_on": "dropped"}`. The kit reads and writes the project's names. Fields the kit does not know (demo, notes…) are always kept as they are. |
-| `review.extraChecks` | adds rows to the `review` report | `[{"name": "Flag ledger", "command": "python3 scripts/flags.py", "parse": "^flags:", "level": "deviation"}]`. Runs after `audit_app.py` in the project root; `{app}` (app id) or `{path}` (app folder) = one run and one row per audited app, else one row in "Project checks". Result: exit code + the lines matching `parse` (the last line when none matches, or without `parse`). Exit 0 = Pass, else `level` (`deviation` by default, or `note`). `--no-extra` skips them. A rule with a `check` in the rules registry is the other way to add a row. |
+| `review.extraChecks` | adds rows to the `review` report | `[{"name": "Flag ledger", "command": "python3 scripts/flags.py", "parse": "^flags:", "level": "deviation"}]`. Runs after `audit_app.py` in the project root; `{app}` (app id), `{path}` (app folder), `{platform}` (`apps[].platform`) or `{stack}` = one run and one row per audited app, else one row in "Project checks". Result: exit code + the lines matching `parse` (the last line when none matches, or without `parse`). Pass = exit 0 and no matched line counts something (a number other than 0); else `level` (`deviation` by default, or `note`). `--no-extra` skips them. A rule with a `check` in the rules registry is the other way to add a row. |
 | `handoff.pre`, `handoff.post` | runs around `pkg.py finalize` | See the table above. |
 
 ## `ds/<name>/ds.json`
@@ -158,12 +167,15 @@ A project that already has its own scripts for a step keeps them; the kit runs t
     "scale": {
       "spacing": "--acme-num-spacing-"
     },
-    "file": "tokens.json"
+    "file": "tokens.json",
+    "ignorePrefixes": []
   },
   "css": {
     "bundle": "dist/acme.css",
     "sources": ["tokens.css", "tokens-dark.css", "base.css", "components.css", "responsive.css"],
-    "marker": { "begin": "@ds:begin", "end": "@ds:end" }
+    "marker": { "begin": "@ds:begin", "end": "@ds:end" },
+    "load": "embed",
+    "linkPath": null
   },
   "version_label": {
     "text": "{label} {version}",
@@ -178,6 +190,8 @@ A project that already has its own scripts for a step keeps them; the kit runs t
   "icons": { "set": "tabler", "file": "icons.json" },
   "catalog": "catalog.md",
   "rules": "rules.md",
+  "changelog": null,
+  "review": { "genericClasses": [] },
   "library": { "page": "library.html" },
   "figma": {
     "libraries": [
@@ -196,7 +210,11 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | `tokens.roles` | Prefix per role. `annotate` groups computed styles by role; `review` maps hard-coded values to tokens of the matching role (`color` → `text`, `background` → `bg`, borders → `stroke`, `fill`/`stroke` → `icon`). |
 | `tokens.scale.spacing` | Primitive spacing scale. Used to match hard-coded `margin`, `padding`, `gap`. |
 | `css.bundle` | One CSS file with the whole DS. Prototypes in the `html` stack embed it; the spec viewer and the audit read it. Path is relative to the profile folder, or a URL. |
+| `tokens.ignorePrefixes` | Token prefixes never used to name a captured style (`annotate`, `capture.js`), e.g. primitive scales such as `--acme-num-`. Values `0`, `none`, `normal`, `auto` and `transparent` never get a token. Default `[]`. |
 | `css.marker` | Comments that wrap the embedded DS CSS inside an app, so `sync` can replace it and `review` can tell DS CSS from app CSS. |
+| `css.load`, `css.linkPath` | How `html` pages load the DS CSS: `embed` (default: the bundle between the markers of each page) or `link` (one file per app, `linkPath` relative to the app folder, default the bundle's file name; pages `<link>` it). `apps[].css` overrides both per app. `kickoff` writes it, `sync` (built-in) rewrites the whole file, `review` treats it as DS CSS, `handoff` (`pkg.py proto`) copies it with the pages. See [stacks.md](stacks.md). |
+| `changelog` | Where the DS changelog is: a path, or `{"path", "format": "md" \| "json", "versionKey", "match"}`; the path is relative to the profile folder, else the project root. `md` = `## <version>` sections; `json` = a list of entries (or `{"entries": [...]}`) with a version key (`versionKey`, default `version` or `v`), `match` `{key: value}` keeps only matching entries, `fields` lists the keys to print (default: every text field but the version and match keys). Default: `CHANGELOG.md` (md) in the profile folder. Read by `sync_ds.py changes`; missing → an ERROR that names this key. |
+| `review.genericClasses` | Class names of the DS that are utilities rather than components (icons, scroll fades): never counted as overrides by `review` and never measured by its browser step. Default `[]`. |
 | `css.styleBlocks` | Optional id prefix (for example `lib`): every `<style id="<prefix>…">` block in an app is DS CSS. For DS that embed their library blocks by id instead of marker comments. A file in the app named like the bundle (for example `acme.css`) and a `<link href>` to it also count as DS CSS. |
 | `version_label` | Footer text and `<meta>` name that state which DS version a prototype uses. `handoff` compares the `<meta>` of the package pages with the package's DS label. |
 | `toast` | Optional: the DS toast pattern for the handoff lock layer: `container`, `class`, `close_class`, `icon` (HTML of the icon), `close_html` (inner HTML of the close button). `pkg.json > lock.toast` overrides each key. |
@@ -207,7 +225,7 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | `theming` | Attributes the DS reads on `<html>`. Skills set them only through these keys; they never invent new attributes. |
 | `catalog` | Component catalogue for agents: class, variants, states, tokens, and the `components.map` table (HTML class ↔ React ↔ Vue component). |
 | `catalog_json` | Machine-readable catalogue (default `catalog.json`), built from `catalog` by `document/scripts/catalog.py build`. Adds fields people maintain: `figma` (component, key, node), `status` (`active`, `experimental`, `deprecated` with `replacedBy` and `reason`), `usage` (`use`, `avoid`) and `a11y`. Rebuilding keeps them. Read by `prototype`, `review`, `mockup`. |
-| `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override") as one document. A profile can split them into rule files in `rules/` (DS layer of the [rules registry](rules.md); `rules.py import-md` drafts them); until then `rules.py list` reminds skills to read this file. |
+| `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override") as one document. A profile can split them into rule files in `rules/` (DS layer of the [rules registry](rules.md); `rules.py import-md --layer ds` drafts them); until then `rules.py list` reminds skills to read this file. Also an object `{"file": "rules.md", "from": "../acme"}`: `from` (relative to this profile folder) inherits the DS-layer rules of another profile, for example a mobile profile that shares the web profile's rules. |
 | `figma` | Libraries, variable collections and modes for `mockup` and `adopt`. |
 | `preset` | The preset the profile was adopted from, if any (`adopt`: `shadcn` or `atelier`). |
 | `contrast` | Optional. `skip`: contrast pairs the preset replaces with another check, each with the reason (`adopt`). |

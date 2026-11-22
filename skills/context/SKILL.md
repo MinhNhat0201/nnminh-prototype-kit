@@ -66,7 +66,8 @@ Rules the team must keep (tokens only, ask before a new page, chips use the DS t
 | A rule changes | New rule, then `python3 $R supersede <old> --by <new> --decision <D-id>`; a rule that is simply dropped: `deprecate <id> --reason`. Never edit an active rule's meaning in place. |
 | "Why is this a rule", "explain it to the BA" | `python3 $R show <id> [--app <app>]` |
 | "Which rules apply to X" | `python3 $R list --app <app> [--skill <skill>]`; a page to share: `export --format html --out <file>` |
-| The project has a long rules document | `python3 $R import-md <file> [--map "heading words=category"]`: drafts only (`proposed`, `Unconfirmed` date and decision) and `rules/_import-review.md`; confirm each draft with the user before it becomes `active`. |
+| The project has a long rules document | `python3 $R import-md <file> [--map "heading words=category"] [--layer ds [--app <app>]]`: drafts only (`proposed`, `Unconfirmed` date and decision; `must` when the text uses a must word, else `should`) and `_import-review.md`; `--layer ds` writes into the DS profile's `rules/` folder. Confirm each draft with the user before it becomes `active`. Rules for work that is not a skill (scripts, pull requests, deploys) get `skills: [scripts]`, `[pr]`, `[deploy]`, so they stay out of `list --skill prototype`. |
+| Two DS profiles share their DS rules (web and mobile) | `ds.json > rules: {"from": "../<other profile>"}` in the profile that inherits; never copy the rule files (duplicate ids). |
 | After any change | `python3 $R conflicts` passes; refresh the summary in `CLAUDE.md` with `export --format claude --into CLAUDE.md` when the project keeps one. |
 
 Never invent the severity, the decision or the date of a rule: ask, or leave it `Unconfirmed` in a proposed rule.

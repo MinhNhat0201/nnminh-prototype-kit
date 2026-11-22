@@ -16,7 +16,7 @@
        att: "<folder of sample files for 'files' steps>",
        screens: [ { id, name, flow, cont, viewport, scale, fullPage, steps, pins: [{ref, sel}], next: [{to, action, trigger, condition}] } ] }
 
-   Writes <id>.png and screens.json (page, hash, steps, viewport, pins with computed style and matching DS token names,
+   Writes <id>.png and screens.json (page, search = query of the page or of the last goto, hash, steps, viewport, pins with computed style and matching DS token names,
    exits, console errors). screens.json is merged with the previous run, so --only keeps the other screens.
    Token names come from ds.json > tokens.prefix and tokens.roles (via scripts/kitconf.js).
    Style notes: border colour and its token are recorded only when the border is wider than 0 (no stroke token for an
@@ -124,7 +124,8 @@ if (only && only.some(id => !M.screens.find(s => s.id === id))) die('--only name
 const ai = argv.indexOf('--app'), APP = (ai >= 0 && argv[ai + 1]) || M.app || null;
 const cfg = kit.forApp(kit.load(process.cwd(), false) || kit.load(path.dirname(mPath)), APP);
 if (!cfg._ds) die(`DS profile not found (kit.config.json > ds = ${cfg.ds}).`);
-const TOK = { prefix: cfg._ds.tokens.prefix, roles: cfg._ds.tokens.roles || {}, scale: cfg._ds.tokens.scale || {} };
+const TOK = { prefix: cfg._ds.tokens.prefix, roles: cfg._ds.tokens.roles || {}, scale: cfg._ds.tokens.scale || {},
+  ignore: cfg._ds.tokens.ignorePrefixes || [] };
 
 // Runs in the page. Computed style of el plus the DS token names whose value is the same.
 // For each property only tokens of the matching role are returned; without one, primitives (prefix, no role) are returned.
@@ -140,9 +141,11 @@ function tokenStyle(el, T) {
     const walk = list => { for (const r of list) { if (r.style) for (const n of r.style) if (n.startsWith(T.prefix)) names.add(n); if (r.cssRules) walk(r.cssRules); } };
     walk(rules);
   }
+  for (const n of [...names]) if ((T.ignore || []).some(p => n.startsWith(p))) names.delete(n);   // ds.json > tokens.ignorePrefixes
   const color = {}, length = {}, shadow = {};
   for (const n of names) {
     const v = rs.getPropertyValue(n).trim(); if (!v) continue;
+    if (/^(0(px|rem|em)?|none|normal|auto|transparent)$/.test(v)) continue;
     let map, key;
     if (/^(#|rgb|hsl|oklch|oklab|lab|lch|color-mix|color\()/.test(v)) { map = color; key = norm('color', v); }
     else if (/^-?[\d.]+(px|rem|em)$/.test(v)) { map = length; key = norm('width', v); }
@@ -154,7 +157,10 @@ function tokenStyle(el, T) {
   probe.remove();
   const roleList = Object.values(T.roles).concat(Object.values(T.scale));
   const isPrimitive = n => !roleList.some(p => n.startsWith(p));
+  // 0, none, normal, auto, transparent: no token describes "nothing" (a primitive that happens to be 0 is noise)
+  const EMPTY = /^(0(px|rem|em)?|none|normal|auto|transparent|rgba\(0, 0, 0, 0\))$/;
   const pick = (map, v, roles) => {
+    if (v == null || EMPTY.test(String(v).trim())) return [];
     const all = map[v] || [];
     const pre = roles.map(r => T.roles[r] || T.scale[r]).filter(Boolean);
     const sem = all.filter(n => pre.some(p => n.startsWith(p)));
@@ -207,8 +213,10 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
       const m = /^([A-Za-z]\w*)\|(.*)$/.exec(sel);
       return m && FR[m[1]] ? scope(m[1]).locator(m[2]).first() : page.locator(sel).first();
     };
+    let lastQuery = (same && cur.lastQuery) || '';   // a screen that continues its flow keeps the query of the earlier goto
     try {
       for (const st of (s.steps || []).map(normStep)) {
+        if (st.goto) { const q = /\?[^#]*/.exec(String(st.goto)); lastQuery = cur.lastQuery = q ? q[0] : ''; }
         const T = st.timeout || M.timeout || 8000;   // validate.js uses the same default (plan.timeout)
         const L = sel => (st.in ? scope(st.in).locator(sel).first() : locate(sel));
         if (st.goto) await page.goto(BASE + String(st.goto).replace(/^\//, ''));
@@ -264,7 +272,7 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
       const u = new URL(page.url());
       const basePath = new URL(BASE).pathname.replace(/^\//, '');
       res.push({ id: s.id, name: s.name, flow: s.flow || null, cont: !!s.cont,
-        page: u.pathname.replace(/^\//, '').replace(basePath, ''), hash: u.hash, viewport: vp, scale: s.scale || M.scale || 2,
+        page: u.pathname.replace(/^\//, '').replace(basePath, ''), search: u.search || lastQuery, hash: u.hash, viewport: vp, scale: s.scale || M.scale || 2,
         steps: (s.steps || []).map(normStep), pins, exits, errors: cur.errors.slice() });
       const missing = pins.filter(p => !p.found).map(p => p.sel);
       console.log(s.id, missing.length ? 'pins not found: ' + missing.join(' ; ') : 'ok', cur.errors.length ? 'CONSOLE ' + cur.errors.join(' | ') : '');

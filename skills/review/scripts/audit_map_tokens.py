@@ -14,14 +14,18 @@ Confidence:
 
 Usage:
   python3 audit_map_tokens.py [app ...] [--csv out.csv] [--limit N]
+  python3 audit_map_tokens.py --selftest     matching and a time bound on a large blank region (no project needed)
+Each app is mapped against its own DS profile (kit.config.json > apps[].ds, else ds).
 Only CSS values are proposed; DOM, classes, text and behaviour never change.
 """
 import argparse
+import bisect
 import collections
 import csv
 import math
 import re
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -123,21 +127,25 @@ def build_index(tok):
 
 
 def occurrences(ctx, app, lib):
-    """(file, line, selector or origin, property, value) for every declaration in the app region."""
-    out, seen = [], set()
+    """(file, line, selector or origin, property, value) for every declaration in the app region.
+    Linear in the size of the app: blank bodies (a DS copy masked out) are skipped, line numbers come from a
+    precomputed index (0.9 sliced the body for every declaration and rescanned long blank runs: minutes on large apps)."""
+    out, seen, seen_rules = [], set(), set()
     for f in A.app_files(ctx, app):
         txt = A.read(f)
         rel = str(f.relative_to(ctx.root))
         for base, _, body in A.css_blocks(ctx, f, txt):
-            if body in seen:
-                continue  # shared block copied into several files: report it once, at its first location
+            if body in seen or "{" not in body:
+                continue  # shared block copied into several files: report it once; no rule at all: nothing to map
             seen.add(body)
             body = A.AT_STMT.sub(A.blank, A.COMMENT.sub(A.blank, body))
+            nl = [i for i, ch in enumerate(body) if ch == "\n"]
             for r in A.RULE.finditer(body):
-                if (A.norm(r.group(1)), A.norm(r.group(2))) in lib["rules"]:
-                    continue
+                if (A.norm(r.group(1)), A.norm(r.group(2))) in lib["rules"] or A.rule_key(r.group(1), r.group(2)) in seen_rules:
+                    continue  # a DS rule copied verbatim, or the same rule again (source and generated copy)
+                seen_rules.add(A.rule_key(r.group(1), r.group(2)))
                 for d in re.finditer(r"([\w-]+)\s*:\s*([^;]+)", r.group(2)):
-                    line = base + body[:r.start(2) + d.start()].count("\n")
+                    line = base + bisect.bisect_left(nl, r.start(2) + d.start())
                     out.append((rel, line, A.norm(r.group(1))[:60], d.group(1).lower(), d.group(2).strip()))
         for line, origin, decls in A.inline_decls(ctx, f, txt):
             for d in re.finditer(r"([\w-]+)\s*:\s*([^;]+)", decls):
@@ -213,7 +221,42 @@ def suggest(ctx, rules, prop, val, col, ln):
     return res
 
 
+def selftest():
+    import json
+    import shutil
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="map-selftest-"))
+    try:
+        (d / "ds" / "acme" / "dist").mkdir(parents=True)
+        (d / "ds" / "acme" / "dist" / "acme.css").write_text(
+            ":root{--acme-text-main:#112233;--acme-bg-page:#ffffff;--acme-space-4:16px;--acme-radius-m:8px}.acme-btn{color:var(--acme-text-main)}")
+        (d / "ds" / "acme" / "ds.json").write_text(json.dumps({"name": "acme", "version": "1.0.0", "tokens": {"prefix": "--acme-"},
+                                                              "css": {"bundle": "dist/acme.css"}}))
+        app = d / "apps" / "acme-web"
+        app.mkdir(parents=True)
+        (app / "acme.css").write_text(("/* copy of the DS bundle */\n" + " " * 200 + "\n") * 4000)   # masked as DS: ~800 KB of blanks
+        (app / "index.html").write_text("<style>\n" + "\n" * 3000 + ".a{color:#112233;padding:16px}\n.b{border-radius:8px}"
+                                        "\n.a{color:#112233;padding:16px}\n</style>")
+        (d / "kit.config.json").write_text(json.dumps({"ds": "ds/acme", "apps": [{"id": "acme-web", "path": "apps/acme-web"}]}))
+        ctx = A.Ctx(d, app="acme-web")
+        t0 = time.time()
+        occ = occurrences(ctx, ctx.apps()["acme-web"], A.ds_facts(ctx))
+        took = time.time() - t0
+        assert took < 5, "occurrences took %.1f s on a large blank region" % took
+        assert [(o[1], o[3]) for o in occ] == [(3002, "color"), (3002, "padding"), (3003, "border-radius")], occ
+        tok = default_tokens(ctx)
+        col, ln = build_index(tok)
+        got = suggest(ctx, prop_rules(ctx), "color", "#112233", col, ln) + suggest(ctx, prop_rules(ctx), "padding", "16px", col, ln)
+        assert [(g[1], g[2]) for g in got] == [("exact", "--acme-text-main"), ("exact", "--acme-space-4")], got
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+    print("audit_map_tokens.py selftest OK")
+
+
 def main():
+    if "--selftest" in sys.argv:
+        selftest()
+        return
     ap = argparse.ArgumentParser(description="Propose a mapping from hard-coded values to existing DS tokens (read-only).",
                                  epilog="Confidence levels: Exact, By role, Near, None. Exit code 1 on error.")
     ap.add_argument("apps", nargs="*", help="app ids from kit.config.json > apps (default: all)")
@@ -228,20 +271,27 @@ def main():
     for k in keys:
         if k not in apps:
             A.die("app '%s' is not declared in kit.config.json > apps (declared: %s)" % (k, ", ".join(apps) or "none"))
-    lib = A.ds_facts(ctx)
-    tok = default_tokens(ctx)
-    if not tok:
-        A.die("no token defined on a plain :root rule in %s: cannot resolve default values." % ctx.bundle_path)
-    col, ln = build_index(tok)
-    rules = prop_rules(ctx)
+    per_profile = {}
+
+    def facts(k):
+        """(ctx, lib, colour index, length index, rules) of the app's own DS profile (apps[].ds)."""
+        prof = A.app_ds(ctx.cfg, k)
+        if prof not in per_profile:
+            c = A.Ctx(a.project, app=k)
+            tok = default_tokens(c)
+            if not tok:
+                A.die("no token defined on a plain :root rule in %s: cannot resolve default values." % c.bundle_path)
+            per_profile[prof] = (c, A.ds_facts(c)) + build_index(tok) + (prop_rules(c),)
+        return per_profile[prof]
     label = {c: tr("map.conf." + c) for c in CONF}
     out_rows = []
     print("# %s\n" % tr("map.title"))
-    print(tr("map.intro", ds=ctx.label()) + "\n")
+    print(tr("map.intro", ds="; ".join(dict.fromkeys(facts(k)[0].label() for k in keys))) + "\n")
     for k in keys:
+        actx, lib, col, ln, rules = facts(k)
         grp = collections.defaultdict(list)
-        for f, line, sel, prop, val in occurrences(ctx, apps[k], lib):
-            for orig, conf, token, note in suggest(ctx, rules, prop, val, col, ln):
+        for f, line, sel, prop, val in occurrences(actx, apps[k], lib):
+            for orig, conf, token, note in suggest(actx, rules, prop, val, col, ln):
                 out_rows.append([k, f, line, sel, prop, orig, conf, token, note])
                 g = prop if prop.startswith("--") else re.sub(r"-(top|right|bottom|left|inline|block)(-.*)?$", "", prop)
                 grp[(conf, g, orig.lower(), token, note)].append("%s:%d" % (f, line))

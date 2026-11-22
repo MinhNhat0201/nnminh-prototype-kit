@@ -2,9 +2,11 @@
 """Validate a prototype in the browser and write one report that separates failures from items a human must judge.
 
 Commands:
-  validation.py init --app <id> [--from-manifest manifest.js|manifest.json] [--base <capture base URL>]
+  validation.py init --app <id> [--from-manifest manifest.js|manifest.json] [--base <capture base URL>] [--blank]
       Write <paths.validation>/<app>/plan.json: screens (id, route, states with a "prepare" script), flows
       (steps: goto, click, fill, select, press, wait, expectVisible, expectHidden, expectText, expectUrl).
+      Without --from-manifest the starter plan is read from the app: one screen per page and hash route (href="#/…",
+      "#/…" in route tables, router paths), one flow per hash link, control ids as selector hints (--blank: template).
       --from-manifest builds the screens from the capture manifest of annotate/handoff instead: each screen gets the
       steps that reach it (steps of the screens it continues from first), its frames, and the plan url = --base (the URL
       the manifest gotos are relative to). A screen with its own viewport, or with actions (click, fill...) recorded at
@@ -15,7 +17,10 @@ Commands:
       when at least --min-pixels pixels or --threshold percent differ), write
       <paths.validation>/<app>/<run>/report.md and report.json. Exit 1 when anything fails.
       Also runs the check commands of the active rules for the validate skill (scripts/rules.py check --app): a failing
-      must rule is a Fail, a failing should or note rule needs a human. Steps without "timeout" wait plan.timeout ms
+      must rule is a Fail, a failing should or note rule needs a human, a skipped check (server down, not applicable) is
+      Skipped. --rules-scope app (default): only checks of this app ({app}/{path}) can fail the run; failing project-wide
+      checks go to "Outside the scope". --rules-scope all = every check; --rules-scope STY-001,A11Y-002 = those only.
+Every command takes --dir <folder>: plan, runs and baseline there instead of <paths.validation>/<app>. Steps without "timeout" wait plan.timeout ms
       (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
@@ -55,8 +60,19 @@ def die(msg):
     sys.exit(1)
 
 
+OUT_DIR = None   # --dir: plans, runs and baseline in this folder instead of <paths.validation>/<app>
+
+
 def vdir(cfg, app_id):
-    return Path(cfg["_root"]) / cfg["paths"]["validation"] / app_id
+    return Path(OUT_DIR) if OUT_DIR else Path(cfg["_root"]) / cfg["paths"]["validation"] / app_id
+
+
+def shown(cfg, p):
+    """A path for messages: relative to the project when it is inside it."""
+    try:
+        return Path(p).resolve().relative_to(Path(cfg["_root"]).resolve()).as_posix()
+    except ValueError:
+        return str(p)
 
 
 def entry_url(cfg, a, app, plan=None):
@@ -67,7 +83,7 @@ def entry_url(cfg, a, app, plan=None):
     base = Path(cfg["_root"]) / app["path"]
     f = base / "dist" / "index.html" if app.get("stack", cfg["stack"]) in ("react", "vue") else base / app.get("entry", "index.html")
     if not f.is_file():
-        die("entry not found: %s%s" % (f.relative_to(cfg["_root"]),
+        die("entry not found: %s%s" % (shown(cfg, f),
                                      " (run the app build first)" if "dist" in f.parts else ""))
     return f.resolve().as_uri()
 
@@ -159,12 +175,63 @@ def plan_from_manifest(m, base, att_dir):
     return plan
 
 
+HASH_HREF = re.compile(r"""href\s*=\s*["'](#/[^"'\s]*)["']""")
+HASH_STR = re.compile(r"""["'`](#/[\w\-/:.]*)["'`]""")
+ROUTER_PATH = re.compile(r"""\bpath\s*:\s*["'](/[\w\-/:]*)["']""")
+ID_CTRL = re.compile(r"""<(button|a|input|select|textarea)\b[^>]*\bid\s*=\s*["']([A-Za-z][\w-]*)["']""", re.I)
+SKIP_PARTS = {"node_modules", "dist", "build", ".git", "shared", "assets"}
+
+
+def plan_from_app(cfg, app):
+    """Starter plan read from the app's files: one screen per page and hash route found (href="#/…", "#/…" strings in
+    route tables, router path: '/…' in react/vue sources), one flow per in-page hash link (click it, expect the URL),
+    and the ids of the main controls (buttons, links, fields) as selector hints. Never guesses states or data."""
+    root = Path(cfg["_root"])
+    base = root / app["path"]
+    stack = app.get("stack") or cfg.get("stack")
+    entry = app.get("entry", "index.html")
+    if base.is_file():
+        pages = [base]
+    elif stack in ("react", "vue"):
+        pages = [f for f in sorted((base / "src").rglob("*")) if f.suffix in (".vue", ".tsx", ".jsx", ".ts", ".js")] if (base / "src").is_dir() else []
+    else:
+        pages = [f for f in sorted(base.rglob("*.html")) if not (set(f.relative_to(base).parts[:-1]) & SKIP_PARTS)
+                 and not any(x.startswith(("_", ".")) for x in f.relative_to(base).parts[:-1])]
+        pages.sort(key=lambda f: (f.relative_to(base).as_posix() != entry, f.relative_to(base).as_posix()))
+    screens, flows, seen, ids = [], [], set(), []
+    for f in pages:
+        txt = f.read_text(encoding="utf-8", errors="replace")
+        rel = "" if stack in ("react", "vue") or base.is_file() else f.relative_to(base).as_posix()
+        page = "" if rel in ("", entry) else rel
+        routes = HASH_HREF.findall(txt) + HASH_STR.findall(txt) + ["#" + x for x in ROUTER_PATH.findall(txt)]
+        if page or not screens:
+            routes = [""] + routes
+        for r in routes:
+            r = "" if r == "#/" else r
+            key = page + r
+            if key in seen or ":" in r:
+                continue
+            seen.add(key)
+            screens.append({"id": "S%02d" % (len(screens) + 1), "name": (page or entry) + (r or ""), "route": key, "states": []})
+        for h in dict.fromkeys(HASH_HREF.findall(txt)):
+            if len(flows) < 8 and h != "#/":
+                flows.append({"name": "Open %s%s" % (page, h), "start": page, "viewport": 1280,
+                              "steps": [{"click": "a[href='%s']" % h}, {"expectUrl": h}]})
+        ids += ["#" + m.group(2) for m in ID_CTRL.finditer(txt)]
+    plan = {"_help": PLAN_HELP, "_source": "starter plan read from the app files: check every route, add the states (empty, "
+                                           "error, loading) and the flows the work needs",
+            "screens": screens[:60], "flows": flows}
+    if ids:
+        plan["_selectors"] = list(dict.fromkeys(ids))[:40]
+    return plan
+
+
 def cmd_init(cfg, a):
     app_cfg(cfg, a.app)
     d = vdir(cfg, a.app)
     f = d / "plan.json"
     if f.exists():
-        die("plan exists, nothing written: %s" % f.relative_to(cfg["_root"]))
+        die("plan exists, nothing written: %s" % shown(cfg, f))
     if a.from_manifest:
         m = read_manifest(a.from_manifest)
         if not m.get("screens"):
@@ -174,9 +241,16 @@ def cmd_init(cfg, a):
         d.mkdir(parents=True, exist_ok=True)
         f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print("Wrote %s: %d screens from %s. Serve the prototype at %s (as for capture), or pass run --url. Add states and flows."
-              % (f.relative_to(cfg["_root"]), len(plan["screens"]), a.from_manifest, plan["url"]))
+              % (shown(cfg, f), len(plan["screens"]), a.from_manifest, plan["url"]))
         return
     d.mkdir(parents=True, exist_ok=True)
+    app = app_cfg(cfg, a.app)
+    plan = plan_from_app(cfg, app) if not a.blank else None
+    if plan and plan["screens"]:
+        f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        print("Wrote %s: %d screens and %d flows read from the app (%d selector hints). Check the routes, add states and flows."
+              % (shown(cfg, f), len(plan["screens"]), len(plan["flows"]), len(plan.get("_selectors") or [])))
+        return
     plan = {
         "_help": PLAN_HELP,
         "screens": [{"id": "S01", "name": "Home", "route": "", "states": [
@@ -185,7 +259,7 @@ def cmd_init(cfg, a):
                    "steps": [{"click": "a[href='#/settings']"}, {"expectUrl": "#/settings"}]}],
     }
     f.write_text(json.dumps(plan, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print("Wrote %s. Replace the example screens, states and flows with the app's own." % f.relative_to(cfg["_root"]))
+    print("Wrote %s. Replace the example screens, states and flows with the app's own." % shown(cfg, f))
 
 
 # ---------- diff ----------
@@ -237,11 +311,19 @@ def classify(res, diffs):
         if dfx and dfx["status"] == "changed":
             review.append(("visual", where, ("%d px changed (%.2f%%)" % (dfx["px"], dfx["pct"]) if dfx.get("pct") is not None else dfx["why"])
                            + (" · diffs/%s" % dfx["diff"] if dfx.get("diff") else "")))
-    for x in res.get("rules") or []:   # rules registry: a failing must rule fails, others need a human
-        if not x["ok"]:
-            (fail if x["severity"] == "must" else review).append(
-                ("rule", "%s%s" % (x["id"], (" · " + x["app"]) if x.get("app") else ""),
-                 "%s (%s): exit %d%s" % (x["title"], x["severity"], x["exit"], (" · " + " / ".join(x["summary"])) if x["summary"] else "")))
+    outside = []
+    for x in res.get("rules") or []:   # rules registry: a failing must rule in scope fails, others need a human
+        where = "%s%s" % (x["id"], (" · " + x["app"]) if x.get("app") else "")
+        if x.get("status") == "skipped":
+            skipped.append(("rule", where, "%s: %s" % (x["title"], x.get("reason") or "skipped")))
+        elif not x["ok"]:
+            row = ("rule", where, "%s (%s): exit %d%s" % (x["title"], x["severity"], x["exit"],
+                                                           (" · " + " / ".join(x["summary"])) if x["summary"] else ""))
+            if x.get("inScope") is False:
+                outside.append(row)
+            else:
+                (fail if x["severity"] == "must" else review).append(row)
+    res["_outside"] = outside
     for f in res.get("flows") or []:
         if not f["ok"]:
             detail = ("step %s: %s" % (f["failedStep"], f["error"])) if f.get("failedStep") else (f.get("error") or "; ".join(f.get("errors") or []))
@@ -256,6 +338,7 @@ def classify(res, diffs):
 
 def write_report(cfg, app_id, run, res, diffs):
     fail, review, skipped = classify(res, diffs)
+    outside = res.pop("_outside", [])
     T = lambda k, **kw: t(cfg, "validate." + k, **kw)
     passed = sum(1 for it in res["items"] if not it.get("fatal") and not it.get("errors") and not it.get("overflow")
                  and not any(v["impact"] in FAIL_IMPACT for v in it.get("axe") or []))
@@ -267,7 +350,7 @@ def write_report(cfg, app_id, run, res, diffs):
              "| %d (%d %s) | %d (%d %s) | %d | %d | %d |" % (len(res["items"]), passed, T("clean"), len(res["flows"]),
                                                          sum(1 for f in res["flows"] if f["ok"]), T("ok"), len(fail), len(review), len(skipped)), ""]
     for title, rows, note in ((T("failTitle"), fail, T("failNote")), (T("reviewTitle"), review, T("reviewNote")),
-                              (T("skippedTitle"), skipped, "")):
+                              (T("skippedTitle"), skipped, "")) + (((T("outsideTitle"), outside, T("outsideNote")),) if outside else ()):
         lines += ["## %s (%d)" % (title, len(rows)), ""]
         if note:
             lines += [note, ""]
@@ -278,7 +361,7 @@ def write_report(cfg, app_id, run, res, diffs):
             lines.append("—")
         lines.append("")
     lines += ["## " + T("shotsTitle"), "", T("shotsNote"), ""]
-    report = {"app": app_id, "run": run.name, "fail": fail, "review": review, "skipped": skipped, "diffs": diffs}
+    report = {"app": app_id, "run": run.name, "fail": fail, "review": review, "skipped": skipped, "outsideScope": outside, "diffs": diffs}
     (run / "report.md").write_text("\n".join(lines), encoding="utf-8")
     (run / "report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     return fail, review, skipped
@@ -307,6 +390,15 @@ def latest_run(cfg, app_id, name=None):
     return runs[-1]
 
 
+def rules_in_scope(results, scope="app"):
+    """Mark each rule check result inScope: app = checks that ran for this app ({app}/{path} in the command);
+    all = every check; a comma list = only those rule ids. A failing check outside the scope is reported, never a Fail."""
+    ids = None if scope in ("app", "all") else {x.strip().upper() for x in scope.split(",") if x.strip()}
+    for x in results:
+        x["inScope"] = (x["id"].upper() in ids) if ids is not None else (scope == "all" or bool(x.get("perApp")))
+    return results
+
+
 def cmd_run(cfg, a):
     app = app_cfg(cfg, a.app)
     d = vdir(cfg, a.app)
@@ -329,12 +421,12 @@ def cmd_run(cfg, a):
         die("browser run failed")
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
     if not a.no_rules:
-        res["rules"] = RULES.run_checks(cfg, app=a.app, skill="validate")
+        res["rules"] = rules_in_scope(RULES.run_checks(cfg, app=a.app, skill="validate"), a.rules_scope)
         (run / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
     diffs = compare_all(cfg, a.app, run, a.threshold, a.min_pixels)
     fail, review, skipped = write_report(cfg, a.app, run, res, diffs)
     print("Report: %s · %d fail · %d to review · %d skipped" % (
-        (run / "report.md").relative_to(cfg["_root"]), len(fail), len(review), len(skipped)))
+        shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
     sys.exit(1 if fail else 0)
 
 
@@ -342,7 +434,7 @@ def cmd_report(cfg, a):
     run = latest_run(cfg, a.app, a.run)
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
     fail, review, skipped = write_report(cfg, a.app, run, res, compare_all(cfg, a.app, run, a.threshold, a.min_pixels))
-    print("Report: %s · %d fail · %d to review · %d skipped" % ((run / "report.md").relative_to(cfg["_root"]), len(fail), len(review), len(skipped)))
+    print("Report: %s · %d fail · %d to review · %d skipped" % (shown(cfg, run / "report.md"), len(fail), len(review), len(skipped)))
 
 
 def cmd_baseline(cfg, a):
@@ -374,6 +466,22 @@ def selftest():
         {"id": "X-001", "title": "t", "severity": "must", "app": "a", "exit": 0, "ok": True, "summary": []}]}
     f, r, _ = classify(res, {})
     assert [x[1] for x in f] == ["STY-001 · a"] and [x[1] for x in r] == ["A11Y-001 · a"], (f, r)
+    # rules scope: a project-wide check outside the scope never fails the run; skipped checks are listed as skipped
+    res["rules"] = rules_in_scope([dict(res["rules"][0], perApp=False), dict(res["rules"][1], perApp=True),
+                                   {"id": "A11Y-002", "title": "t", "severity": "should", "app": "a", "exit": None, "ok": True,
+                                    "status": "skipped", "reason": "needs a server", "summary": [], "perApp": True}])
+    f, r, sk = classify(res, {})
+    assert not f and [x[1] for x in r] == ["A11Y-001 · a"] and [x[1] for x in res["_outside"]] == ["STY-001 · a"], (f, r, res["_outside"])
+    assert any(x[1] == "A11Y-002 · a" and "needs a server" in x[2] for x in sk), sk
+    assert rules_in_scope([{"id": "STY-001"}], "sty-001")[0]["inScope"] and not rules_in_scope([{"id": "X-1"}], "STY-001")[0]["inScope"]
+    import tempfile
+    d = Path(tempfile.mkdtemp(prefix="validation-selftest-"))
+    (d / "apps" / "w" / "notes").mkdir(parents=True)
+    (d / "apps" / "w" / "index.html").write_text('<a href="#/settings">S</a><button id="saveBtn">x</button><script>const R={"#/":1,"#/list":2};</script>')
+    (d / "apps" / "w" / "notes" / "index.html").write_text('<a href="#/n/1">n</a>')
+    sp = plan_from_app({"_root": str(d), "stack": "html"}, {"path": "apps/w"})
+    assert [x["route"] for x in sp["screens"]] == ["", "#/settings", "#/list", "notes/index.html", "notes/index.html#/n/1"], sp["screens"]
+    assert sp["flows"][0]["steps"][0] == {"click": "a[href='#/settings']"} and sp["_selectors"] == ["#saveBtn"], sp
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")
@@ -389,6 +497,7 @@ def main():
     p = sub.add_parser("init", help="write a validation plan"); p.add_argument("--app", required=True)
     p.add_argument("--from-manifest", help="capture manifest (manifest.js or .json) to build the screens from")
     p.add_argument("--base", help="URL the manifest gotos are relative to (default http://localhost:8791/)")
+    p.add_argument("--blank", action="store_true", help="write the example template instead of reading the app")
     p = sub.add_parser("run", help="run the checks and write the report")
     p.add_argument("--app", required=True); p.add_argument("--url"); p.add_argument("--viewports", default="390,768,1280")
     p.add_argument("--modes"); p.add_argument("--threshold", type=float, default=0.5, help="percent of pixels")
@@ -399,7 +508,15 @@ def main():
     p = sub.add_parser("report", help="rebuild the report of a run")
     p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float, default=0.5)
     p.add_argument("--min-pixels", type=int, default=100)
+    for sp in sub.choices.values():
+        sp.add_argument("--dir", help="folder for the plan, runs and baseline (default <paths.validation>/<app>)")
+    p = sub.choices["run"]
+    p.add_argument("--rules-scope", default="app",
+                   help="rule checks that can fail the run: app (default: checks of this app, i.e. with {app}/{path}; "
+                        "project-wide checks are reported as outside the scope), all, or a comma list of rule ids")
     a = ap.parse_args()
+    global OUT_DIR
+    OUT_DIR = a.dir
     cfg = load(app=a.app)  # the app's own DS profile (apps[].ds): theming attributes, touch targets
     {"init": cmd_init, "run": cmd_run, "baseline": cmd_baseline, "report": cmd_report}[a.cmd](cfg, a)
 

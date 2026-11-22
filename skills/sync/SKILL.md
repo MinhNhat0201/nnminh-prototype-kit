@@ -14,11 +14,13 @@ Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill sync` (no ap
 
 Goal: every app in scope runs the latest DS version, keeps its own content, data and logic, and no local component changes without the user's decision. Local components may be intentional exceptions or old debt; only the user knows which.
 
-Read first: `kit.config.json`, `ds.json`, the rules (above), the DS `catalog`, the DS `CHANGELOG.md`. Never fill a token value, class name or version from memory. If a source cannot be read, stop and say so.
+Read first: `kit.config.json`, `ds.json`, the rules (above), the DS `catalog`, the DS changelog (`ds.json > changelog`, default `CHANGELOG.md` in the profile folder; `md` sections or a `json` list of entries). Never fill a token value, class name or version from memory. If a source cannot be read, stop and say so.
 
 Script: `python3 <kit>/skills/sync/scripts/sync_ds.py` (`status`, `changes`, `apply`, `note`; `--help` lists options).
 
 **Project sync commands.** Some projects already sync their apps with their own script (several DS blocks per app, shared shells rebuilt, versions per platform). When `kit.config.json > sync.command` (or `ds.json > sync.command`) is set, `apply` runs that command instead of replacing blocks, and `status` runs `sync.check` instead of reading versions; `apply --dry-run` runs `sync.check` and prints the command. Report their output and exit code as they are, never rewrite blocks by hand around them. Every other step of this workflow (changelog, control inventory, local components, hard-coded values, tests, record) still applies. `--builtin` forces the kit's own status/apply; use it only when the user asks.
+
+**Before and after the sync** (both off by default): `sync.prepare` runs before `apply` (for example a project that must rebuild its DS library from source first); `sync.post` runs after it (for example the project's own docs check). `status` checks the DS as built in the profile, not DS sources: after a DS source edit run `apply` (or the project's prepare step) before trusting `status`. After `apply` the script lists the files that changed per app and the LOCAL blocks added, removed or changed; use that list for steps 5 to 7 and 10.
 
 ## Scope
 - Default: every app in `kit.config.json > apps`. The user names apps: only those.
@@ -33,7 +35,7 @@ Script: `python3 <kit>/skills/sync/scripts/sync_ds.py` (`status`, `changes`, `ap
 
    | Stack | Do |
    |---|---|
-   | `html` | `sync_ds.py apply --app <id> --dry-run`, then `apply`. It replaces only the CSS between the `ds.json > css.marker` comments and the version label. App CSS outside the markers stays. No markers: stop and ask whether to add them around the current DS CSS. |
+   | `html` | `sync_ds.py apply --app <id> --dry-run`, then `apply`. It replaces only the CSS between the `ds.json > css.marker` comments (or, with `css.load: "link"`, the whole linked file `css.linkPath`) and the version label. App CSS outside them stays. No markers and no linked file: stop and ask whether to add markers around the current DS CSS. |
    | `react`, `vue` | Bump the DS package to the target version (or copy the new bundle where `src/index.css` imports it). Re-map the Tailwind theme only if the DS changelog renames tokens. Run `apps[].build`. |
 
    `apps[].build` is set (`multi`, `spa`): run it after the change, then `apps[].check` if set.
@@ -65,7 +67,7 @@ Script: `python3 <kit>/skills/sync/scripts/sync_ds.py` (`status`, `changes`, `ap
 10. **Record.**
     - Changelog: `sync_ds.py note --app <id> --from <old> --to <new> --summary "<what changed>"` appends to `paths.changelog`.
     - Local registry: run `contribute`'s `registry.py update`, fill in the decision of each new or changed entry (status, reason, date), `ack <id>` for changed proposals, then `check` must pass.
-    - Branch, commit and pull request: only when the user asks. Never merge, never force-push.
+    - Branch, commit and pull request: only when the user asks, following the project's own rules for branches, PRs and docs checks (`rules.py list --skill pr`). Never merge, never force-push. Publishing or deploying is the project's own step (`sync.post` or its documented command), never the kit's.
 11. **Report** (short): apps and versions (from → to); visible changes; control table (name | group | action); local components replaced, kept (with reason), proposed, still waiting for an answer; hard-coded values replaced and kept; items that need design confirmation; test results; branch or PR link if any.
 
 ## Rules

@@ -7,6 +7,7 @@
  "review.col.level": "Mức",
  "review.level.pass": "Đạt",
  "review.level.note": "Lưu ý",
+ "review.level.skipped": "Bỏ qua",
  "review.level.deviation": "Lệch",
  "review.legend": "Mức: Đạt = không có phát hiện; Lưu ý = chờ quyết định; Lệch = vi phạm quy tắc cứng của DS (`rules.md`, quy tắc theo stack).",
  "review.unknown": "không xác định",
