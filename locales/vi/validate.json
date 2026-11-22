@@ -27,5 +27,6 @@
   "validate.kind.visual": "Khác so với ảnh chuẩn",
   "validate.kind.flow": "Luồng",
   "validate.shotsTitle": "Ảnh chụp",
-  "validate.shotsNote": "Ảnh chụp nằm trong shots/, phần khác biệt được tô trong diffs/. Sau khi người đã xem, chấp nhận chúng làm ảnh chuẩn mới bằng lệnh: validation.py baseline --app <app>."
+  "validate.shotsNote": "Ảnh chụp nằm trong shots/, phần khác biệt được tô trong diffs/. Sau khi người đã xem, chấp nhận chúng làm ảnh chuẩn mới bằng lệnh: validation.py baseline --app <app>.",
+  "validate.kind.rule": "Quy tắc dự án (sổ quy tắc)"
 }

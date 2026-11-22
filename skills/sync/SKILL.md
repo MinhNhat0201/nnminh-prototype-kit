@@ -10,9 +10,11 @@ Model and effort: `kit.config.json > skills.sync` (`model`, `effort`) when set. 
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill sync` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Goal: every app in scope runs the latest DS version, keeps its own content, data and logic, and no local component changes without the user's decision. Local components may be intentional exceptions or old debt; only the user knows which.
 
-Read first: `kit.config.json`, `ds.json`, the DS `rules` file, the DS `catalog`, the DS `CHANGELOG.md`. Never fill a token value, class name or version from memory. If a source cannot be read, stop and say so.
+Read first: `kit.config.json`, `ds.json`, the rules (above), the DS `catalog`, the DS `CHANGELOG.md`. Never fill a token value, class name or version from memory. If a source cannot be read, stop and say so.
 
 Script: `python3 <kit>/skills/sync/scripts/sync_ds.py` (`status`, `changes`, `apply`, `note`; `--help` lists options).
 

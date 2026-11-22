@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.document` (`model`, `effort`) when s
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill document` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 The skill owns the **DS profile** (`kit.config.json > ds`): its source files, version, changelog, Figma sync and docs.
 Bringing a new DS version into apps is `sync`. `<kit>` below is the plugin root.
 

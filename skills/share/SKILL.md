@@ -8,6 +8,8 @@ description: "Draft the design handoff email for BA, QC and developers from a ha
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
 Model and effort: `kit.config.json > skills.share` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
+Rules: run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rules.py list --app <app> --skill share` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Result: **one email draft** in the user's mail connector (or plain text to paste when there is none).
 
 | Part | Content | Source |
@@ -36,6 +38,7 @@ python3 -I skills/share/scripts/draft_email.py "<package>.zip" --app <app id> --
 - **Attachment size:** mail providers cap attachments (often 20–25 MB) and mail connectors often accept much less per call (about 3 MB is common). The limit comes from `kit.config.json > email.attachLimitMB` (default 3); `--attach-limit-mb` overrides it. Over the cap, the script drops the attachment and the body points to `--package-link`. Tell the user, and offer a draft without the attachment plus a download link (drive, site). Never split, rename or password-protect the zip.
 - NOTE: missing links, zip over `handoff.maxZipMB`, no feature list or changelog, demo link derived from config.
 - Long lists keep the first `email.maxItems` items (default 12; `--max-items` overrides) and point to the file in the package for the rest. "Out of scope" rows are not key features.
+- The project keeps its own short layout: `kit.config.json > email.template` (or `--template`) is a `.md`/`.txt` or `.html` file with placeholders (`{greeting}`, `{intro}`, `{figma}`, `{demo}`, `{sections}`, `{package}`, `{how_to_open}`, `{feedback}`, `{thanks}`, `{signature}`, `{feature}`, `{version}`, `{app}`, `{pbi}`, `{subject}`, `{attachment}`; `{language}` in the path). The table above is then only the material: the template decides what appears and in which order. A NOTE lists placeholders it does not know. Without a template the kit layout is used.
 - `email.demoLinks: false` (or `--no-demo`): the project sends no prototype or demo links by mail. The email has no demo item and no flow links (numbering shifts up); a `--demo` value is ignored with a NOTE. Do not ask for a demo link then.
 
 ## Step 2. Rewrite section 3 for business readers (required)

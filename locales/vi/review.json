@@ -80,5 +80,6 @@
  "review.b.dsvue_rebuilt": "Tệp Vue cục bộ trùng tên component Vue của DS (dựng lại thay vì dùng) ({n}): {list}",
  "review.b.dsvue_shadcn": "Tệp dùng component shadcn-vue dù DS có lớp Vue riêng ({n}): {list}",
  "review.res.extra": "mã thoát {code}: {summary}",
- "review.extra.title": "Kiểm tra của dự án (kit.config.json > review.extraChecks)"
+ "review.extra.title": "Kiểm tra của dự án (kit.config.json > review.extraChecks)",
+ "review.rule": "Quy tắc"
 }

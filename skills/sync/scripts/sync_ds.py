@@ -19,6 +19,8 @@ runs that command in the project root instead of replacing blocks; when sync.che
 of reading versions, and `apply --dry-run` runs it and prints the command it would run. {app} in a command becomes the
 --app value (empty when none). The command's output and exit code are reported as they are. --builtin forces the
 kit's own status/apply.
+An app with its own DS profile (kit.config.json > apps[].ds) is compared with and synced from that profile (bundle,
+version, label); changes and note --app read the app's profile too.
   sync_ds.py --selftest   checks of the project-command switch (no app files touched)
 
 What this script does not do (the sync skill does it, with the user): package bumps in react/vue apps,
@@ -33,7 +35,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
-from kitconf import load as load_cfg, ds_path, t, app as get_app, project_command  # noqa: E402
+from kitconf import load as load_cfg, ds_path, t, app as get_app, project_command, for_app  # noqa: E402
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".git", ".vite", "coverage"}
 EXT = {".html", ".htm", ".css"}
@@ -131,14 +133,18 @@ def cmd_status(cfg, a):
     if rc is not None:
         return rc
     ds = need_ds(cfg)
-    rx = block_rx(ds)
     print("DS %s, latest version %s" % (ds["label"], ds["version"]))
     for app in cfg["apps"]:
         if a.app and app["id"] != a.app:
             continue
-        files = files_of(cfg, app)
+        c = for_app(cfg, app["id"])  # apps[].ds: the app follows its own DS profile and version numbering
+        ds = need_ds(c)
+        rx = block_rx(ds)
+        if c.get("ds") != cfg.get("ds"):
+            print("   (%s uses the DS profile %s: %s %s)" % (app["id"], c["ds"], ds["label"], ds["version"]))
+        files = files_of(c, app)
         marked = [f for f in files if rx.search(f.read_text(encoding="utf-8", errors="replace"))]
-        v = found_version(cfg, app)
+        v = found_version(c, app)
         state = "unknown" if not v else ("up to date" if vtuple(v) >= vtuple(ds["version"]) else "behind")
         print("== %s (%s, stack %s): version %s, %s; %d file(s) with the DS block" % (
             app["id"], app.get("type", "single"), app.get("stack") or cfg["stack"], v or "not found", state, len(marked)))
@@ -182,15 +188,16 @@ def cmd_apply(cfg, a):
             rc = run_project(cfg, a, "check")
             return 0 if rc is None else rc
         return run_project(cfg, a, "command")
-    ds = need_ds(cfg)
     apps = [get_app(cfg, a.app)] if a.app else cfg["apps"]
     if not apps:
         sys.exit("ERROR: no apps in kit.config.json > apps.")
-    body = bundle_text(cfg, a.bundle)
-    new = ds["version"]
-    label_new = ds["version_label"]["text"].format(label=ds["label"], version=new, name=ds.get("name"))
-    b_rx, m_rx, l_rx = block_rx(ds), meta_rx(ds), label_rx(ds)
     for app in apps:
+        c = for_app(cfg, app["id"])  # apps[].ds: bundle, version and label of the app's own DS profile
+        ds = need_ds(c)
+        body = bundle_text(c, a.bundle)
+        new = ds["version"]
+        label_new = ds["version_label"]["text"].format(label=ds["label"], version=new, name=ds.get("name"))
+        b_rx, m_rx, l_rx = block_rx(ds), meta_rx(ds), label_rx(ds)
         changed, blocks = [], 0
         for f in files_of(cfg, app):
             s = f.read_text(encoding="utf-8")
@@ -268,7 +275,7 @@ def main():
     ap.add_argument("--builtin", action="store_true", help="ignore sync.command / sync.check and use the kit's own status/apply")
     ap.add_argument("--date", default=datetime.date.today().isoformat())
     a = ap.parse_args()
-    cfg = load_cfg()
+    cfg = load_cfg() if a.cmd in ("status", "apply") else load_cfg(app=a.app)  # status/apply resolve apps[].ds per app
     sys.exit({"status": cmd_status, "changes": cmd_changes, "apply": cmd_apply, "note": cmd_note}[a.cmd](cfg, a))
 
 

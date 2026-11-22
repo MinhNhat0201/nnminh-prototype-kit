@@ -11,8 +11,10 @@ What gets injected:
 
 | Kind | `<head>` | before `</body>` |
 |---|---|---|
-| lock | `<meta name="x-handover" content="lock <item label><code> · <title> v<version>">` (text from the locale key `handoff.layer.lock`) | `<script id="x-handover-lock">` from `assets/scope-lock.js` |
-| hide | same meta from `handoff.layer.hide`, plus `<style id="x-handover-hide">` with `display:none !important` | `<script id="x-handover-hide-js">` from `assets/scope-hide.js` |
+| lock | `<script id="x-handover-seed">` first (only with `seed`), then `<meta name="x-handover" content="lock <item label><code> · <title> v<version>">` (text from the locale key `handoff.layer.lock`) | `<script id="x-handover-lock">` from `assets/scope-lock.js` |
+| hide | the same seed script, same meta from `handoff.layer.hide`, plus `<style id="x-handover-hide">` with `display:none !important` | `<script id="x-handover-hide-js">` from `assets/scope-hide.js` |
+
+Order in `<head>`: the seed script is the first element after `<head>` (after `<meta charset>` when that opens the head), before every script of the page, so app code that reads a key while it loads already sees the value. The layer script itself runs last, at the end of `<body>`.
 
 The layer script is inlined into the page, so the package still has no loose `.js` file.
 
@@ -28,6 +30,7 @@ The layer script is inlined into the page, so the package still has no loose `.j
   "nav_functions": ["appNav.go"],
   "shortcuts": ["F1"],
   "open_allow": "",
+  "open_block": "#branch",
   "seed": {"localStorage": {"acme-web:whats-new": "seen"}},
   "toast": {"function": "", "args": [], "container": ".acme-toast-stack", "class": "acme-toast acme-toast--warning",
             "close_class": "acme-toast__close", "icon": "", "close_html": "", "ms": 5000}
@@ -44,7 +47,8 @@ The layer script is inlined into the page, so the package still has no loose `.j
 | `nav_functions` | Global navigation functions of the app (dotted path). Called with a page key (see `page_keys`) or a URL that is not in `pages`: toast, no navigation. |
 | `shortcuts` | Key combos of out-of-scope features (`Ctrl+`, `Meta+`, `Alt+`, `Shift+` then `KeyboardEvent.key`). Toast, no action. |
 | `open_allow` | Regex of more URLs `window.open` may open, tested on the URL as written and as resolved. A page in `pages` always opens (relative or absolute). With `pages` empty, only `open_allow` decides. |
-| `seed` | `{"localStorage": {key: value}, "sessionStorage": {…}}` set on load when the key is absent: state the package needs (for example a notice of another work item already dismissed). |
+| `open_block` | Regex tested first on the URL `window.open` (and a link) gets, as written and as resolved: a match is blocked **even for a page of the package**, for example the same page opened in a new tab with the hash of another feature (`#branch`). Empty = off. |
+| `seed` | `{"localStorage": {key: value}, "sessionStorage": {…}}` set on load when the key is absent: state the package needs (for example a notice of another work item already dismissed). Runs in its own script at the top of `<head>`, before the app's scripts. |
 | `toast.function` | Name (dotted path) of the app's own toast function, called with the message, then `toast.args` (for example the level `"warning"`). Preferred: the app already uses the DS toast. |
 | `toast.container`, `class`, `close_class`, `icon`, `close_html` | Else the layer builds the toast from the DS toast pattern (`catalog.md`, or `ds.json > toast` as defaults): `icon` is the HTML of the DS icon before the text; the close button has `aria-label` and `close_html` (default: an outline × icon, never a bare character). One of `function` or `class` is required. |
 
@@ -75,7 +79,7 @@ Never edit the rendered copy by hand: change `pkg.json` and render again.
 | `dropped_hashes` | Regexes of hashes that belong to dropped pages or hidden modules. Opening one redirects to `entry`. |
 | `entry` | Entry of the package (page and route). |
 | `defaults` | A default tab or item that is hidden: click the fallback on load. |
-| `seed` | As for lock: storage keys set on load when absent. |
+| `seed` | As for lock: storage keys set on load when absent, from the seed script at the top of `<head>`. |
 
 CSS does the hiding, so late-rendered elements and the compact-screen tab bar are covered without a MutationObserver. Use JS only when there is no stable selector; visible text is the last resort.
 

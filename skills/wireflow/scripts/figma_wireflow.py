@@ -63,7 +63,7 @@ def fail(msg):
 
 
 def build(a):
-    cfg = load(require=False) or {'language': 'en', 'deploy': {}, '_ds': None}
+    cfg = load(require=False, app=a.app or None) or {'language': 'en', 'deploy': {}, '_ds': None}  # apps[].ds: version label
     by = load_screens(os.path.join(a.spec, 'screens.json'))
     flows = read_json(a.flows)
     units = flows.get('units', {})

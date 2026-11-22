@@ -19,7 +19,9 @@ Folder layout (see skills/annotate/references/spec-format.md):
 check:  every unit file is listed in index.md; linked files and images exist; every screen in screens.json is used
         by a unit or listed under "Not matched"; every pin code (S01-2) exists in screens.json; every screen in
         flows.json exists in screens.json; every flow demo link (flows.json url) appears in spec/flows.md;
-        the DS version in the frontmatter matches ds.json (warning).
+        the DS version in the frontmatter matches ds.json (warning). Older frontmatter keys are read through
+        kit.config.json > handoff.specFields (e.g. {"ds": "acmeVersion"}; a bare version becomes the version label), and
+        "app: <id>" in the frontmatter compares with that app's DS profile (apps[].ds).
 html:   self-contained design-spec.html without JavaScript: wireflow with images and exit rings, unit blocks with
         pinned screenshots. The page chrome uses its own --kit-* variables; the DS bundle (ds.json > css.bundle)
         is embedded in a low-priority cascade layer. Images come from --img (PNG/WebP named by screen id, path
@@ -204,6 +206,9 @@ def check(a):
     err, warn = [], []
     index = (spec / "index.md").read_text(encoding="utf-8")
     meta, _ = frontmatter(index)
+    if cfg:  # app: in the frontmatter -> that app's DS profile; handoff.specFields -> older key names
+        cfg = kitconf.for_app(cfg, meta.get("app"))
+        meta = kitconf.spec_meta(cfg, meta)
     for k in ("pbi", "title", "version", "ds"):
         if not meta.get(k):
             err.append(f'spec/index.md: frontmatter is missing "{k}".')
@@ -417,6 +422,7 @@ def render(a):
     out = Path(a.out) if a.out else root / "design-spec.html"
     v = Viewer(cfg, root, a.img, out)
     meta, index = frontmatter((spec / "index.md").read_text(encoding="utf-8"))
+    meta = kitconf.spec_meta(cfg, meta) if cfg else meta
     head = index.split("\n## ")[0]
     parts = ['<header id="top">%s</header>' % md_to_html(head)]
     if flows.get("flows"):

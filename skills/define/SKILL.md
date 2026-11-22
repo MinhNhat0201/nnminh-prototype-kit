@@ -10,11 +10,13 @@ Model and effort: `kit.config.json > skills.define` (`model`, `effort`) when set
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill define` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 This skill comes before building. It turns PM/BA input into a plan that the user and stakeholders can approve, then hands each wave to the build skills.
 It only plans. It never builds screens and never edits apps or the DS.
 Reason: vague requirements, impact on existing screens and missing components are cheap to find here and expensive to find while building.
 
-Read first: `kit.config.json` (load with `python3 <kit>/scripts/kitconf.py`; `<kit>` is the plugin root), the DS profile's `rules.md` and `catalog.md` (`ds.json > rules`, `ds.json > catalog`). No `kit.config.json` → run `kickoff`. No DS profile → run `adopt`.
+Read first: `kit.config.json` (load with `python3 <kit>/scripts/kitconf.py`; `<kit>` is the plugin root), the rules (above) and the DS `catalog.md` (`ds.json > catalog`). No `kit.config.json` → run `kickoff`. No DS profile → run `adopt`.
 
 ## Step 0. Clarify the input (one AskUserQuestion round, at most 4 questions)
 

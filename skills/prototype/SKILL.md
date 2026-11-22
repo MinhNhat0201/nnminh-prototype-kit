@@ -10,6 +10,8 @@ Model and effort: `kit.config.json > skills.prototype` (`model`, `effort`) when 
 
 `<kit>` below means the kit root: two folders above this skill's base directory (`${CLAUDE_PLUGIN_ROOT}` when the kit is installed as a plugin).
 
+Rules: run `python3 <kit>/scripts/rules.py list --app <app> --skill prototype` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Goal: screens that look like the user's product, reuse DS components as much as possible, and never grow a new component silently.
 Reason: the DS is the single source of truth; every home-made component is maintenance debt for every app.
 
@@ -17,7 +19,7 @@ Reason: the DS is the single source of truth; every home-made component is maint
 ## Step 1. Read configuration and input
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
-- Read the DS profile: `ds.json`, `rules.md`, `catalog.md`. `rules.md` overrides everything else here.
+- Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` only when the output says so). The rules override everything else here. The user states a new rule while you build → record it through `context` (decision, then `rules.py add`), never only in the app.
 - Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`; read UX principles, business rules, constraints and the `approved` decisions in scope. Building against an approved decision → stop and ask; never silently override it.
 - Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
 - Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.

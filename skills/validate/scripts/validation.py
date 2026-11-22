@@ -10,10 +10,13 @@ Commands:
       the manifest gotos are relative to). A screen with its own viewport, or with actions (click, fill...) recorded at
       the manifest viewport, runs at that width only; route-only screens run at every width. Never overwrites a plan.
   validation.py run --app <id> [--url <entry>] [--viewports 390,768,1280] [--modes light,dark] [--threshold 0.5] [--min-pixels 100]
-                    [--touch-min <px>]
+                    [--touch-min <px>] [--no-rules]
       Run validate.js (Playwright) on the app, compare screenshots with the baseline (Pillow; a screenshot counts as changed
       when at least --min-pixels pixels or --threshold percent differ), write
       <paths.validation>/<app>/<run>/report.md and report.json. Exit 1 when anything fails.
+      Also runs the check commands of the active rules for the validate skill (scripts/rules.py check --app): a failing
+      must rule is a Fail, a failing should or note rule needs a human. Steps without "timeout" wait plan.timeout ms
+      (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
   validation.py baseline --app <id> [--run <run folder>]
       Accept the screenshots of a run (default: the latest) as the new baseline. Only after a human looked.
   validation.py report --app <id> [--run <run folder>]
@@ -41,8 +44,10 @@ HERE = Path(__file__).resolve().parent
 KIT = HERE.parents[2]
 sys.path.insert(0, str(KIT / "scripts"))
 from kitconf import load, t, app as app_cfg  # noqa: E402
+import rules as RULES  # noqa: E402  (scripts/rules.py)
 
 FAIL_IMPACT = {"critical", "serious"}
+STEP_TIMEOUT = 8000  # ms a step waits when it has no "timeout": the same default as capture.js (a screen it captures must not fail here)
 
 
 def die(msg):
@@ -146,7 +151,7 @@ def plan_from_manifest(m, base, att_dir):
     for e in screens:
         e.pop("_flow"), e.pop("_all")
     plan = {"_help": PLAN_HELP, "_source": "built from a capture manifest; screens run their steps from the plan url",
-            "url": base, "screens": screens, "flows": []}
+            "url": base, "screens": screens, "flows": [], "timeout": int(m.get("timeout") or STEP_TIMEOUT)}
     if m.get("frames"):
         plan["frames"] = m["frames"]
     if att_dir:
@@ -232,6 +237,11 @@ def classify(res, diffs):
         if dfx and dfx["status"] == "changed":
             review.append(("visual", where, ("%d px changed (%.2f%%)" % (dfx["px"], dfx["pct"]) if dfx.get("pct") is not None else dfx["why"])
                            + (" · diffs/%s" % dfx["diff"] if dfx.get("diff") else "")))
+    for x in res.get("rules") or []:   # rules registry: a failing must rule fails, others need a human
+        if not x["ok"]:
+            (fail if x["severity"] == "must" else review).append(
+                ("rule", "%s%s" % (x["id"], (" · " + x["app"]) if x.get("app") else ""),
+                 "%s (%s): exit %d%s" % (x["title"], x["severity"], x["exit"], (" · " + " / ".join(x["summary"])) if x["summary"] else "")))
     for f in res.get("flows") or []:
         if not f["ok"]:
             detail = ("step %s: %s" % (f["failedStep"], f["error"])) if f.get("failedStep") else (f.get("error") or "; ".join(f.get("errors") or []))
@@ -318,6 +328,9 @@ def cmd_run(cfg, a):
         sys.stdout.write(p.stderr[-2000:])
         die("browser run failed")
     res = json.loads((run / "results.json").read_text(encoding="utf-8"))
+    if not a.no_rules:
+        res["rules"] = RULES.run_checks(cfg, app=a.app, skill="validate")
+        (run / "results.json").write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
     diffs = compare_all(cfg, a.app, run, a.threshold, a.min_pixels)
     fail, review, skipped = write_report(cfg, a.app, run, res, diffs)
     print("Report: %s · %d fail · %d to review · %d skipped" % (
@@ -354,6 +367,13 @@ def selftest():
     assert s1["route"] == "apps/a/index.html#/" and s1["steps"] == [{"wait": 300}], s1
     assert s2["route"] == "apps/a/index.html#/" and s2["steps"][-1] == {"click": "#x", "in": "F"}, s2
     assert s2["viewports"] == [1280] and "steps" not in s3 and "viewports" not in s1 and p["frames"]["F"] and p["url"] == "http://localhost:9/"
+    assert p["timeout"] == STEP_TIMEOUT and plan_from_manifest(dict(m, timeout=12000), "", "")["timeout"] == 12000, "step timeout"
+    res = {"items": [], "flows": [], "axe": {"available": True}, "rules": [
+        {"id": "STY-001", "title": "t", "severity": "must", "app": "a", "exit": 1, "ok": False, "summary": ["bad"]},
+        {"id": "A11Y-001", "title": "t", "severity": "should", "app": "a", "exit": 1, "ok": False, "summary": []},
+        {"id": "X-001", "title": "t", "severity": "must", "app": "a", "exit": 0, "ok": True, "summary": []}]}
+    f, r, _ = classify(res, {})
+    assert [x[1] for x in f] == ["STY-001 · a"] and [x[1] for x in r] == ["A11Y-001 · a"], (f, r)
     cfg = {"validate": {"touchTarget": {"default": 44, "desktop": 24}}, "_ds": {"touchTarget": {"tablet": 40}}}
     assert touch_min(cfg, {}) == 44 and touch_min(cfg, {"platform": "desktop"}) == 24 and touch_min(cfg, {"platform": "tablet"}) == 40
     print("validation.py selftest OK")
@@ -374,12 +394,13 @@ def main():
     p.add_argument("--modes"); p.add_argument("--threshold", type=float, default=0.5, help="percent of pixels")
     p.add_argument("--min-pixels", type=int, default=100, help="changed pixels that count as a visual change")
     p.add_argument("--touch-min", type=int, help="smallest touch target in px on phone widths (default: by app platform)")
+    p.add_argument("--no-rules", action="store_true", help="do not run the check commands of the rules registry")
     p = sub.add_parser("baseline", help="accept a run's screenshots as baseline"); p.add_argument("--app", required=True); p.add_argument("--run")
     p = sub.add_parser("report", help="rebuild the report of a run")
     p.add_argument("--app", required=True); p.add_argument("--run"); p.add_argument("--threshold", type=float, default=0.5)
     p.add_argument("--min-pixels", type=int, default=100)
     a = ap.parse_args()
-    cfg = load()
+    cfg = load(app=a.app)  # the app's own DS profile (apps[].ds): theming attributes, touch targets
     {"init": cmd_init, "run": cmd_run, "baseline": cmd_baseline, "report": cmd_report}[a.cmd](cfg, a)
 
 

@@ -1,6 +1,6 @@
 ---
 name: context
-description: "Set up and maintain the product context the other skills read before they plan, explore or build: product overview, personas, UX principles, business rules, constraints, and a decision log where every design or product decision has a status (observed, proposed, approved, implemented, verified, rejected, superseded) and names who decided. Use when the user says 'set up product context', 'remember this decision', 'why did we decide X', 'what did we agree', 'record that the team approved…', when a project has no product-context folder yet, or when another skill needs product facts it cannot find. Do not use to analyse a PRD into waves (`define`), to compare design directions (`explore`) or to document the DS (`document`). Also use for the same request in any language."
+description: "Set up and maintain the product context the other skills read before they plan, explore or build: product overview, personas, UX principles, business rules, constraints, a decision log where every design or product decision has a status (observed, proposed, approved, implemented, verified, rejected, superseded) and names who decided, and the rules registry (one file per rule in kit, DS, project and app layers, with exceptions, automated checks and the decision behind each). Use when the user says 'set up product context', 'remember this decision', 'why did we decide X', 'what did we agree', 'record that the team approved…', 'add a rule', 'why is this a rule', 'which rules apply', 'split our rules document', when a project has no product-context folder yet, or when another skill needs product facts it cannot find. Do not use to analyse a PRD into waves (`define`), to compare design directions (`explore`) or to document the DS (`document`). Also use for the same request in any language."
 ---
 
 # Context: product memory and decisions
@@ -55,6 +55,22 @@ The script refuses moves the lifecycle does not allow (for example proposed → 
 - A decision changes: add the new one with `--supersedes <old id>`. Never edit an approved decision's meaning in place.
 - `python3 $D list --status approved`, `python3 $D show <id>`, `python3 $D check`.
 
+## Rules registry
+
+Rules the team must keep (tokens only, ask before a new page, chips use the DS tag…) are one file each, in layers: kit (`<kit>/rules/`, read-only), DS (`<profile>/rules/`), project and app (`<paths.rules>/`, default `rules/`). Format, fields and use cases: [docs/rules.md](../../docs/rules.md). Script: `R=<kit>/scripts/rules.py`.
+
+| Request | Do |
+|---|---|
+| "Add a rule", or a decision you just recorded as `approved` states a rule (`decisions.py` prints the offer) | Offer it; on yes: `python3 $R add --title "..." --category <category> --severity must\|should\|note --decision <D-id> [--applies-to <apps>] [--skills <skills>] [--check "<command with {app}>"] [--exception "<app>=<note>=<D-id>"] --body "<rule>\n\nWhy: <reason>"` in the project language. No approved decision yet → the rule stays `proposed`. |
+| An app cannot follow a rule | Project or DS rule: `python3 $R except <id> --app <app> --note "..." --decision <D-id>`. Kit rule: an app rule with `--layer app --applies-to <app> --overrides <id> --reason "..."`. |
+| A rule changes | New rule, then `python3 $R supersede <old> --by <new> --decision <D-id>`; a rule that is simply dropped: `deprecate <id> --reason`. Never edit an active rule's meaning in place. |
+| "Why is this a rule", "explain it to the BA" | `python3 $R show <id> [--app <app>]` |
+| "Which rules apply to X" | `python3 $R list --app <app> [--skill <skill>]`; a page to share: `export --format html --out <file>` |
+| The project has a long rules document | `python3 $R import-md <file> [--map "heading words=category"]`: drafts only (`proposed`, `Unconfirmed` date and decision) and `rules/_import-review.md`; confirm each draft with the user before it becomes `active`. |
+| After any change | `python3 $R conflicts` passes; refresh the summary in `CLAUDE.md` with `export --format claude --into CLAUDE.md` when the project keeps one. |
+
+Never invent the severity, the decision or the date of a rule: ask, or leave it `Unconfirmed` in a proposed rule.
+
 ## How other skills use it
 
 | Skill | Reads | Writes |
@@ -64,6 +80,7 @@ The script refuses moves the lifecycle does not allow (for example proposed → 
 | `prototype` | Principles, rules, constraints; `approved` decisions in scope | After building: approved decisions in scope → `implemented` |
 | `handoff` | Decisions in scope | Lists them in the package so developers see the why |
 | `verify` | Decisions in scope | Checked decisions → `verified`; approved deviations are not errors |
+| every skill that builds, reviews or packages | `rules.py list --app <app> --skill <name>` | — (`review`, `validate` run the rule checks) |
 
 Start of any of these skills: `python3 $C summary` gives the short digest. No folder → the skill works without it and suggests `context` once.
 

@@ -8,6 +8,8 @@ description: "Write or update the design spec for BA, QC and developers from a p
 Reply in the project language (`kit.config.json > language`). Generated documents use the same language.
 Model and effort: `kit.config.json > skills.annotate` (`model`, `effort`) when set. Work handed to a sub-agent starts with them; when this session runs another model, say so once.
 
+Rules: run `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/rules.py list --app <app> --skill annotate` (no app: leave out `--app`) and follow what it prints: `must` rules are never broken, a `should` rule is broken only with the reason in the report, `EXCEPTION` and `OVERRIDDEN` lines say what does not apply to this app. It replaces reading long rule documents; read the DS `rules.md` only when the output says the profile keeps its rules there. `rules.py show <id>` explains one rule ([docs/rules.md](../../docs/rules.md)).
+
 Goal: a reader opens the spec, sees the whole flow first, and every spec unit shows its own screens and design notes, not a design section collected at the end.
 
 Hard rules:
@@ -17,7 +19,7 @@ Hard rules:
 - No images inside the spec. Each screen links to its Figma node (the `wireflow` board); captures stay in the working folder.
 - Token names come from `ds.json > tokens.prefix` and `tokens.roles`. Never write a hex or raw px value where a token exists.
 
-Read first: `kit.config.json`, the DS profile (`ds.json`, `rules.md`, `catalog.md`). Headings and fixed labels of generated files come from `locales/<language>/annotate.json` (`annotate.h.*`, `annotate.col.*`, `annotate.label.*`); use them so `spec_md.py check` and every reader find the same words.
+Read first: `kit.config.json`, the DS profile of the app (`ds.json`, `catalog.md`; `apps[].ds` when set), the rules (above). Older frontmatter keys of `spec/index.md` are read through `handoff.specFields` (e.g. `{"ds": "<old key>"}`); write the kit keys in new specs. Headings and fixed labels of generated files come from `locales/<language>/annotate.json` (`annotate.h.*`, `annotate.col.*`, `annotate.label.*`); use them so `spec_md.py check` and every reader find the same words.
 
 ## 0. Inputs
 Two things are needed: (1) the BA spec (Markdown, docx, pasted text, or an older spec to update), (2) the prototype (an app from `kit.config.json > apps`, a file, or a URL). If one is missing, ask one question and stop. Work on a copy when the prototype is not in the repository.

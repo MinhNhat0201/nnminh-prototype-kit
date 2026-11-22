@@ -13,10 +13,12 @@ Command line:
     python3 scripts/kitconf.py           # print the merged configuration
     python3 scripts/kitconf.py check     # validate; exit 1 on error
     python3 scripts/kitconf.py skills    # model and effort hints per skill (kit.config.json > skills)
+    python3 scripts/kitconf.py --app acme-mobile   # the merged configuration with that app's DS profile (apps[].ds)
     python3 scripts/kitconf.py --selftest
 """
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -32,14 +34,16 @@ DEFAULTS = {
     "handoff": {"dir": "docs/handover", "zipName": "Design - {pbi}", "maxZipMB": 3, "figmaRequired": True,
                 "itemLabel": "", "grepLabels": [], "dsLabel": "auto", "dsLabelCheck": "warn",
                 "specFiles": {"archive": "archive.md", "crossPage": "cross-page.md", "legacy": []},
-                "csv": {"feature": None, "qc": None}, "pre": None, "post": None},
-    "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3, "demoLinks": True, "maxItems": 12},
+                "csv": {"feature": None, "qc": None}, "pre": None, "post": None, "specFields": {}},
+    "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3, "demoLinks": True, "maxItems": 12,
+              "template": None},
     "deploy": {"type": "none", "site": None},
     "sync": {"command": None, "check": None},
     "review": {"extraChecks": []},
     "validate": {"touchTarget": {"default": 44, "desktop": 24}},
     "skills": {},
-    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify"},
+    "rules": {"categories": {}},
+    "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify", "rules": "rules"},
 }
 
 DS_DEFAULTS = {
@@ -61,7 +65,8 @@ DS_DEFAULTS = {
 }
 
 STACKS = ("html", "react", "vue")
-APP_TYPES = ("single", "multi", "spa")
+APP_TYPES = ("single", "multi", "spa", "page")
+SPEC_KEYS = ("pbi", "title", "version", "date", "ds", "prototype")
 SKILLS = ("brief", "kickoff", "adopt", "define", "context", "explore", "prototype", "validate", "annotate", "wireflow",
           "mockup", "handoff", "share", "verify", "review", "sync", "contribute", "document")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -92,7 +97,21 @@ def find_root(start=None):
     return None
 
 
-def load(start=None, require=True):
+def read_profile(root, rel):
+    """(ds dict with defaults, absolute profile folder) of a DS profile folder, or (None, None)."""
+    if not rel:
+        return None, None
+    ds_dir = (Path(root) / rel).resolve()
+    f = ds_dir / "ds.json"
+    if not f.is_file():
+        return None, None
+    ds = _merge(DS_DEFAULTS, json.loads(f.read_text(encoding="utf-8")))
+    ds["label"] = ds.get("label") or ds.get("name")
+    return ds, str(ds_dir)
+
+
+def load(start=None, require=True, app=None):
+    """Merged configuration. app = an app id: the DS profile is that app's (apps[].ds), see for_app."""
     root = find_root(start)
     if root is None:
         if require:
@@ -100,15 +119,56 @@ def load(start=None, require=True):
         return None
     cfg = _merge(DEFAULTS, json.loads((root / "kit.config.json").read_text(encoding="utf-8")))
     cfg["_root"] = str(root)
-    cfg["_ds"], cfg["_ds_dir"] = None, None
+    cfg["_ds"], cfg["_ds_dir"] = read_profile(root, cfg.get("ds"))
+    cfg["_app"] = None
+    return for_app(cfg, app) if app else cfg
+
+
+def app_ds(cfg, app_id):
+    """The DS profile path of an app: apps[].ds when set, else the top-level ds."""
+    for a in cfg.get("apps") or []:
+        if a.get("id") == app_id and a.get("ds"):
+            return a["ds"]
+    return cfg.get("ds")
+
+
+def for_app(cfg, app_id):
+    """A copy of cfg whose DS profile (ds, _ds, _ds_dir) is the app's own (apps[].ds), so a project can keep a web
+    profile and a mobile profile with their own version numbers. Unknown app or no apps[].ds: cfg unchanged."""
+    if not app_id or not cfg:
+        return cfg
+    rel = app_ds(cfg, app_id)
+    out = dict(cfg)
+    out["_app"] = app_id
+    if rel and rel != cfg.get("ds"):
+        out["ds"] = rel
+        out["_ds"], out["_ds_dir"] = read_profile(cfg["_root"], rel)
+    return out
+
+
+def profiles(cfg):
+    """{profile path: [app ids]} of every DS profile in use (top-level ds for apps without apps[].ds)."""
+    out = {}
     if cfg.get("ds"):
-        ds_dir = (root / cfg["ds"]).resolve()
-        f = ds_dir / "ds.json"
-        if f.is_file():
-            ds = _merge(DS_DEFAULTS, json.loads(f.read_text(encoding="utf-8")))
-            ds["label"] = ds.get("label") or ds.get("name")
-            cfg["_ds"], cfg["_ds_dir"] = ds, str(ds_dir)
-    return cfg
+        out[cfg["ds"]] = []
+    for a in cfg.get("apps") or []:
+        out.setdefault(app_ds(cfg, a.get("id")) or "", []).append(a.get("id"))
+    out.pop("", None)
+    return out
+
+
+def spec_meta(cfg, meta):
+    """Frontmatter of spec/index.md with the project's key aliases (handoff.specFields = {kit key: old key or list}).
+    A DS alias holding only a version ("2.4.1") becomes the version label of the profile ("Acme DS 2.4.1")."""
+    out = dict(meta or {})
+    for k, alias in (((cfg or {}).get("handoff") or {}).get("specFields") or {}).items():
+        for x in ([alias] if isinstance(alias, str) else alias or []):
+            if not out.get(k) and out.get(x):
+                out[k] = out[x]
+        if k == "ds" and re.fullmatch(r"\d+\.\d+\.\d+", out.get("ds") or "") and (cfg or {}).get("_ds"):
+            d = cfg["_ds"]
+            out["ds"] = d["version_label"]["text"].format(label=d["label"], version=out["ds"], name=d.get("name"))
+    return out
 
 
 def ds_path(cfg, rel):
@@ -140,12 +200,18 @@ def project_command(cfg, key):
 
 
 def spec_files(cfg):
-    """Names of the special spec files: {"archive": ..., "crossPage": ..., "special": set of stems that are not units}."""
+    """Names of the special spec files: {"archive": ..., "crossPage": ..., "special": set of stems that are not units,
+    "legacy": {"archive": [...], "crossPage": [...]}}. handoff.specFiles.legacy is a list of older names (special files,
+    not units) or an object {"archive": [...], "crossPage": [...]} that also says which file each old name was."""
     sf = ((cfg or {}).get("handoff") or {}).get("specFiles") or {}
     arc, cross = sf.get("archive") or "archive.md", sf.get("crossPage") or "cross-page.md"
+    leg = sf.get("legacy") or []
+    kinds = {"archive": list(leg.get("archive") or []), "crossPage": list(leg.get("crossPage") or [])} if isinstance(leg, dict) \
+        else {"archive": [], "crossPage": []}
+    names = leg if isinstance(leg, list) else kinds["archive"] + kinds["crossPage"]
     stems = {"index", "flows", Path(arc).stem, Path(cross).stem, "archive", "cross-page"}
-    stems |= {Path(x).stem for x in sf.get("legacy") or []}
-    return {"archive": arc, "crossPage": cross, "special": stems}
+    stems |= {Path(x).stem for x in names}
+    return {"archive": arc, "crossPage": cross, "special": stems, "legacy": kinds}
 
 
 def csv_header(cfg, kind):
@@ -231,6 +297,19 @@ def check(cfg):
             errs.append(f"app '{a.get('id')}': stack must be one of {', '.join(STACKS)}")
         if a.get("type", "single") not in APP_TYPES:
             errs.append(f"app '{a.get('id')}': type must be one of {', '.join(APP_TYPES)}")
+        ub = a.get("usedBy")
+        if ub is not None and (not isinstance(ub, list) or not all(isinstance(x, str) and x for x in ub)):
+            errs.append(f"app '{a.get('id')}': usedBy must be a list of file paths (where the build output is copied)")
+        if a.get("type") == "page" and not ub:
+            errs.append(f"app '{a.get('id')}': type page needs usedBy (the files of other apps its build output becomes)")
+        if a.get("ds"):
+            pds, _ = read_profile(cfg["_root"], a["ds"])
+            if pds is None:
+                errs.append(f"app '{a.get('id')}': ds.json not found in {a['ds']} (apps[].ds)")
+            elif not pds["tokens"]["prefix"].startswith("--"):
+                errs.append(f"app '{a.get('id')}': {a['ds']}/ds.json > tokens.prefix must start with '--'")
+            elif pds["css"]["bundle"] and "://" not in pds["css"]["bundle"] and not (Path(cfg["_root"]) / a["ds"] / pds["css"]["bundle"]).is_file():
+                errs.append(f"app '{a.get('id')}': {a['ds']}/ds.json > css.bundle not found: {pds['css']['bundle']}")
     ds = cfg["_ds"]
     if ds:
         if not ds["tokens"]["prefix"].startswith("--"):
@@ -270,6 +349,15 @@ def check(cfg):
             errs.append("skills.%s.effort must be one of %s" % (k, ", ".join(EFFORTS)))
     if not isinstance((cfg.get("local") or {}).get("fields"), dict):
         errs.append("local.fields must be an object {kit field: project field}")
+    sf = h.get("specFields")
+    if not isinstance(sf, dict) or any(k not in SPEC_KEYS or not isinstance(v, (str, list)) for k, v in sf.items()):
+        errs.append("handoff.specFields must be an object {kit key: old key or list of old keys}; kit keys: " + ", ".join(SPEC_KEYS))
+    tpl = (cfg.get("email") or {}).get("template")
+    if tpl and not (Path(cfg["_root"]) / tpl.replace("{language}", cfg.get("language") or "en")).is_file():
+        errs.append(f"email.template not found: {tpl} (a .md, .txt or .html file in the project)")
+    cats = (cfg.get("rules") or {}).get("categories")
+    if not isinstance(cats, dict) or any(not re.fullmatch(r"[A-Z][A-Z0-9]{1,5}", str(v)) for v in cats.values()):
+        errs.append("rules.categories must be an object {category: ID prefix of 2-6 capital letters or digits}")
     return errs
 
 
@@ -287,6 +375,8 @@ def selftest():
     assert check(c) == [], check(c)
     sf = spec_files(c)
     assert sf["archive"] == "old-units.md" and {"old-units", "luu-tru", "cross-page", "archive"} <= sf["special"], sf
+    sf2 = spec_files({"handoff": {"specFiles": {"legacy": {"archive": ["old-a.md"], "crossPage": ["old-c.md"]}}}})
+    assert sf2["legacy"]["crossPage"] == ["old-c.md"] and {"old-a", "old-c"} <= sf2["special"], sf2
     assert csv_header(c, "qc") == ("ID,Steps", ["id", "steps"]), csv_header(c, "qc")
     h, roles = csv_header(c, "feature")
     assert roles[0] == "code" and roles[7] == "status" and h.startswith("Mã,"), (h, roles)
@@ -301,6 +391,28 @@ def selftest():
     assert project_command(c, "sync.command") == "make sync", "ds.json > sync fallback"
     c["skills"] = {"nope": {}, "share": {"effort": "huge"}}
     assert len(check(c)) == 2, check(c)
+    c["skills"] = {}
+    # apps[].ds: a second profile with its own version; type page + usedBy
+    (d / "ds" / "acme-mobile").mkdir(parents=True)
+    (d / "ds" / "acme-mobile" / "ds.json").write_text(json.dumps({"name": "acme-mobile", "label": "Acme Mobile", "version": "3.0.0"}))
+    c["apps"] = [{"id": "web", "path": "apps/web"}, {"id": "mob", "path": "apps/mob", "ds": "ds/acme-mobile"},
+                 {"id": "pg", "path": "src/pg", "type": "page", "usedBy": ["apps/web/pg.js"]}]
+    assert check(c) == [], check(c)
+    m = for_app(c, "mob")
+    assert m["_ds"]["version"] == "3.0.0" and c["_ds"]["version"] == "1.2.3" and for_app(c, "web")["_ds"]["version"] == "1.2.3"
+    assert profiles(c) == {"ds/acme": ["web", "pg"], "ds/acme-mobile": ["mob"]}, profiles(c)
+    assert version_label(m) == "Acme Mobile 3.0.0"
+    c["apps"] += [{"id": "bad", "path": "x", "ds": "ds/none"}, {"id": "pg2", "path": "y", "type": "page"}]
+    assert len(check(c)) == 2, check(c)
+    c["apps"] = c["apps"][:3]
+    # handoff.specFields: old frontmatter key, bare version -> label
+    c["handoff"]["specFields"] = {"ds": ["acmeVersion"]}
+    assert spec_meta(c, {"acmeVersion": "1.2.0"})["ds"] == "acme 1.2.0", spec_meta(c, {"acmeVersion": "1.2.0"})
+    assert spec_meta(c, {"ds": "Acme 9", "acmeVersion": "1"})["ds"] == "Acme 9", "the kit key wins"
+    c["handoff"]["specFields"] = {"nope": "x"}
+    c["email"]["template"] = "missing.md"
+    c["rules"]["categories"] = {"motion": "mo"}
+    assert len(check(c)) == 3, check(c)
     print("kitconf selftest OK")
 
 
@@ -311,7 +423,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] in ("-h", "--help"):
         print(__doc__)
         sys.exit(0)
-    c = load()
+    c = load(app=sys.argv[sys.argv.index("--app") + 1] if "--app" in sys.argv[:-1] else None)
     if len(sys.argv) > 1 and sys.argv[1] == "skills":
         for k in SKILLS:
             h = skill_hint(c, k)

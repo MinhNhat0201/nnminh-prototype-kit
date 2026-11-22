@@ -4,6 +4,8 @@ A design workflow for Claude Code that works with **any design system**: 18 skil
 
 **People decide, the kit does the work and checks it.** Every design choice goes through a gate where a named person decides, and the decision log remembers who decided what and why across sessions.
 
+**Rules live in a registry, not in long documents.** Each rule is one small file (kit, DS, project or app layer) with its severity, scope, exceptions, decision and an optional automated check. Skills load only the rules for the app and the step at hand (`rules.py list --app <app> --skill <skill>`); `review` and `validate` run the checks. See [docs/rules.md](docs/rules.md).
+
 No design system yet? `adopt` builds a base one from a preset (shadcn, light-first and neutral, or atelier, dark-first with a warm accent) with your brand colour, for web, mobile and tablet.
 
 Website: [nnminh-prototype-kit.vercel.app](https://nnminh-prototype-kit.vercel.app) · Repository: `MinhNhat0201/nnminh-prototype-kit`
@@ -121,7 +123,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 | `kickoff` | Sets up a project: config, DS link, stack, first app |
 | `adopt` | Builds a base DS from a preset (shadcn or atelier) plus Material 3 structure for mobile and tablet |
 | `define` | Requirement analysis, questions for PM/BA, delivery waves, traceability |
-| `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, and a decision log with statuses (observed → proposed → approved → implemented → verified) |
+| `context` | Product memory every skill reads: overview, personas, UX principles, business rules, constraints, a decision log with statuses (observed → proposed → approved → implemented → verified), and the rules registry (`scripts/rules.py`): one file per rule, layers, exceptions, automated checks |
 | `explore` | Two to four design directions built with the DS, a comparison page and a recorded human decision before building |
 | `prototype` | Builds screens and flows with the DS; component and new-page gates |
 | `validate` | Browser checks of a prototype in one report: errors, overflow, accessibility (axe-core), keyboard focus, touch targets, states, flows, visual changes against a baseline; failures separated from items a human must judge |
@@ -150,6 +152,7 @@ Solid arrows are the usual order of work; dotted arrows are routing or optional 
 
 | Check (the kit proves it) | Where |
 |---|---|
+| Project rules with an automated check (rules registry) | `review`, `validate` (`rules.py check`) |
 | Contrast of every colour pair, light and dark | `adopt`, `document` |
 | Catalogue matches the DS CSS; deprecated components not used | `document` (`catalog.py check`), `review` |
 | Prototype in the browser: errors, overflow, accessibility, focus, touch targets, states, flows, visual changes | `validate` |
@@ -163,7 +166,8 @@ Decisions move through `observed → proposed → approved → implemented → v
 | Folder (default) | Holds | Written by |
 |---|---|---|
 | `kit.config.json` | Language, stack, apps, paths | `kickoff` |
-| `ds/<name>/` | DS profile: tokens, CSS bundle, `catalog.md`, `catalog.json`, `rules.md` | `adopt`, `document` |
+| `ds/<name>/` | DS profile: tokens, CSS bundle, `catalog.md`, `catalog.json`, `rules.md`, `rules/` (DS layer of the rules registry) | `adopt`, `document` |
+| `rules/` | Project and app rules, one file per rule (`<category>/<ID>-<slug>.md`) | `kickoff`, `rules.py add`, `context` |
 | `product-context/` | Overview, personas, UX principles, business rules, constraints, `decisions/` | `context`, `explore`, `define`, `prototype`, `verify` |
 | `docs/plans/` | Requirement analysis, waves, traceability | `define` |
 | `docs/explorations/<slug>/` | Directions, comparison page, decision | `explore` |
@@ -180,7 +184,10 @@ Two files, no hard-coded design system:
 
 - `kit.config.json` in the project: language of replies and documents, stack, apps, local-component prefix, handoff and email settings, model and effort hints per skill. See [docs/config.md](docs/config.md).
 - Project commands: a project that already has its own scripts keeps them. `sync.command` / `sync.check` replace the kit's DS sync, `local.command` and `local.fields` let the project own its local-component registry, `review.extraChecks` adds the project's checks as rows of the audit, `handoff.pre` / `handoff.post` run around packaging. All are off by default.
+- Rules registry: kit rules every project inherits, DS rules in the profile, project and app rules in `rules/`; precedence kit < DS < project < app, overrides and app exceptions recorded with a reason. `scripts/rules.py` lists, explains, adds, supersedes, checks, exports (a "Project rules" page and a block for `CLAUDE.md`) and imports an existing rules document as drafts.
 - `ds/<name>/ds.json` in the DS profile: token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries. Made by `adopt`, or written by hand for an existing DS. Next to it, `catalog.md` (for people) and `catalog.json` (for agents: variants, states, tokens, code and Figma mapping, deprecated components and their replacement, usage rules).
+
+Each app can use its own DS profile (`apps[].ds`), for example a web profile and a mobile profile with separate version numbers; every script that reads the DS uses the app's profile. A project can keep its own short handoff email layout (`email.template`).
 
 Stacks are described in [docs/stacks.md](docs/stacks.md). Each app can override the project stack, so old HTML apps and new Vue apps can live side by side. A DS with its own Vue component layer (`ds.json > components.vue`) or without Tailwind (`ds.json > tailwind: false`) gets templates without Tailwind and shadcn.
 

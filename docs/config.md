@@ -4,7 +4,7 @@ The kit reads two files. Skills and scripts never hard-code a design system (DS)
 
 | File | One per | Holds |
 |---|---|---|
-| `kit.config.json` | project (repository root) | language, stack, apps, local-component registry, handoff, email, deploy, project commands, skill hints |
+| `kit.config.json` | project (repository root) | language, stack, apps, local-component registry, handoff, email, deploy, project commands, skill hints, rules registry |
 | `ds/<name>/ds.json` | design system profile | token prefix and roles, CSS bundle, theming attributes, version label, Figma libraries |
 
 Scripts find `kit.config.json` by walking up from the current directory. `scripts/kitconf.py` and `scripts/kitconf.js` load both files and fill defaults; use them instead of parsing the files by hand.
@@ -25,7 +25,8 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
       "type": "single",
       "build": null,
       "check": null,
-      "platform": null
+      "platform": null,
+      "ds": null
     }
   ],
   "local": {
@@ -47,13 +48,15 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "specFiles": { "archive": "archive.md", "crossPage": "cross-page.md", "legacy": [] },
     "csv": { "feature": null, "qc": null },
     "pre": null,
-    "post": null
+    "post": null,
+    "specFields": {}
   },
   "email": {
     "subject": "[{app}] Design - {feature} - {version}",
     "attachLimitMB": 3,
     "demoLinks": true,
-    "maxItems": 12
+    "maxItems": 12,
+    "template": null
   },
   "deploy": {
     "type": "none",
@@ -63,6 +66,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
   "review": { "extraChecks": [] },
   "validate": { "touchTarget": { "default": 44, "desktop": 24 } },
   "skills": {},
+  "rules": { "categories": {} },
   "paths": {
     "changelog": "CHANGELOG.md",
     "plans": "docs/plans",
@@ -70,7 +74,8 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
     "explorations": "docs/explorations",
     "context": "product-context",
     "validation": "docs/validation",
-    "verify": "docs/verify"
+    "verify": "docs/verify",
+    "rules": "rules"
   }
 }
 ```
@@ -82,7 +87,9 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `ds` | path to a DS profile folder | required | Every skill |
 | `apps[]` | one entry per prototype app | `[]` | `prototype`, `review`, `contribute`, `sync`, `handoff` |
 | `apps[].stack` | `html`, `react`, `vue` | the top-level `stack` | Per-app override, so one repository can keep old `html` apps and add `vue` apps. Skills use the app's stack when they work on one app. |
-| `apps[].type` | `single` (one HTML file), `multi` (one file per feature, shared shell), `spa` (React/Vue app with a router) | `single` | `prototype`, `handoff` |
+| `apps[].type` | `single` (one HTML file), `multi` (one file per feature, shared shell), `spa` (React/Vue app with a router), `page` (one page built in its own stack whose output is copied into other apps, see `usedBy`) | `single` | `prototype`, `handoff`, `review` |
+| `apps[].usedBy`, `apps[].output` | `page` apps: files of other apps that the build output becomes (paths from the project root, required for `page`), and the build output itself | `null` | `review` skips the `usedBy` files when it audits the apps that hold them (they are audited with the page app); `kitconf.py check` |
+| `apps[].ds` | path to a DS profile folder for this app | the top-level `ds` | Every script that reads the DS for one app (capture, validate, review, sync, handoff, share, kickoff, catalogue scan, verify, explore, wireflow, rules): a project can keep a web profile and a mobile profile, each with its own version numbers. `kitconf.py check` validates the profile (ds.json, prefix, bundle); `kitconf.py --app <id>` prints the merged configuration for that app. |
 | `apps[].build`, `apps[].check` | shell commands, or `null` | `null` | Run after editing a shared shell (`multi`) or before a handoff (`spa`) |
 | `apps[].platform` | free word, e.g. `desktop`, `web`, `mobile`, `tablet` | `null` | `validate`: picks the touch-target size from `validate.touchTarget` |
 | `local.prefix` | CSS class prefix of local (not-yet-in-DS) components | `x-` | `prototype`, `contribute`, `review` |
@@ -94,18 +101,22 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `handoff.grepLabels` | extra labels listed in AGENTS.md "Find with grep" (the project's own status words) | `[]` | `handoff` |
 | `handoff.dsLabel` | where the DS label of the package comes from: `auto` (`pkg.json > ds_label`, then `ds` in the frontmatter of `spec/index.md`, then `ds.json`), `pkg`, `spec`, `ds`, `prototype` (version in the `<meta>` of the package pages) | `auto` | `handoff` |
 | `handoff.dsLabelCheck` | label differs from the pages' `<meta name="<version_label.meta>">` or from `spec/index.md`: `warn`, `error` (finalize stops), `off` | `warn` | `handoff` |
-| `handoff.specFiles` | names of the special spec files: `archive`, `crossPage`; `legacy` lists older names still read as special files (not counted as units) | `archive.md`, `cross-page.md`, `[]` | `handoff`, `annotate` |
+| `handoff.specFiles` | names of the special spec files: `archive`, `crossPage`; `legacy` lists older names still read as special files (not counted as units). `legacy` may also be `{"archive": [...], "crossPage": [...]}`: then AGENTS.md (Dev reading path, archive line) and the archive step use the older file when the package has it (or README, AGENTS or the changelog already point at it) | `archive.md`, `cross-page.md`, `[]` | `handoff`, `annotate` |
+| `handoff.specFields` | older frontmatter keys of `spec/index.md`: `{kit key: old key or list}`, e.g. `{"ds": "acmeVersion"}`. Kit keys: `pbi`, `title`, `version`, `date`, `ds`, `prototype`. A DS alias that holds only a version (`2.4.1`) becomes the version label of the profile. The kit key wins when both are set | `{}` | `annotate` (`spec_md.py`), `handoff` |
 | `handoff.csv.feature`, `handoff.csv.qc` | CSV headers: `null` (locale), a comma string or list in the standard column order, or an object `{role: header}` (roles: feature `code, feature, group, screen, behaviour, inputs, expected, status, dependencies`; qc `id, unit, preconditions, steps, expected, result, notes`). `init` writes them; `finalize` warns when the package header differs | `null` | `handoff`, `share` |
 | `handoff.pre`, `handoff.post` | project commands run before and after `pkg.py finalize` (after the zip). `{pkg}`, `{config}`, `{zip}`, `{root}` are replaced (shell-quoted); also in the environment as `KIT_PKG`, `KIT_CONFIG`, `KIT_ZIP`. A failing command stops finalize | `null` | `handoff` |
 | `email.subject` | subject template | as above | `share` |
 | `email.attachLimitMB` | largest zip attached to a draft; bigger zips get a link instead | `3` (what mail connectors usually accept per call) | `share` |
 | `email.demoLinks` | `false`: the email has no demo, prototype or flow link at all | `true` | `share` |
 | `email.maxItems` | items kept in the feature or changelog section; the rest points to the file in the package | `12` | `share` |
+| `email.template` | path (project root) of the project's email layout: `.md` / `.txt` (plain body; the HTML body is built from it) or `.html` (HTML body; the plain body is its text). `{language}` in the path is the project language. Placeholders: `{greeting}`, `{intro}`, `{figma}`, `{demo}`, `{sections}`, `{package}`, `{how_to_open}`, `{feedback}`, `{thanks}`, `{signature}`, `{feature}`, `{version}`, `{app}`, `{pbi}`, `{subject}`, `{attachment}`; unknown ones stay as written (NOTE) | `null` (the kit layout) | `share` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 | `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |
 | `paths.validation` | validation plans, runs (report, screenshots, diffs) and the accepted baseline, one sub-folder per app | `docs/validation` | `validate`, `handoff` |
 | `paths.verify` | implementation checks: pairs, runs (report, screenshots, side-by-side images) and accepted deviations | `docs/verify` | `verify` |
+| `paths.rules` | project and app layer of the rules registry, one file per rule (`<category>/<ID>-<slug>.md`). See [rules.md](rules.md) | `rules` | every skill (`scripts/rules.py`), `kickoff` creates it |
+| `rules.categories` | extra rule categories with their id prefix, `{"motion": "MOT"}` (2–6 capital letters or digits) | `{}` (the recommended categories only) | `scripts/rules.py` |
 | `paths.explorations` | folder of design explorations, one sub-folder per question | `docs/explorations` | `explore`, `prototype` |
 | `validate.touchTarget` | smallest touch target in px on phone widths, per `apps[].platform`; `default` for apps without a platform (or with one not listed). `ds.json > touchTarget` may add platforms | `{"default": 44, "desktop": 24}` (24 px = WCAG 2.2 target size minimum) | `validate` |
 | `skills.<skill>.model`, `skills.<skill>.effort` | model and effort hints per skill, e.g. `{"handoff": {"model": "sonnet", "effort": "medium"}}`; `effort` is `low`, `medium`, `high`, `xhigh` or `max`. Skills read their own entry; `brief` passes it on when it hands work to a skill or a sub-agent. `python3 scripts/kitconf.py skills` lists them | `{}` (no hint: the session's model and effort) | every skill |
@@ -120,7 +131,7 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | `sync.check` | `sync_ds.py status` | Exit code other than 0 = apps are behind or out of step. |
 | `local.command.update`, `local.command.check` | `registry.py update`, `registry.py check` | The project owns the registry (for example it also builds pages from it). `--builtin` runs the kit's own command. |
 | `local.fields` | field names of the registry | `{kit field: project field}`, e.g. `{"vs_ds": "compare", "removed_on": "dropped"}`. The kit reads and writes the project's names. Fields the kit does not know (demo, notes…) are always kept as they are. |
-| `review.extraChecks` | adds rows to the `review` report | `[{"name": "Flag ledger", "command": "python3 scripts/flags.py", "parse": "^flags:", "level": "deviation"}]`. Runs after `audit_app.py` in the project root; `{app}` = one run and one row per audited app, else one row in "Project checks". Result: exit code + the lines matching `parse` (else the last line). Exit 0 = Pass, else `level` (`deviation` by default, or `note`). `--no-extra` skips them. |
+| `review.extraChecks` | adds rows to the `review` report | `[{"name": "Flag ledger", "command": "python3 scripts/flags.py", "parse": "^flags:", "level": "deviation"}]`. Runs after `audit_app.py` in the project root; `{app}` (app id) or `{path}` (app folder) = one run and one row per audited app, else one row in "Project checks". Result: exit code + the lines matching `parse` (the last line when none matches, or without `parse`). Exit 0 = Pass, else `level` (`deviation` by default, or `note`). `--no-extra` skips them. A rule with a `check` in the rules registry is the other way to add a row. |
 | `handoff.pre`, `handoff.post` | runs around `pkg.py finalize` | See the table above. |
 
 ## `ds/<name>/ds.json`
@@ -196,7 +207,7 @@ A project that already has its own scripts for a step keeps them; the kit runs t
 | `theming` | Attributes the DS reads on `<html>`. Skills set them only through these keys; they never invent new attributes. |
 | `catalog` | Component catalogue for agents: class, variants, states, tokens, and the `components.map` table (HTML class ↔ React ↔ Vue component). |
 | `catalog_json` | Machine-readable catalogue (default `catalog.json`), built from `catalog` by `document/scripts/catalog.py build`. Adds fields people maintain: `figma` (component, key, node), `status` (`active`, `experimental`, `deprecated` with `replacedBy` and `reason`), `usage` (`use`, `avoid`) and `a11y`. Rebuilding keeps them. Read by `prototype`, `review`, `mockup`. |
-| `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override"). Every skill reads it before it builds or reviews. |
+| `rules` | Hard rules of the DS (intentional deviations, accessibility fixes, "do not override") as one document. A profile can split them into rule files in `rules/` (DS layer of the [rules registry](rules.md); `rules.py import-md` drafts them); until then `rules.py list` reminds skills to read this file. |
 | `figma` | Libraries, variable collections and modes for `mockup` and `adopt`. |
 | `preset` | The preset the profile was adopted from, if any (`adopt`: `shadcn` or `atelier`). |
 | `contrast` | Optional. `skip`: contrast pairs the preset replaces with another check, each with the reason (`adopt`). |
@@ -214,7 +225,8 @@ ds/<name>/
   responsive.css  breakpoints, tab bar on compact screens
   dist/<name>.css bundle of the files above
   catalog.md      component catalogue + components.map
-  rules.md        hard rules
+  rules.md        hard rules (one document)
+  rules/          DS layer of the rules registry: <category>/<ID>-<slug>.md (optional)
   library.html    library page (optional)
   flutter/        Dart theme generated from tokens (optional)
   NOTICE          origin and licence of the preset (when adopted)

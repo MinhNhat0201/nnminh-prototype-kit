@@ -32,7 +32,7 @@ from pathlib import Path
 
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
-from kitconf import load, t  # noqa: E402
+from kitconf import load, t, for_app  # noqa: E402
 from dshtml import ds_css, wrap_css, html_attrs, version_meta  # noqa: E402
 
 LETTERS = "abcd"
@@ -430,6 +430,11 @@ def main():
     sub.add_parser("list", help="list explorations")
     a = ap.parse_args()
     cfg = load()
+    app_id = getattr(a, "app", None)  # the app's own DS profile (apps[].ds): markers and version meta
+    slug = getattr(a, "slug", None)
+    if not app_id and slug and SLUG.match(slug) and (folder(cfg, slug, False) / "directions.json").is_file():
+        app_id = read_json(folder(cfg, slug)).get("app")
+    cfg = for_app(cfg, app_id)
     {"init": cmd_init, "check": cmd_check, "compare": cmd_compare, "choose": cmd_choose, "list": cmd_list}[a.cmd](cfg, a)
 
 

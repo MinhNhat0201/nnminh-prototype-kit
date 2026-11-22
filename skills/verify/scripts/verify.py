@@ -39,7 +39,7 @@ HERE = Path(__file__).resolve().parent
 KIT = HERE.parents[2]
 sys.path.insert(0, str(KIT / "scripts"))
 sys.path.insert(0, str(KIT / "skills" / "context" / "scripts"))
-from kitconf import load, t, ds_path, app as app_cfg  # noqa: E402
+from kitconf import load, t, ds_path, app as app_cfg, for_app  # noqa: E402
 
 FAIL_IMPACT = {"critical", "serious"}
 
@@ -334,6 +334,10 @@ def main():
     p = sub.add_parser("close"); p.add_argument("name"); p.add_argument("--by", required=True); p.add_argument("--all-reviewed", action="store_true")
     a = ap.parse_args()
     cfg = load()
+    app_id = a.app if a.cmd == "init" else None  # the app's own DS profile (apps[].ds) for the token names
+    if not app_id and (vdir(cfg, a.name) / "pairs.json").is_file():
+        app_id = json.loads((vdir(cfg, a.name) / "pairs.json").read_text(encoding="utf-8")).get("app")
+    cfg = for_app(cfg, app_id)
     {"init": cmd_init, "run": cmd_run, "report": cmd_report, "accept": cmd_accept, "close": cmd_close}[a.cmd](cfg, a)
 
 

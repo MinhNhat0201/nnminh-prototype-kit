@@ -33,7 +33,7 @@ DS answer "coded package": the profile still needs `ds.json`, `catalog.md` (with
 
 ## Step 3. Write `kit.config.json`
 
-- Start from the example in `<kit>/docs/config.md`. Set `language`, `stack`, `ds`, and one `apps[]` entry (`id`, `name`, `path: apps/<id>`, `entry`, `type`, `build`, `check`). For `react`/`vue`: `build: "npm run build"` in the app folder.
+- Start from the example in `<kit>/docs/config.md`. Set `language`, `stack`, `ds`, and one `apps[]` entry (`id`, `name`, `path: apps/<id>`, `entry`, `type`, `build`, `check`). For `react`/`vue`: `build: "npm run build"` in the app folder. An app with its own DS profile (for example a mobile profile with its own version numbers): `apps[].ds`. One page built in another stack and copied into other apps: `type: "page"` with `usedBy` (the files its build output becomes).
 - Keep the other keys at their defaults unless the user gave a value. Leave `deploy.site` `null`.
 - File exists → show the diff and ask before writing.
 
@@ -70,6 +70,7 @@ Create each file only if it does not exist; otherwise ask (merge, skip or overwr
 | `paths.changelog` (default `CHANGELOG.md`) | Title, then a first entry: date, "Project set up", stack, DS label and version, first app |
 | `paths.plans`, `paths.audits` | Empty folders (add `.gitkeep`) |
 | `paths.context` (default `product-context`) | Offer it; if the user agrees, `python3 <kit>/skills/context/scripts/context.py init`, then `context` fills it |
+| `paths.rules` (default `rules/`) | Created by `scaffold.py` with a README: the project layer of the rules registry. The kit rules and the DS profile's `rules/` apply from the start (`python3 <kit>/scripts/rules.py list`). The project has a rules document already → offer `rules.py import-md` (drafts to confirm). Then `rules.py export --format claude --into CLAUDE.md` adds the summary block. |
 
 ## Step 6b. Dress the skeleton with the DS
 The templates are DS-agnostic: their shell uses neutral `app-*` classes styled only with the shadcn alias variables. Before handing over, swap the shell parts for DS components from `catalog.md` (top bar, navigation rail / bottom tab bar, icon button, list, card), keeping the router and IDs. In `react`/`vue`, use the components named in `components.map`. Then run `review`'s `audit_app.py`: no native control without a DS class, no hard-coded value.

@@ -10,11 +10,13 @@
   var FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]),textarea,select,[contenteditable=true]';
   var T = C.toast || {}, ms = T.ms || 5000, last = 0;
 
-  /* State the package needs on load (pkg.json > lock.seed): keys are set only when absent. */
-  ['localStorage', 'sessionStorage'].forEach(function (k) {
-    var S = (C.seed || {})[k]; if (!S) return;
-    try { Object.keys(S).forEach(function (n) { if (window[k].getItem(n) === null) window[k].setItem(n, String(S[n])); }); } catch (e) {}
-  });
+  /* pkg.json > lock.seed: a separate seed script that pkg.py puts at the top of <head>, before any app code. */
+  var OB = null; try { OB = C.openBlock ? new RegExp(C.openBlock) : null; } catch (e) {}
+  function openBlocked(raw) {   /* pkg.json > lock.open_block: blocked even when the page is in the package */
+    if (!OB) return false;
+    var abs; try { abs = new URL(raw, location.href).href; } catch (e) { abs = raw; }
+    return OB.test(raw) || OB.test(abs);
+  }
 
   /* Pages are compared as paths relative to the package root, after the URL is resolved (no suffix matching).
      The root is found from the current page: the longest entry of pages that ends the current path. */
@@ -49,6 +51,7 @@
     var w = (C.allowWhen || []).filter(function (x) { return el.closest(x.sel); });
     if (w.length) return w.every(condition);       /* per-route rule overrides allow */
     var a = el.closest('a[href]');
+    if (a && !/^javascript:/.test(a.getAttribute('href')) && openBlocked(a.getAttribute('href'))) return false;
     if (a && !/^(#|javascript:)/.test(a.getAttribute('href')) && !inPackage(a.href)) return false;
     return !!el.closest(ALLOW);
   }
@@ -137,12 +140,14 @@
     });
   }
   wrap(); document.addEventListener('DOMContentLoaded', wrap);
-  /* window.open: a page of the package (resolved URL) is always allowed; open_allow (regex) adds more,
+  /* window.open: open_block (regex) is tested first and blocks even a page of the package (e.g. the same page with the
+     hash of another feature); then a page of the package (resolved URL) is allowed; open_allow (regex) adds more,
      tested on the URL as written and as resolved. */
   var open = window.open, OK = C.openAllow ? new RegExp(C.openAllow) : null;
   window.open = function (u) {
     var raw = String(u == null ? '' : u), abs;
     try { abs = new URL(raw, location.href).href; } catch (e) { abs = raw; }
+    if (raw && openBlocked(raw)) { notice(); return null; }
     var mine = PAGES.length ? inPackage(raw) : !OK;   /* no pages listed: open_allow alone decides, as before */
     if (!raw || mine || (OK && (OK.test(raw) || OK.test(abs)))) return open.apply(window, arguments);
     notice(); return null;

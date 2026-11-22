@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 /* Capture prototype screens from a manifest, for the spec, the handoff package and the Figma wireflow (annotate skill).
 
-   node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02]
+   node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02] [--app <app id>]
 
    base URL   where the prototype is served (default http://localhost:8791/). Serve over HTTP, not file://:
               multi-page apps share files and hand data over through sessionStorage/localStorage.
    --only     capture only these screens; the earlier screens they continue from (same flow, cont) still run to set up
               the state, but nothing else runs and no other image is written.
+   --app      the app whose DS profile names the tokens (apps[].ds); default manifest.app, else the top-level ds.
    --selftest run the checks of the manifest helpers (no browser).
 
    Manifest (format in references/manifest.md):
-     { viewport, scale (device scale factor, default 2; use 3 for phone frames),
+     { app, viewport, scale (device scale factor, default 2; use 3 for phone frames), timeout (ms a step waits, default 8000),
        frames: { F: "<iframe selector>", ... }   pin and step selectors "F|<sel>" act inside that frame,
        att: "<folder of sample files for 'files' steps>",
        screens: [ { id, name, flow, cont, viewport, scale, fullPage, steps, pins: [{ref, sel}], next: [{to, action, trigger, condition}] } ] }
 
    Writes <id>.png and screens.json (page, hash, steps, viewport, pins with computed style and matching DS token names,
    exits, console errors). screens.json is merged with the previous run, so --only keeps the other screens.
-   Token names come from ds.json > tokens.prefix and tokens.roles (via scripts/kitconf.js). */
+   Token names come from ds.json > tokens.prefix and tokens.roles (via scripts/kitconf.js).
+   Style notes: border colour and its token are recorded only when the border is wider than 0 (no stroke token for an
+   element without a border). */
 const fs = require('fs');
 const path = require('path');
 const { chromium } = require('playwright');
@@ -26,7 +29,7 @@ const kit = require(path.resolve(__dirname, '../../../scripts/kitconf.js'));
 const die = m => { console.error('ERROR: ' + m); process.exit(1); };
 const argv = process.argv.slice(2);
 if (!argv.length || argv.includes('--help') || argv.includes('-h')) {
-  console.log('Usage: node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02]\n' +
+  console.log('Usage: node capture.js <manifest.js|manifest.json> <out dir> [base URL] [--only S01,S02] [--app <app id>]\n' +
     '       node capture.js --selftest');
   process.exit(argv.length ? 0 : 1);
 }
@@ -103,7 +106,8 @@ if (argv.includes('--selftest')) {
 }
 const oi = argv.indexOf('--only');
 const only = oi >= 0 ? (argv[oi + 1] || '').split(',').filter(Boolean) : null;
-const pos = argv.filter((a, i) => !(oi >= 0 && (i === oi || i === oi + 1)));
+const ai0 = argv.indexOf('--app');
+const pos = argv.filter((a, i) => !(oi >= 0 && (i === oi || i === oi + 1)) && !(ai0 >= 0 && (i === ai0 || i === ai0 + 1)));
 const [manifestFile, OUT] = pos;
 const BASE = (pos[2] || 'http://localhost:8791/').replace(/\/?$/, '/');
 if (!manifestFile || !OUT) die('manifest and out dir are required. Run with --help.');
@@ -116,7 +120,9 @@ if (badFrames.length) die('frame not declared in manifest.frames (add frames: { 
 const RUN = runSet(M, only);
 if (only && only.some(id => !M.screens.find(s => s.id === id))) die('--only names screens not in the manifest: ' + only.filter(id => !M.screens.find(s => s.id === id)).join(', '));
 
-const cfg = kit.load(process.cwd(), false) || kit.load(path.dirname(mPath));
+// The app's own DS profile (apps[].ds) when the manifest names its app (manifest.app) or --app is given.
+const ai = argv.indexOf('--app'), APP = (ai >= 0 && argv[ai + 1]) || M.app || null;
+const cfg = kit.forApp(kit.load(process.cwd(), false) || kit.load(path.dirname(mPath)), APP);
 if (!cfg._ds) die(`DS profile not found (kit.config.json > ds = ${cfg.ds}).`);
 const TOK = { prefix: cfg._ds.tokens.prefix, roles: cfg._ds.tokens.roles || {}, scale: cfg._ds.tokens.scale || {} };
 
@@ -203,7 +209,7 @@ const pct = (v, total) => +(v / total * 100).toFixed(1);
     };
     try {
       for (const st of (s.steps || []).map(normStep)) {
-        const T = st.timeout || 8000;
+        const T = st.timeout || M.timeout || 8000;   // validate.js uses the same default (plan.timeout)
         const L = sel => (st.in ? scope(st.in).locator(sel).first() : locate(sel));
         if (st.goto) await page.goto(BASE + String(st.goto).replace(/^\//, ''));
         else if (st.reset) { await page.evaluate(() => { localStorage.clear(); sessionStorage.clear(); }); await page.reload(); await page.waitForTimeout(700); }

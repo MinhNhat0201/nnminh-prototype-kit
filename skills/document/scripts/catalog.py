@@ -14,7 +14,8 @@ Commands:
   catalog.py set <id> [--status active|experimental|deprecated] [--replaced-by <id>] [--reason "..."]
                       [--figma-component "Button"] [--figma-key <key>] [--figma-node <node id>]
                       [--use "..."] [--avoid "..."] [--a11y "..."]
-  catalog.py scan --app <id>       Count component classes used in an app and list deprecated ones still in use.
+  catalog.py scan --app <id>       Count component classes used in an app and list deprecated ones still in use
+                                   (catalogue of the app's own DS profile when kit.config.json > apps[].ds is set).
 
 Runs from a project (kit.config.json > ds) or with --ds <profile folder>. Never commits or sends anything.
 """
@@ -49,7 +50,7 @@ def profile(a):
             die("ds.json not found in %s" % d)
         ds = _merge(DS_DEFAULTS, json.loads(f.read_text(encoding="utf-8")))
         return {"_ds": ds, "_ds_dir": str(d), "_root": str(d)}, d
-    cfg = load()
+    cfg = load(app=getattr(a, "app", None))  # scan --app: the app's own DS profile (apps[].ds)
     if not cfg["_ds"]:
         die("no DS profile linked (kit.config.json > ds)")
     return cfg, Path(cfg["_ds_dir"])
