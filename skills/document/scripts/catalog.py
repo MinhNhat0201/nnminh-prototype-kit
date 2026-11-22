@@ -31,6 +31,7 @@ from pathlib import Path
 KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
 from kitconf import load, app as app_cfg, DS_DEFAULTS, _merge, css_load  # noqa: E402
+from rules import ascii_fold  # noqa: E402
 
 SCHEMA = "kit-catalog/1"
 STATUSES = ("active", "experimental", "deprecated")
@@ -61,7 +62,8 @@ def profile(a):
 
 
 def slug(s):
-    return re.sub(r"[^a-z0-9]+", "-", s.lower()).strip("-")
+    """Ids keep letters of any language readable: diacritics folded (Trang danh sách -> trang-danh-sach)."""
+    return re.sub(r"[^a-z0-9]+", "-", ascii_fold(s).lower()).strip("-")
 
 
 def split_top(s):
@@ -444,6 +446,7 @@ def cmd_scan(cfg, d, a):
 
 
 def selftest():
+    assert slug("Trang danh sách (List Page)") == "trang-danh-sach-list-page" and slug("Đơn") == "don", slug("Trang danh sách")
     import tempfile
     d = Path(tempfile.mkdtemp(prefix="catalog-selftest-"))
     (d / "apps" / "w").mkdir(parents=True)
