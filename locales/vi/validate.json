@@ -70,5 +70,12 @@
   "validate.parity.reviewTitle": "Cần xem",
   "validate.parity.reviewNote": "Phần tử có ở cả hai bản nhưng khác thẻ hoặc khác class (liên kết thêm class brand, nhãn đổi sang solid). Thường là đổi kiểu mà điểm ảnh ở độ rộng này chưa thấy: xác nhận đó là thay đổi có chủ đích. Không tính là lệch, trừ khi chạy parity với --classes differs (hoặc plan.classes \"differs\").",
   "validate.parity.reviewSummary": "{n} mục cần xem (class).",
-  "validate.parity.check.classes": "Class / cấu trúc"
+  "validate.parity.check.classes": "Class / cấu trúc",
+  "validate.parity.flow": "Luồng",
+  "validate.parity.parity": "A so với B",
+  "validate.parity.flowsTitle": "Kết quả luồng A / B",
+  "validate.parity.flowPassed": "đạt",
+  "validate.parity.flowFailed": "hỏng ở bước {step}: {error}",
+  "validate.parity.bothFailTitle": "Luồng hỏng ở cả hai bản (cần xem)",
+  "validate.parity.bothFailNote": "Các luồng này hỏng ở cả bản A và bản B. Hỏng giống nhau thì vẫn tính là khớp và không đổi mã thoát, nhưng luồng hỏng ở mọi bản không chứng minh được gì: sửa bước trong plan hoặc sửa trang rồi chạy lại."
 }

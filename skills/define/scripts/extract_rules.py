@@ -9,7 +9,10 @@ define.storageCalls, any .get/.put/.set/.remove call and any bare get/put/lsGet/
 "via a wrapper?"; a key held in a constant, KEY = 'app.pos' then getItem(KEY), is resolved). Messages are the string
 arguments of the calls in define.messageCalls (toast, alert…) and data-msg attributes; other strings of the scripts a user
 may read (labels, mock data) are listed apart as "text in script"; markup built in script strings (pieces of HTML,
-template literals) gives its text and its title, aria-label, placeholder attributes. The output is a draft table (id,
+template literals) gives its text and its title, aria-label, placeholder attributes; a tag cut across string pieces
+joined with + ('<b title="Open ' + n + ' files">') is read as one piece, so its pieces are never text (K7-1); the second
+argument of .replace / .replaceAll (the text put in: 'Comment', 'aria-label="Comment on slide $1"') gives its text and
+visible attributes (K7-2). The output is a draft table (id,
 kind, text or value, source file:line) for the agent to complete into the parity checklist of the plan. It never decides
 a rule.
 
@@ -102,6 +105,8 @@ def visible(s):
         return False
     if s in ("use strict", "use client") or "<" in s or '="' in s:  # a directive, or a piece of HTML built by concatenation
         return False
+    if re.match(r"[\"']\s*(?:\]|/?>|[\w-]+=)", s):   # the end of an attribute or a selector: '" src=', '"] .title'
+        return False
     if re.search(r"[{};]|=>|\$\(|^\w+\(|\w\.\w+\(|^[\w-]+:[\w-]", s) or re.fullmatch(r"[\w.\-/]+\.(?:js|css|html|png|svg|json|webp|jpg)", s):
         return False
     if re.search(r"\s", s) or re.search(r"[^\x00-\x7f]", s):
@@ -130,7 +135,7 @@ def from_markup(text, base, out, src, fragment=False):
         ln = base + line_of(text, m.start())
         for k in VISIBLE_ATTRS + MESSAGE_ATTRS:
             v = attrs.get(k, "")
-            if v and not v.startswith(("{", "$")) and re.search(r"[^\W\d_]", v):
+            if v and (v.startswith("{…}") or not v.startswith(("{", "$"))) and re.search(r"[^\W\d_]", v.replace("{…}", "")):
                 out.append(("message" if k in MESSAGE_ATTRS else "text", "%s: %s" % (k, v), src, ln, None))
         cons = ["%s=%s" % (k, attrs[k]) if attrs[k] else k for k in INPUT_ATTRS if k in attrs]
         if attrs.get("type") in INPUT_TYPES:
@@ -167,6 +172,49 @@ def close_paren(code, i):
                 return j
         j += 1
     return len(code)
+
+
+def operand_end(code, i):
+    """End of the operand of a concatenation that starts at code[i] (a name, a member, a call, a group), or i."""
+    m = re.match(r"[!\-~]*\s*", code[i:])
+    j = i + m.end()
+    if j < len(code) and code[j] == "(":
+        j = close_paren(code, j) + 1
+    else:
+        n = re.match(r"(?:new\s+)?[A-Za-z_$][\w$]*", code[j:])
+        if not n:
+            return i
+        j += n.end()
+    while j < len(code):
+        t = re.match(r"\s*(?:\?\.|\.)\s*[A-Za-z_$][\w$]*", code[j:])
+        if t:
+            j += t.end()
+        elif code[j] in "([":
+            j = close_paren(code, j) + 1
+        else:
+            break
+    return j
+
+
+def concat_chain(code, m):
+    """The string literals joined to the one matched by m with + ('<b title="' + t + '">' + x + 'Go</b>'): [(match, text)]
+    with None for an operand that is no literal."""
+    parts, j = [(m, None)], m.end()
+    while True:
+        p = re.match(r"\s*\+(?![+=])\s*", code[j:])
+        if not p:
+            return parts
+        k = j + p.end()
+        lit = STR.match(code, k)
+        if lit:
+            parts.append((lit, None))
+            j = lit.end()
+            continue
+        e = operand_end(code, k)
+        if e == k:
+            return parts
+        parts.append((None, None))
+        j = e
 
 
 def blank_regex(code):
@@ -239,6 +287,14 @@ def from_script(text, base, out, src, opts=None):
     for k, v in (opts.get("_wraps") or {}).items():   # wrappers of other files of the run: (store, prefix, span, file),
         if k not in wraps and v[3] != src and not re.search(DECLARED.format(n=re.escape(k)), code):   # unless the name is
             wraps[k] = v                                                                                # declared here
+    repl = []   # x.replace(a, b), f(x).replaceAll(a, b): (start, end) of b, the text put in (K7-2)
+    for m in re.finditer(r"\.\s*replace(?:All)?\s*\(", code):
+        end, j = close_paren(code, m.end() - 1), m.end()
+        while j < end and code[j] != ",":   # the comma after the first argument
+            lit = STR.match(code, j) if code[j] in "'\"`" else None
+            j = lit.end() if lit else close_paren(code, j) + 1 if code[j] in "([{" else j + 1
+        if j < end:
+            repl.append((j + 1, end))
     for m in CALL.finditer(code):
         callee = re.sub(r"\s|\?", "", m.group(1))
         if named(callee, msg_calls):
@@ -262,10 +318,14 @@ def from_script(text, base, out, src, opts=None):
             out.append(("storage", "%s %s%s (%s%s)" % (w[0], w[1], key, callee, ", " + w[3] if w[3] else ""), src, ln, None))
         elif len(parts) == 1 and BARE_STORE.fullmatch(callee) and re.fullmatch(r"[\w.:\-]+", key):
             out.append(("storage", "%s %s" % (callee, key), src, ln, "wrapper"))
+    def norm(raw):
+        return re.sub(r"\$\{[^{}]*\}", "{…}", raw).replace("\\'", "'").replace('\\"', '"').replace("\\n", " ")
+
+    done = set()   # literals read as part of a concatenated piece of markup
     for m in STR.finditer(code):
         raw = next(g for g in m.groups() if g is not None)
         ln = line_of(code, m.start())
-        s = re.sub(r"\$\{[^{}]*\}", "{…}", raw).replace("\\'", "'").replace('\\"', '"').replace("\\n", " ")
+        s = norm(raw)
         if s.startswith("#/"):
             tail = CONCAT.match(code, m.end())
             if tail or "${" in raw:  # a route built at run time ('#/' + kind, `#/${id}`)
@@ -276,9 +336,30 @@ def from_script(text, base, out, src, opts=None):
         qs = [QUERY_LIT.fullmatch(raw)] if QUERY_LIT.fullmatch(raw) else QUERY.finditer(raw) if "?" in raw else ()
         for q in qs:   # a URL parameter: '?ext=1', 'a.html?tab=2', 'ext=1'
             out.append(("param", "%s=%s" % (q.group(1), q.group(2)), src, base + ln, None))
-        if "<" in s and ">" in s:  # an HTML template inside a string (a whole one or a piece of one)
-            from_markup(s, base + ln - 1, out, src, fragment=True)
+        if m.start() in done:
             continue
+        if re.search(r"<[a-zA-Z][\w-]*(?:\s[^<>]*)?$", s):   # a tag left open: read the pieces joined with + as one (K7-1)
+            parts = concat_chain(code, m)
+            joined = "".join(norm(next(g for g in p.groups() if g is not None)) if p else "{…}" for p, _x in parts)
+            if len(parts) > 1 and not re.search(r"<[a-zA-Z][\w-]*(?:\s[^<>]*)?$", joined):
+                done.update(p.start() for p, _x in parts if p)
+                n = len(out)
+                from_markup(joined, base + ln - 1, out, src, fragment=True)
+                for i in range(n, len(out)):   # an operand at the edge of a text is no part of it ('{…}Edit' is Edit)
+                    if out[i][0] == "text" and not out[i][1].startswith(VISIBLE_ATTRS):
+                        out[i] = (out[i][0], re.sub(r"^(?:\s*\{…\}\s*)+|(?:\s*\{…\}\s*)+$", "", out[i][1])) + out[i][2:]
+                continue
+        if ("<" in s and ">" in s) or re.search(r"[\"']\s*/?>", s):  # an HTML template inside a string (a whole one or a
+            from_markup(s, base + ln - 1, out, src, fragment=True)       # piece of one: '">Next', 'by mail">' is tag)
+            continue
+        if any(a <= m.start() < b for a, b in repl):   # the text a .replace puts in: 'Comment', 'aria-label="Comment $1"'
+            s = re.sub(r"\$[$&`'\d]+", "{…}", s)
+            attrs = re.findall(r"(?<![\w-])(%s)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')" % "|".join(map(re.escape, VISIBLE_ATTRS)), s)
+            for k, v1, v2 in attrs:
+                if re.search(r"[^\W\d_]", v1 or v2):
+                    out.append(("text", "%s: %s" % (k, htmllib.unescape(v1 or v2)), src, base + ln, None))
+            if attrs:
+                continue
         if visible(re.sub(r"\$\{[^{}]*\}", "x", raw)):
             kind = "message" if any(a <= m.start() < b for a, b in spans) else "string"
             out.append((kind, s.strip(), src, base + ln, None))
@@ -541,6 +622,24 @@ def selftest():
     assert ("text", "Sent by mail at 08:12 (mock); saved to the log.") in txt and ("message", "Saved to the list") in txt and ("route", "/^#\\/c\\/([\\w-]+)$/") in txt, sorted(txt)
     assert not any(re.search(r"function|]/g|=>|[{}]", t) and k in ("text", "string", "message") for k, t in txt), sorted(txt)
     assert blank_regex("a = b / c / d; r = /x'y/g;\n") == "a = b / c / d; r = " + " " * 6 + ";\n"
+    # 0.12.4 (K7-1): pieces of a tag joined with + are no text; the attributes of the tag are read across the pieces
+    (d / "k71.js").write_text(
+        "function b(i){return '<button type=\"button\" data-id=\"'+i+'\" aria-label=\"Edit slide '+(i+1)+' with the assistant\">'+orb(0)+'Edit with the assistant</button>'}\n"
+        "var t = '<a class=\"x\" title=\"Open '+n+' files\">'+'Open</a>'; var c = '\">Next step';\n", encoding="utf-8")
+    k71 = {(r["kind"], r["text"]) for r in collect([d / "k71.js"], d)}
+    for want in (("text", "aria-label: Edit slide {…} with the assistant"), ("text", "Edit with the assistant"), ("text", "Next step"),
+                 ("text", "title: Open {…} files"), ("text", "Open")):
+        assert want in k71, (want, sorted(k71))
+    assert not any('">' in t or t.startswith('"') for _k, t in k71), sorted(k71)
+    assert not any(t in ("with the assistant", "{…}Edit with the assistant") for _k, t in k71), sorted(k71)
+    # K7-2: the text a .replace / .replaceAll puts in (second argument); a regex or string first argument gives nothing new
+    (d / "k72.js").write_text(
+        "function cm(h){return h.replace('Send','Comment').replace('placeholder=\"Ask anything\"','placeholder=\"Add a comment\"')"
+        ".replace(/aria-label=\"Edit slide (\\d+)\"/,'aria-label=\"Comment on slide $1\"').replaceAll('title=\"Go\"', 'title=\"Post\"')}\n", encoding="utf-8")
+    k72 = {(r["kind"], r["text"]) for r in collect([d / "k72.js"], d, {"_functions": ["cm"]})}
+    for want in (("string", "Comment"), ("text", "placeholder: Add a comment"), ("text", "aria-label: Comment on slide {…}"), ("text", "title: Post")):
+        assert want in k72, (want, sorted(k72))
+    assert not any("Ask anything" in t or "Edit slide" in t or t == "title: Go" for _k, t in k72), sorted(k72)
     print("extract_rules.py selftest OK")
 
 
