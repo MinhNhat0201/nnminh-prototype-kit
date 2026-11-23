@@ -75,8 +75,10 @@ Every command takes --dir <folder>: plan, runs and baseline there instead of <pa
       times) and {"pattern": regex, "replace": text} anything else, in text, names, flow URLs and localStorage keys and values.
       A prepare that fails on either side (or a view that opens on neither) is an Error with the side and the message,
       never a Match. Pixels differ from --min-pixels (default plan.minPixels, validate.minPixels, 100) or --threshold %.
-      Writes <out>/parity.md and parity.json (Errors, then Match / Differs with both values); exit 1 when anything
-      differs or fails. --dir: the report folder (default <paths.validation>/<app>/parity with --app); --plan: default
+      Writes <out>/parity.md and parity.json (Errors, then Match / Differs with both values, flow results on A and B, and
+      flows failing on both builds, listed to look at without changing the exit code); exit 1 when anything differs or
+      fails. plan.portals: parts teleported into body (menus, popovers), compared on both sides; plan.contentRoot may be
+      an array of selectors (every region that matches). --dir: the report folder (default <paths.validation>/<app>/parity with --app); --plan: default
       <dir>/plan.json, else <paths.validation>/<app>/plan.json. The two runs (a/, b/) and diffs/ go to the report folder,
       or with --artifacts (default validate.artifactsDir) to <artifacts>/<app>/parity, outside the repository.
   validation.py baseline --app <id> [--run <run folder>]
@@ -193,7 +195,8 @@ PLAN_HELP = {
                "list empty, loading, error and success states the screen has.",
     "flows": "Flows a user goes through. Steps: {goto} (add reload: true when only the hash changes), {reload: true}, {click: selector}, "
              "{fill: [selector, text]}, {select: [selector, value]}, {press: key}, {wait: ms}, {expectVisible: selector}, "
-             "{expectHidden: selector}, {expectText: [selector, text]} (text \"\" = the element has no text), {expectUrl: part}.",
+             "{expectHidden: selector}, {expectText: [selector, text]} (text \"\" = the element has no text), {expectUrl: part}. "
+             "expectVisible passes when any element that matches is visible, expectHidden when none is ('sel >> nth=0': the first only).",
     "namedStates": "A state may be a name: '<ds.json theming key>=<value>' (e.g. 'brand=ocean') or 'text=200%'. "
                    "plan.states are added to every screen; _stateHints lists the ones this DS offers.",
     "axe": "plan.axe or screen.axe {include: [selector], exclude: [selector]} limits axe to part of the page. Findings that are "
@@ -202,7 +205,9 @@ PLAN_HELP = {
     "prepare": "plan.prepare: JS (or {js, reload: true}) run after every page load of every screen and flow, before their own "
                "steps, e.g. to dismiss a shell overlay. A state or flow with reload: true runs its prepare, reloads, then is checked "
                "(seed localStorage, then load). plan.settle: ms, a selector that must be hidden (a skeleton) or {wait, waitForHidden, "
-               "waitFor}, waited for right before every view and flow end is read. contentRoot: the page's own content (selectors, parity text).",
+               "waitFor}, waited for right before every view and flow end is read. contentRoot: the page's own content (selectors, parity text): "
+               "a selector list (the first that matches) or an array (every region that matches). portals: [selector] of parts "
+               "teleported into body (menus, popovers), read on both sides after the root text.",
     "mask": "plan.mask: CSS selectors of parts that change on every run (clocks, timestamps): masked in screenshots, and their "
             "text replaced by '▒' before parity compares text and names. plan.normalize: [\"time\"] also replaces clock times "
             "(09:27) and relative times ('5 min ago'), \"ids\" generated ids (#/c/umwrwh5d4), {\"pattern\": regex, \"replace\": text} "
@@ -474,7 +479,8 @@ def cmd_init(cfg, a):
         print("Wrote %s: %d screens, %d states and %d flows read from the %s (%d selector hints%s). Check the routes, add states and flows."
               % (shown(cfg, f), len(plan["screens"]), n_states, len(plan["flows"]),
                  "rendered page and files" if plan.get("contentRoot") or plan.get("_contentRoot") else "app",
-                 len(plan.get("_selectors") or []), ", inside " + plan["contentRoot"] if plan.get("contentRoot") else ""))
+                 len(plan.get("_selectors") or []), ", inside " + ", ".join(plan["contentRoot"] if isinstance(plan["contentRoot"], list) else [plan["contentRoot"]])
+                 if plan.get("contentRoot") else ""))
         return
     plan = {
         "_help": PLAN_HELP,
@@ -1079,6 +1085,8 @@ def parity_compare(ra, rb, diffs=None, normalize=(), classes="review"):
             continue
         res = lambda f: "passed" if f["ok"] else "step %s: %s" % (f.get("failedStep") or "-", f.get("error") or "; ".join(f.get("errors") or []))
         add(where, "result", None if res(x) == res(y) else (res(x), res(y)), res(x))
+        side = lambda f: {"ok": bool(f["ok"]), "step": f.get("failedStep"), "error": _short(f.get("error") or "; ".join(f.get("errors") or []))}
+        rows[-1]["flow"] = {"name": n, "a": side(x), "b": side(y)}   # each build's own result, for parity.md (K8-2)
         ua, ub = [f(u) for u in x.get("urls") or []] if f else x.get("urls") or [], [f(u) for u in y.get("urls") or []] if f else y.get("urls") or []
         steps = [i for i in range(max(len(ua), len(ub))) if (ua[i:i + 1] or ["—"]) != (ub[i:i + 1] or ["—"])]
         add(where, "urls", ("; ".join("step %d: %s" % (i + 1, (ua[i:i + 1] or ["—"])[0]) for i in steps[:6]),
@@ -1099,6 +1107,8 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None, shots=Non
     err_rows = [r for r in rows if r["status"] == "error"]
     rev_rows = [r for r in rows if r["status"] == "review"]
     n_match = sum(1 for r in rows if r["status"] == "match")
+    flows = [r for r in rows if r.get("flow")]
+    both_bad = [r for r in flows if not r["flow"]["a"]["ok"] and not r["flow"]["b"]["ok"]]
     checks = list(dict.fromkeys(r["check"] for r in rows))
     lines = ["# " + T("title"), "", T("meta", a=a_url, b=b_url, plan=plan_path) + (" · " + T("pixelsMeta", **limits) if limits else ""), ""]
     if shots:
@@ -1122,6 +1132,14 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None, shots=Non
                   "| %s | %s | A | B |" % (T("where"), T("check")), "|---|---|---|---|"]
         lines += ["| %s | %s | %s | %s |" % (r["where"], T("check." + r["check"]), r["a"].replace("|", "/"), r["b"].replace("|", "/"))
                   for r in rev_rows]
+    fres = lambda x: T("flowPassed") if x["ok"] else T("flowFailed", step=x["step"] or "-", error=x["error"].replace("|", "/"))
+    if both_bad:   # the same failure on both sides is a match, but a flow that fails everywhere proves nothing (K8-2)
+        lines += ["", "## %s (%d)" % (T("bothFailTitle"), len(both_bad)), "", T("bothFailNote"), "",
+                  "| %s | A | B |" % T("flow"), "|---|---|---|"]
+        lines += ["| %s | %s | %s |" % (r["flow"]["name"], fres(r["flow"]["a"]), fres(r["flow"]["b"])) for r in both_bad]
+    if flows:
+        lines += ["", "## %s (%d)" % (T("flowsTitle"), len(flows)), "", "| %s | A | B | %s |" % (T("flow"), T("parity")), "|---|---|---|---|"]
+        lines += ["| %s | %s | %s | %s |" % (r["flow"]["name"], fres(r["flow"]["a"]), fres(r["flow"]["b"]), T(r["status"])) for r in flows]
     lines += ["", "## " + T("allTitle"), "", "| %s | %s |" % (T("where"), " | ".join(T("check." + c) for c in checks)),
               "|---|" + "---|" * len(checks)]
     by = {}
@@ -1133,6 +1151,7 @@ def write_parity(cfg, out, a_url, b_url, plan_path, rows, limits=None, shots=Non
     (out / "parity.md").write_text("\n".join(lines), encoding="utf-8")
     (out / "parity.json").write_text(json.dumps({"a": a_url, "b": b_url, "plan": str(plan_path), "match": n_match,
                                                  "differs": len(diff_rows), "errors": len(err_rows), "review": len(rev_rows),
+                                                 "flowsFailingBoth": [r["flow"]["name"] for r in both_bad],
                                                  "pixels": limits, "shots": shots, "rows": rows},
                                                 ensure_ascii=False, indent=2), encoding="utf-8")
     return n_match, len(diff_rows), len(err_rows)
@@ -1191,6 +1210,10 @@ def cmd_parity(cfg, a):
         if r["status"] == "error":
             print("ERROR: %s · %s failed on %s: A: %s · B: %s" % (r["where"], r["check"], r["side"], r["a"], r["b"]))
     nr = sum(1 for r in rows if r["status"] == "review")
+    for r in rows:
+        if r.get("flow") and not r["flow"]["a"]["ok"] and not r["flow"]["b"]["ok"]:
+            print("NOTE: flow %s fails on A (step %s) and on B (step %s): see parity.md" % (r["flow"]["name"], r["flow"]["a"]["step"] or "-",
+                                                                                     r["flow"]["b"]["step"] or "-"))
     print("Parity: %s · %d match · %d differ%s%s" % (shown(cfg, out / "parity.md"), m, n, " · %d to look at (classes)" % nr if nr else "",
                                                     " · %d error(s)" % e if e else ""))
     sys.exit(1 if n or e else 0)

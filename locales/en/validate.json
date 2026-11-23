@@ -70,5 +70,12 @@
   "validate.parity.reviewTitle": "To look at",
   "validate.parity.reviewNote": "Elements both builds have, with another tag or other classes (a link that gained a brand class, a tag that became solid). Often a styling change the pixels do not show at this width: confirm it is intended. Not counted as a difference unless parity runs with --classes differs (or plan.classes \"differs\").",
   "validate.parity.reviewSummary": "{n} to look at (classes).",
-  "validate.parity.check.classes": "Class / structure"
+  "validate.parity.check.classes": "Class / structure",
+  "validate.parity.flow": "Flow",
+  "validate.parity.parity": "A vs B",
+  "validate.parity.flowsTitle": "Flow results A / B",
+  "validate.parity.flowPassed": "passed",
+  "validate.parity.flowFailed": "failed at step {step}: {error}",
+  "validate.parity.bothFailTitle": "Flows failing in both builds (to look at)",
+  "validate.parity.bothFailNote": "These flows fail on A and on B. When they fail the same way they count as a match, and they never change the exit code, but a flow that fails everywhere proves nothing: fix the plan step or the page, then run again."
 }

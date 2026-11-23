@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.4 · 2026-11-23
+Fixes from a project that ported HTML pages to Vue page apps with `extract_rules.py` and `validate parity` (K7-1…K7-3, K8-1, K8-2). Every new key has a default that keeps the 0.12.3 behaviour, except that `expectVisible` and `expectHidden` now look at every element that matches, and `extract_rules.py` reads a tag cut across `+` pieces as one.
+
+Validate
+- `parity`: `plan.contentRoot` may be an array of selectors (every region that matches is read, in document order; a string is still a selector list whose first match wins), and the new `plan.portals: [selector…]` lists parts read wherever they are, inside the root or teleported into `body` (a Vue `Teleport` menu or popover: `["body > .ml", ".menu.on"]`). Their text is read after the root text on both sides, so a menu inside `main` in one build and in `body` in the other is no "only here" row; text, controls by role, aria states, classes and the default axe `include` use the same regions (K7-3).
+- `expectVisible` passes when at least one element that matches is visible, `expectHidden` when none is (also when none matches); before, both looked at the first match only. `"sel >> nth=0"` keeps the first-element check; the other steps still act on the first match (K8-1).
+- `parity.md` has **Flow results A / B** (passed, or the failed step and the message, on each side) and **Flows failing in both builds (to look at)**: the same failure on both sides stays a Match and does not change the exit code, but it is listed, printed as a `NOTE:` line and named in `parity.json > flowsFailingBoth` (K8-2).
+
+Define
+- `extract_rules.py`: a tag cut across string pieces joined with `+` (`'<button aria-label="Edit slide ' + (i + 1) + ' with AI">' + icon + 'Edit with AI</button>'`) is read as one piece: its attributes are listed (`aria-label: Edit slide {…} with AI`) and its pieces (`with AI">`) are no longer text; a piece that ends an attribute or a tag on its own (`'">Next'`, `'" src='`, `'"] .title'`) gives only its text after the tag. An attribute value that starts with a run-time part (`aria-label: {…} versions`) is listed too (K7-1).
+- `extract_rules.py`: the second argument of `.replace(…)` and `.replaceAll(…)` (the text put in) is read: plain text as before, and its visible attributes (`'placeholder="Add a comment"'`, `'aria-label="Comment on slide $1"'` → `aria-label: Comment on slide {…}`); the first argument (a regular expression or the text replaced) gives nothing new. A chained `.replace` after a call (`f(x).replace(…)`) counts too (K7-2).
+
 ## 0.12.3 · 2026-11-22
 Fixes from a project that ported HTML pages to Vue page apps (`apps[].type: "page"`) with `extract_rules.py`, `validate parity` and the rule checks (K1a-5…K1a-8, K4-1…K4-5, K5-1, K5-2). Every new key has a default that keeps the 0.12.2 behaviour, except that a `prepare` whose value is a promise is now awaited and a class difference adds a "To look at" row.
 

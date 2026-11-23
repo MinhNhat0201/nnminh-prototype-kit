@@ -933,6 +933,47 @@ def main():
                   "validate: expectText [selector, \"\"] passes on an element without text, fails on one with text (K5-2)", json.dumps(fl)[:1500])
         finally:
             srv7.shutdown()
+        # 0.12.4: a menu teleported into body is compared through plan.portals or a contentRoot list (K7-3); expectVisible
+        # passes when any match is visible, expectHidden when none is (K8-1); parity.md lists each flow's result on A and B and
+        # the flows that fail on both builds, without changing the exit code (K8-2)
+        tele = ("<!doctype html><html lang=\"en\"><head><title>Cards</title></head><body><main id=\"main\"><h1>Cards</h1>"
+                "<p class=\"it\" hidden>Old</p><p class=\"it\">Card one</p><button id=\"more\" aria-haspopup=\"menu\">More</button>%s</main>%s"
+                "<script>document.getElementById('more').onclick = () => { document.querySelector('.ml').hidden = false; };</script></body></html>\n")
+        menu = "<div class=\"ml\" role=\"menu\" hidden><button role=\"menuitem\">Rename</button><button role=\"menuitem\">Delete</button></div>"
+        write(d / "par5/a/index.html", tele % (menu, ""))
+        write(d / "par5/b/index.html", tele % ("", menu))
+        srv8, base8 = serve(d / "par5")
+        try:
+            tplan = {"contentRoot": "main", "screens": [{"id": "S01", "route": "", "states": [{"name": "menu", "prepare": "document.getElementById('more').click()"}]}],
+                     "flows": [{"name": "visible", "steps": [{"expectVisible": ".it"}, {"expectHidden": ".ml"}, {"click": "#more"},
+                                                              {"expectVisible": "[role=menuitem]"}]},
+                               {"name": "hidden fails", "steps": [{"expectHidden": ".it", "timeout": 500}]},
+                               {"name": "first only", "steps": [{"expectVisible": ".it >> nth=0", "timeout": 500}]}]}
+            for name, extra in (("no-portal", {}), ("portal", {"portals": ["body > .ml"]}), ("list", {"contentRoot": ["main", ".ml"]})):
+                write(d / ("par5/%s.json" % name), json.dumps(dict(tplan, **extra)))
+                run([PY, S / "validate/scripts/validation.py", "parity", "--a", base8 + "a/index.html", "--b", base8 + "b/index.html",
+                     "--plan", d / ("par5/%s.json" % name), "--dir", d / ("par5-%s" % name)], d, expect=None)
+            res = {n: {(r["where"], r["check"]): r for r in json.loads((d / ("par5-%s/parity.json" % n)).read_text())["rows"]}
+                   for n in ("no-portal", "portal", "list")}
+            mk = ("S01 · menu · 1280px · light", "text")
+            check(res["no-portal"][mk]["status"] == "differs" and "Rename" in res["no-portal"][mk]["a"]
+                  and all(res[n][mk]["status"] == "match" and res[n][("S01 · menu · 1280px · light", "roles")]["status"] == "match"
+                          for n in ("portal", "list")),
+                  "validate parity: a menu teleported into body matches through plan.portals or a contentRoot list (K7-3)",
+                  json.dumps({n: [r for r in v.values() if r["where"].startswith("S01 · menu")] for n, v in res.items()})[:3000])
+            fl = {f["name"]: f for f in json.loads((d / "par5-portal/a/results.json").read_text())["flows"]}
+            check(fl["visible"]["ok"] and not fl["hidden fails"]["ok"] and not fl["first only"]["ok"],
+                  "validate: expectVisible passes when one match is visible, expectHidden fails while one is; >> nth=0 checks the first (K8-1)",
+                  json.dumps(fl)[:2000])
+            pj = json.loads((d / "par5-portal/parity.json").read_text())
+            md = (d / "par5-portal/parity.md").read_text()
+            hf = res["portal"][("flow · hidden fails", "result")]
+            check(hf["status"] == "match" and set(pj["flowsFailingBoth"]) == {"hidden fails", "first only"}
+                  and "## Flows failing in both builds (to look at) (2)" in md and "## Flow results A / B (3)" in md
+                  and "| visible | passed | passed | Match |" in md and "failed at step 1:" in md,
+                  "validate parity: flow results of A and B, and flows failing on both builds listed apart (K8-2)", md[-2500:])
+        finally:
+            srv8.shutdown()
         import socket
         so = socket.socket()
         so.bind(("127.0.0.1", 0))

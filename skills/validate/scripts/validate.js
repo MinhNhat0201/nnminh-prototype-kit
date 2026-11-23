@@ -42,6 +42,8 @@
 // (the capture.js default). Not reported: text for screen readers only, hidden file inputs, links inside a sentence.
 // "reload" (or goto with reload: true) reloads the page and waits for load: a goto that only changes the hash does not.
 // expectText [selector, text]: the element's text contains text; [selector, ""]: the element has no text (whitespace only).
+// expectVisible passes when at least one element that matches is visible, expectHidden when none is (also when none
+// matches); "sel >> nth=0" checks the first element only. The other steps act on the first element that matches.
 //
 // States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: false} or named strings:
 // "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2).
@@ -77,6 +79,22 @@ if (A.help || !A.url || (!A.discover && (!A.plan || !A.out))) {
 }
 const plan = A.discover ? {} : JSON.parse(fs.readFileSync(A.plan, 'utf8'));
 const PARITY = !!A.parity;
+// plan.contentRoot: a selector list (the first that matches) or an array of selectors (every region that matches, joined);
+// plan.portals: selectors of parts read wherever they are, inside the root or teleported into body (a Vue menu or popover).
+const ROOT = { root: plan.contentRoot || null, portals: Array.isArray(plan.portals) ? plan.portals.filter(x => typeof x === 'string' && x) : [] };
+// Run in the page (passed as source): {roots, portals}, each [{el, sel}] in document order, an element inside another of
+// the same list counted once; roots is the body when no root selector matches.
+function regionsOf(spec) {
+  const all = s => { try { return [...document.querySelectorAll(s)]; } catch (e) { return []; } };
+  const top = list => list.filter((x, i) => !list.some((y, j) => y.el.contains(x.el) && (y.el !== x.el || j < i)))
+    .sort((a, b) => a.el.compareDocumentPosition(b.el) & 2 ? 1 : -1);
+  let roots = Array.isArray(spec.root) ? spec.root.flatMap(s => all(s).map(el => ({ el, sel: s }))) : [];
+  if (!Array.isArray(spec.root)) for (const r of String(spec.root || '').split(',').map(x => x.trim()).filter(Boolean)) { const el = all(r)[0]; if (el) { roots = [{ el, sel: r }]; break; } }
+  if (!roots.length) roots = [{ el: document.body, sel: 'body' }];   // no root matches: the whole body, as before
+  return { roots: top(roots), portals: top(spec.portals.flatMap(s => all(s).map(el => ({ el, sel: s })))) };
+}
+// page.evaluate of fn(arg, regionsOf) as one expression (no eval in the page, so a page CSP does not block it)
+const withRegions = (page, fn, arg) => page.evaluate('(' + fn + ')(' + JSON.stringify(arg) + ', ' + regionsOf + ')');
 const MASK = Array.isArray(plan.mask) ? plan.mask.filter(x => typeof x === 'string' && x) : [];   // plan.mask: CSS selectors
 const masks = page => MASK.length ? { mask: MASK.map(m => page.locator(m)) } : {};
 const PREP = typeof plan.prepare === 'string' ? { js: plan.prepare } : (plan.prepare || null);
@@ -202,12 +220,13 @@ async function pageChecks(page, vp) {
 // One step of a screen or a flow. Selectors "F|sel" or "in": "F" act inside the iframe plan.frames.F.
 async function runStep(page, s) {
   const T = s.timeout || plan.timeout || 8000;   // same default as capture.js: a screen it captures does not fail here
-  const loc = sel => {
+  const all = sel => {   // every element that matches; loc: the first
     const m = /^([A-Za-z]\w*)\|(.*)$/.exec(sel), key = s.in || (m && FRAMES[m[1]] ? m[1] : null);
     if (key && !FRAMES[key]) throw new Error('frame ' + key + ' is not declared in plan.frames');
     const inner = m && FRAMES[m[1]] ? m[2] : sel;
-    return (key ? page.frameLocator(FRAMES[key]) : page).locator(inner).first();
+    return (key ? page.frameLocator(FRAMES[key]) : page).locator(inner);
   };
+  const loc = sel => all(sel).first();
   if (s.goto !== undefined) {   // a goto that only changes the hash keeps the document: reload: true forces a fresh load
     await page.goto(urlFor(s.goto)); if (s.reload) await page.reload({ waitUntil: 'load' }); await page.waitForTimeout(150);
   }
@@ -228,8 +247,9 @@ async function runStep(page, s) {
     const [fc] = await Promise.all([page.waitForEvent('filechooser', { timeout: T }), loc(s.files[0]).click({ timeout: T })]);
     await fc.setFiles(s.files[1].map(f => path.resolve(plan.att || '.', f)));
   }
-  else if (s.expectVisible) await loc(s.expectVisible).waitFor({ state: 'visible', timeout: T });
-  else if (s.expectHidden) await loc(s.expectHidden).waitFor({ state: 'hidden', timeout: T });
+  // expectVisible: at least one element that matches is visible; expectHidden: none is (">> nth=0" checks the first only)
+  else if (s.expectVisible) await all(s.expectVisible).filter({ visible: true }).first().waitFor({ state: 'visible', timeout: T });
+  else if (s.expectHidden) await all(s.expectHidden).filter({ visible: true }).first().waitFor({ state: 'hidden', timeout: T });
   else if (s.expectText) {
     if (!Array.isArray(s.expectText) || s.expectText.length !== 2 || typeof s.expectText[1] !== 'string') throw new Error('expectText needs [selector, text]');
     const txt = (await loc(s.expectText[0]).textContent({ timeout: T })) || '';
@@ -269,12 +289,12 @@ async function axeCheck(page, scope) {
   if (!axePath) return null;
   try {
     if (!(await page.evaluate(() => !!window.axe))) await page.addScriptTag({ path: axePath });
-    const res = await page.evaluate(async ({ scope, waive, root }) => {
+    const res = await withRegions(page, async ({ scope, waive, root }, regions) => {
       let inc = (scope && scope.include) || [];
       const exc = (scope && scope.exclude) || [];
-      if (!inc.length && root) {   // plan.contentRoot: the first selector that matches limits axe to the page's own content
-        const r = String(root).split(',').map(x => x.trim()).filter(Boolean).find(x => { try { return !!document.querySelector(x); } catch (e) { return false; } });
-        if (r) inc = [r];
+      if (!inc.length && (root.root || root.portals.length)) {   // plan.contentRoot (and plan.portals) limit axe to the page's own content
+        const rg = regions(root);
+        inc = [...new Set(rg.roots.concat(rg.portals).map(x => x.sel))];
       }
       const ctx = inc.length || exc.length ? Object.assign(inc.length ? { include: inc.map(s => [s]) } : {}, exc.length ? { exclude: exc.map(s => [s]) } : {}) : document;
       const r = await window.axe.run(ctx, { resultTypes: ['violations'] });
@@ -287,7 +307,7 @@ async function axeCheck(page, scope) {
           const o = { target: (n.target || []).join(' '), inside: inside(n.target || []), text: text(n.target || []) };
           if (d) Object.assign(o, { ratio: d.contrastRatio, expected: d.expectedContrastRatio, fg: d.fgColor, bg: d.bgColor });
           return o; }) }));
-    }, { scope: scope || null, waive: WAIVE, root: plan.contentRoot || null });
+    }, { scope: scope || null, waive: WAIVE, root: ROOT });
     return res;
   } catch (e) { return [{ id: 'axe-error', impact: 'minor', help: String(e.message || e).slice(0, 160), nodes: 0, target: '' }]; }
 }
@@ -328,10 +348,11 @@ async function openPage(ctx, route, mode, prepare, errors, reload) {
 
 // Parity snapshot of a view: visible text lines, interactive elements counted by role and name, aria states.
 async function snapshot(page) {
-  return page.evaluate(({ root, mask }) => {
-    let R = null;   // the first selector of the list that matches (plan.contentRoot), else the whole body
-    for (const r of String(root || '').split(',').map(x => x.trim()).filter(Boolean)) { try { R = document.querySelector(r); } catch (e) { /* bad selector */ } if (R) { root = r; break; } }
-    R = R || document.body;
+  return withRegions(page, ({ spec, mask }, regions) => {
+    // the regions of plan.contentRoot and plan.portals, else the whole body
+    // the regions of plan.contentRoot (the body when none matches) and plan.portals; each element once
+    const RG = regions(spec), RS = RG.roots.concat(RG.portals);
+    const EL = [...new Set(RS.flatMap(x => [x.el, ...x.el.querySelectorAll('*')]))];
     const norm = x => String(x || '').replace(/\s+/g, ' ').trim();
     const vis = el => { const s = getComputedStyle(el), b = el.getBoundingClientRect(); return s.visibility !== 'hidden' && s.display !== 'none' && b.width > 0 && b.height > 0; };
     const implicit = el => { const t = el.tagName.toLowerCase(), ty = (el.getAttribute('type') || 'text').toLowerCase();
@@ -349,7 +370,7 @@ async function snapshot(page) {
       return norm(el.getAttribute('aria-label') || byId || (el.labels && el.labels[0] && el.labels[0].innerText) || el.innerText || el.value ||
         el.getAttribute('title') || el.getAttribute('placeholder') || el.getAttribute('alt')).slice(0, 60); };
     const roles = {}, aria = {};
-    for (const el of R.querySelectorAll('*')) {
+    for (const el of EL) {
       const role = (el.getAttribute('role') || '').split(/\s+/)[0] || implicit(el);
       if (!ROLES.test(role) || !vis(el)) continue;
       const key = role + ' "' + label(el) + '"';
@@ -366,12 +387,16 @@ async function snapshot(page) {
     for (const m of mask) { try { document.querySelectorAll(m).forEach(el => norm(el.innerText || el.textContent).split(/\s{2,}|\n/).forEach(x => { x = norm(x); if (x) masked.push(x); })); } catch (e) { /* bad selector */ } }
     masked.sort((a, b) => b.length - a.length);
     const hide = x => masked.reduce((v, m) => v.split(m).join('▒'), x);
-    const text = (R.innerText || '').split('\n').map(norm).filter(Boolean).slice(0, 400).map(hide);
+    // text: the roots, then the portals (a part teleported into body and the same part inside the root read in one place)
+    const lines = el => (el.innerText || '').split('\n').map(norm).filter(Boolean);
+    const rl = RG.roots.flatMap(x => lines(x.el)), pl = RG.portals.flatMap(x => lines(x.el));
+    for (const p of RG.portals.filter(p => RG.roots.some(r => r.el.contains(p.el))).flatMap(x => lines(x.el))) { const i = rl.indexOf(p); if (i >= 0) rl.splice(i, 1); }
+    const text = rl.concat(pl).slice(0, 400).map(hide);
     const hk = o => { const r = {}; for (const [k, v] of Object.entries(o)) { const h = hide(k); r[h] = typeof v === 'number' ? (r[h] || 0) + v : v; } return r; };
     // class and structure: the tag and sorted classes of each control (by role and name) and of each element with text of
     // its own (by its text), the n-th of a key numbered; parity compares the keys both builds have
     const classes = {}, nth = {};
-    for (const el of R.querySelectorAll('*')) {
+    for (const el of EL) {
       if (Object.keys(classes).length >= 400) break;
       if (!vis(el)) continue;
       const role = (el.getAttribute('role') || '').split(/\s+/)[0] || implicit(el);
@@ -385,8 +410,8 @@ async function snapshot(page) {
       nth[key] = (nth[key] || 0) + 1;
       classes[nth[key] > 1 ? key + ' #' + nth[key] : key] = el.tagName.toLowerCase() + [...el.classList].sort().map(c => '.' + c).join('');
     }
-    return { root: root && R !== document.body ? root : 'body', text, roles: hk(roles), aria: hk(aria), classes: hk(classes) };
-  }, { root: plan.contentRoot || null, mask: MASK });
+    return { root: [...new Set(RS.map(x => x.sel))].join(', '), text, roles: hk(roles), aria: hk(aria), classes: hk(classes) };
+  }, { spec: ROOT, mask: MASK });
 }
 
 // The page URL relative to the entry's folder, path only (scheme, host and port ignored): both builds of a parity run
