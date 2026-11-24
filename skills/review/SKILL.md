@@ -20,7 +20,7 @@ Scripts run from the project folder (or take `--project`).
 ## Step 1. Read configuration and scope
 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py check`). Missing → `kickoff`. No DS profile → `adopt`.
-- Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` when the output says so). Intentional deviations, rule exceptions for the app and "do not override" rules are never findings.
+- Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` when the output says so). Intentional deviations, rule exceptions for the app and "do not override" rules are never findings. The DS's own list of intentional deviations, "needs design confirmation" and "proposal" items: `python3 <kit>/skills/document/scripts/catalog.py deviations` (`ds.json > deviations`); read it before step 4.
 - The DS source of truth is the bundle at `ds.json > css.bundle` and the profile files. Never say from memory that a token or class "exists in the DS": check with a script or read the source.
 - Ask if unclear: which apps (default: every app in `apps[]`), static scan only or with browser checks, compare with an earlier audit (in `paths.audits`, if any).
 
@@ -32,7 +32,9 @@ python3 <kit>/skills/review/scripts/audit_app.py [app ...] --json <scratchpad>/a
 
 Rules registry: `audit_app.py` also runs the `check` command of every active rule for `review` (`rules.py check`): one row per rule and app, a failing `must` rule is a Deviation, a failing `should` or `note` rule a Note, and a check that did not run (its server is down, it does not apply to the app, it scanned nothing) is Skipped with the reason: report it as not checked, never as passed. Report the rules without an automated check that matter for the audit (`rules.py coverage`) as checked by reading. `--no-rules` skips them.
 
-Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines; `{app}` = app id, `{path}` = app folder, `{platform}` = `apps[].platform`, `{stack}` = the app's stack) to the app's table, or to "Project checks" when it is not per app. With `parse`, a row is Pass only when the exit code is 0 **and** no matched line counts something (a number other than 0). Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+Project checks: `kit.config.json > review.extraChecks` (the project's own scripts, for example a feature-flag ledger or an accessibility script) run after the scan; each adds a row (exit code and summary lines; `{app}` = app id, `{path}` = app folder, `{platform}` = `apps[].platform`, `{stack}` = the app's stack) to the app's table, or to "Project checks" when it is not per app. With `parse`, a row is Pass only when the exit code is 0 **and** no matched line counts something (a number other than 0). A check that did not run is **Skipped** with the reason, like a rule check: the server of its URL does not answer, it exited 77 or printed `SKIP: <reason>`, the command was not found, or it failed with a connection or missing-file error; report it as not checked, never as a Note. The same command line runs once per audit (a project-wide check named by several rules or apps). Treat a failing one like any other Deviation: read its output before concluding. `--no-extra` skips them.
+
+Feature flags (when the project lists a flag ledger in `extraChecks`, or its rules name one): report the number of flags, how many are off, and every flag the ledger tags (off without a condition to turn it back on, no comment, different values across files). Options for a flag that has been off a long time: (A) add the comment the project rule asks for; (B) remove the feature and its code once the user confirms it never comes back; (C) turn it back on. Never delete code in the audit.
 
 Counted once: an app whose sources are built into generated files inside it (`multi` shells) declares `apps[].generated` (globs from the project root: skipped) and, when sources live outside the app folder, `apps[].sources` (globs: scanned); identical CSS rules in several files count once either way. Utility classes the DS uses everywhere (icons, scroll fades) go in `ds.json > review.genericClasses`: they are not counted as overrides and not measured in the browser step. A DS file the pages link (`css.load: "link"`) is DS CSS. Each app is measured against its own DS profile (`apps[].ds`); the report header names the DS per app when they differ.
 
@@ -87,6 +89,22 @@ Trust a difference only when it repeats on several elements for the same propert
 Rule out two false positives by reading the code: a control cut from its parent loses `.parent .child` rules and inherited colours; an app on an older DS shows version debt, not an override.
 Record numbers; do not capture the whole app.
 
+## Step 3b. Accessibility and experience (with the browser checks)
+
+Part of every audit that measures in the browser, not only of a screen review. Checklists: `<kit>/skills/validate/references/a11y-web.md` (web, responsive) and `a11y-mobile.md` (phone platforms). Measure what a script can: the project's accessibility check in `review.extraChecks` when it has one (run it with its server up), else `validate` on the main screens (`python3 <kit>/skills/validate/scripts/validation.py run --app <id>`, axe and focus; dark mode too when the DS has it). Try the manual items (keyboard inside dialogs and focus back on the opener, form errors said in words, Back, on-screen keyboard) on the main flows by hand and name the flows tried.
+- A finding repeated in every app (a counter colour on a bell, a tab) usually sits in a DS component: write it once, class "DS-side deviation", send it to `document`.
+- Where the DS deliberately differs from a platform standard (touch target by density, type size): write "platform deviation, needs design confirmation"; never propose a style change on your own.
+- Write the findings as "Writing findings" in `a11y-web.md` says (must fix / should fix / nice to have, four parts, rule code) and put them in report section 5b.
+- Motion: `references/motion.md`, with the duration and easing tokens of `ds.json > tokens.roles.duration` / `tokens.roles.easing` when the profile declares them; without them, any animation found is "platform deviation, needs design confirmation".
+
+## Step 3c. Dead code and logic errors (optional, when the user asks)
+
+Read the scripts of the screens in scope, shared code first (the shell, shared helpers) and the main flows. Look for:
+- **Logic errors:** wrong results, empty input, the last item, dates and times; the same rule applied differently in two places (two pages, two versions of an app, web and mobile).
+- **Dead or duplicated code:** functions nobody calls, branches behind a flag that was dropped, near-duplicate functions that must change together, code that rebuilds what the DS or the browser already has.
+Every finding needs a **concrete case** ("click or type this and you get this wrong result"); without one, leave it out. Before calling code dead, search the whole project (the function name as a string, `data-*` attributes, flags). Propose the smallest fix, deleting code first; never a change of behaviour.
+Write them in three groups, **Must fix / Should fix / Nice to have**, numbered across groups so the user can say "fix 2 and 5"; each item in four parts, one or two sentences each: **What it is**, **Problem**, **Fix**, **If skipped** (with `file:line`). At most 20 items; say how many more were left out.
+
 **Screen review** (the user asks to review a screen or a flow, not the DS compliance): score it with `references/heuristics-rubric.md`, check motion with `references/motion.md`, accessibility with `<kit>/skills/validate/references/a11y-web.md` (and `a11y-mobile.md` there for phone platforms) and states with `<kit>/skills/prototype/references/states-and-edge-data.md`; findings cite their codes.
 
 ## Step 4. Classify every deviation
@@ -121,7 +139,8 @@ Return the report in the conversation. Save `<paths.audits>/<date>-<scope>.md` o
 2. **App comparison table** (item × app, level Pass / Note / Deviation, numbers).
 3. **Deviations by group** (class, `file:line` examples, cause, risk High / Medium / Low).
 4. **Recorded deviations**: restate verbatim every intentional deviation, "needs design confirmation" and "proposal" item of `rules.md` or the catalogue that applies.
-5. **Limits of this audit** (what the static scan cannot see, screens not tried).
+5. **Limits of this audit** (what the static scan cannot see, screens not tried, checks Skipped and why).
+5b. **Feature flags** (step 2), **accessibility and experience** (step 3b: numbers per app and the findings) and, when asked, **dead code and logic errors** (step 3c).
 6. **Remediation options and batches** (step 7). Do not carry them out.
 
 Never give one overall score. To compare with an earlier audit, compare each item by raw numbers.
@@ -137,7 +156,7 @@ Read `references/remediation.md` and follow it. In short:
    Confidence: **Exact** (replace, nothing visible changes), **By role** (user picks by meaning), **Near** (visible change: check Figma first), **None** (check Figma; never invent a token). Semantic tokens only (`ds.json > tokens.roles`); never a primitive to get around it. Each app is mapped against its own DS profile.
 2. **Never change DOM or behaviour.** Options change CSS values only (and values in style attributes, style objects, Tailwind classes swapped for token-based ones). Anything that needs DOM, class names used by scripts, text, data, flow, routes or events is a separate "needs a product decision" item.
 3. **Prefer Figma; never force DS controls.** Figma is the design source; the DS is its normalised copy. A home-made control that matches Figma stays; it becomes a local block and may be proposed through `contribute`.
-4. **At least two options per group**, one recommended, split into batches the user approves one by one.
+4. **At least two options per group**, one recommended, in a table `group | count | options | visible change | product risk | needs Figma`. Recommend in this order: map to a token with no visible change → keep as Figma has it, recorded → fix to Figma → propose to the DS. Split into batches, one PR each, the user approves each one: (1) Exact, (2) By role after the user picks, (3) Near and None after Figma, with the list of visible changes, (4) home-made controls and overrides: kept as Figma has them, grouped into local blocks, proposed when worth it, never replaced in bulk, (5) version debt through `sync` (may come first, since tokens change with the version).
 
 ## Step 8. Next steps (proposals only; the user chooses)
 
@@ -145,6 +164,7 @@ Read `references/remediation.md` and follow it. In short:
 - Undecided locals, home-made controls worth sharing → `contribute`.
 - Tokens or components missing in the DS, DS differs from Figma → `document`.
 - Screens that need rebuilding → `prototype`.
+- Flags to comment, remove or turn back on; dead code and logic errors the user chose → fixed in the app with `prototype` rules (shared parts the way `sync` updates them).
 
 ## Rules
 

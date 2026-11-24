@@ -5,7 +5,7 @@ Commands:
   validation.py init --app <id> [--from-manifest manifest.js|manifest.json] [--base <capture base URL>] [--blank]
                      [--page <file>] [--routes '#/,#/n/1'] [--url <URL the page is served at>]
       Write <paths.validation>/<app>/plan.json: screens (id, route, states with a "prepare" script), flows
-      (steps: goto, reload, click, fill, select, press, wait, expectVisible, expectHidden, expectText, expectUrl).
+      (steps: goto, reload, click, fill, select, press, wait, expectVisible, expectHidden, expectText, expectUrl, expectFocus).
       --page: read only this file (relative to the app folder, else the project; a built bundle such as dist/index.html
       works too); --routes: use these hash routes instead of the ones found; --url: plan url (the page served over HTTP),
       routes are then hash-only, and the page is opened in Chromium (--no-browser: files only) so routes and ids that its
@@ -48,7 +48,8 @@ Commands:
       state and the text of the failing elements, so a changed selector is not a new finding. axe-core: --axe, else env KIT_AXE_PATH,
       else kit.config.json > validate.axePath, else node_modules of the project or the kit.
       States: plan.states (every screen) and screen states may be named: "<ds.json theming key>=<value>" ("brand=ocean")
-      or "text=200%". Theme values and dark mode go through kit.config.json > validate.setTheme (JS body with key, value)
+      or "text=200%", alone or joined with "+" to a state object's name ("brand=ocean+dlg-open": the dialog state with
+      that brand). Theme values and dark mode go through kit.config.json > validate.setTheme (JS body with key, value)
       when set, else the ds.json > theming.<key>.attr attribute on <html>.
 Every command takes --dir <folder>: plan, runs and baseline there instead of <paths.validation>/<app>. Steps without "timeout" wait plan.timeout ms
       (init --from-manifest copies the manifest's timeout; default 8000, the capture.js default).
@@ -195,9 +196,11 @@ PLAN_HELP = {
                "list empty, loading, error and success states the screen has.",
     "flows": "Flows a user goes through. Steps: {goto} (add reload: true when only the hash changes), {reload: true}, {click: selector}, "
              "{fill: [selector, text]}, {select: [selector, value]}, {press: key}, {wait: ms}, {expectVisible: selector}, "
-             "{expectHidden: selector}, {expectText: [selector, text]} (text \"\" = the element has no text), {expectUrl: part}. "
+             "{expectHidden: selector}, {expectText: [selector, text]} (text \"\" = the element has no text), {expectUrl: part}, "
+             "{expectFocus: selector} (focus is on or inside it: after Escape closes a dialog, back on the button that opened it). "
              "expectVisible passes when any element that matches is visible, expectHidden when none is ('sel >> nth=0': the first only).",
-    "namedStates": "A state may be a name: '<ds.json theming key>=<value>' (e.g. 'brand=ocean') or 'text=200%'. "
+    "namedStates": "A state may be a name: '<ds.json theming key>=<value>' (e.g. 'brand=ocean') or 'text=200%', joined with '+' "
+                   "to the name of a state object of the screen or plan ('brand=ocean+dlg-open': that state with the brand set). "
                    "plan.states are added to every screen; _stateHints lists the ones this DS offers.",
     "axe": "plan.axe or screen.axe {include: [selector], exclude: [selector]} limits axe to part of the page. Findings that are "
            "known or outside the work go into waivers.json (check, id, selector, screen, reason), not out of the plan. axe runs on "

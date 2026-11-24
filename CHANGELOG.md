@@ -14,6 +14,34 @@ Docs: `docs/rules.md` ("Export" section, migration step), `docs/config.md` (`rul
 
 Tests: `rules.py --selftest` (overrides for every app and for some apps, notes kept, groups and omit, Vietnamese kit rules, `write_into` with markers, `--replace-from`/`--replace-to`, error without markers, `--append`), `kitconf.py --selftest` (`rules.groups` shape); `tests/e2e.py`: export into a file without markers fails and leaves it unchanged, `--detail full --replace-from/--replace-to` keeps the sections around it and writes rule text and exceptions.
 
+Also from two trial runs of `prototype` and `review` on the same project (a dialog built with the wrong variant, an audit that called a check it could not run a Note and counted no DS Vue component). Behaviour changes: an extra check that did not run is Skipped (was Note or Deviation), alias files outside the app are followed, the browser compare skips `height` that follows content, and `audit_map_tokens.py` maps hex values in project custom properties and never proposes a component token.
+
+Prototype
+- `skills/prototype/SKILL.md`: the missing Step 1 (read the input) split from Step 0; Step 2 chooses each variant from the usage rules (`catalog.py find` prints them, `show` the whole entry; none → the DS library page, else the default variant, said in the report) and reads `catalog.py deviations`; Step 3 build ladder adds "needed at all?", "browser element" and reading the touched parts first; Step 4b has a row for a Vue page in an HTML app; Step 5 "never cut" (labels, focus back on the opener, empty/error/loading, input checks) and the flag comment rule; Step 6 checks each new dialog in other brands and at 200 % (`brand=<v>+<state>`) and with an `expectFocus` flow after Escape, and the manual items of `a11y-web.md`; the report names the usage rule behind each variant and ends with what was left out, not checked and the risks.
+
+Catalogue
+- `catalog.py show <id|.class>` reads `catalog.md` (and `ds.json > patterns`) when there is no `catalog.json`, like `find`, and also shows a page pattern; `find` prints each hit's `use` / `avoid` lines.
+- `- Use:` and `- Avoid:` lines of a component in `catalog.md` (items split by ` | `) become its `usage` rules.
+- `catalog.py deviations [words]`: the DS's intentional deviations, "needs design confirmation" and "proposal" items from the new `ds.json > deviations` (a list, or a JSON file in the profile; default `[]`). Read by `review` step 1 and `prototype` step 2.
+
+Validate
+- A named state joined with `+` to the name of a state object of the screen or plan: `"brand=ocean+dlg-open"`, `"text=200%+dlg-open"` open that state (its `prepare`, `reload`, `axe`) with the brand or text size set first. Before, an opened dialog could not be checked in another brand or at 200 %.
+- New step `{"expectFocus": "<selector>"}`: focus is on or inside the element (waits up to 2 s); fails with where the focus is. For "Escape gives focus back to the control that opened the dialog", which the tab-order check does not see.
+
+Review
+- `review.extraChecks`: a check that did not run is Skipped with the reason, as rule checks are: the server of its URL does not answer, exit 77 or a `SKIP: <reason>` line, command not found (126, 127), or a connection or missing-file error in its output. Before, an accessibility check against a stopped server was a Note.
+- `{server}` in `review.extraChecks` and rule `check` commands: the project's static server, from env `KIT_SERVER`, else the new `kit.config.json > server`, else `http://localhost:8765` (`kitconf.py check`: an http(s) URL or null). A check no longer hard-codes a port.
+- The same command line runs once per audit (`audit_app.py` extra checks) and once per `rules.py check` run (rules sharing a project check): an audit with many rules that call the same sync check took minutes.
+- DS Vue components: aliases are read from `vite.config.*` and `tsconfig*.json` in the app folder and every folder above it up to the project root, following relative `extends`, exact keys and `key/*` apart, targets resolved from the config's folder (or `baseUrl`); an alias that points to a re-export file outside the app (`@ds-vue` → `../shared/ds.ts`) is followed. Before, a workspace alias gave "uses 0 of N" for every page.
+- Unknown variants leave out classes a script looks up (`querySelector('.x')`, `closest`, `matches`, `getElementsByClassName`, `classList.contains`): hooks, not variants. Undefined tokens leave out a name a script completes (`'var(--acme-gap-' + n + ')'`) when a token starts with it.
+- `audit_components_browser.js`: `height` is compared only when the DS copy has a box (not `auto`) and keeps its height with the content removed; a wrapper whose height follows its content is counted as `contentHeight`, not as a difference.
+- `audit_map_tokens.py`: a hex in a project custom property (`--x-topup-a: #f64c2d`) is mapped against every semantic colour role, at most "By role"; a component-scoped token (`ds.json > tokens.componentPattern`, default `-components?-`) is never proposed ("None", with the token named).
+- `skills/review/SKILL.md`: Step 3b accessibility and experience is part of every audit that measures in the browser (checklists, the project's check or `validate`, manual items, DS-side and platform deviations, findings in report section 5b); Step 3c dead code and logic errors (optional; concrete case, three groups, four parts); feature flags reported with options A/B/C; remediation table and the five batches; motion tokens from `ds.json > tokens.roles.duration` / `easing` (`references/motion.md`).
+
+Docs: `docs/config.md` (`server`, `ds.json > deviations`, `tokens.roles.duration` / `easing`, `tokens.componentPattern`, `catalog.md` Use/Avoid lines, Skipped extra checks), `docs/rules.md` (`{server}`, one run per command line), `skills/validate/SKILL.md` (joined states, `expectFocus`).
+
+Tests: `audit_app.py --selftest` (skipped extra checks: exit 77, SKIP line, command not found, connection refused, server down; one run per command line; `{server}`; workspace tsconfig alias to a re-export file; script hooks and completed token names), `audit_map_tokens.py --selftest` (custom property, component token), `catalog.py --selftest` (`show` without `catalog.json`, Use/Avoid lines, `deviations`), `rules.py --selftest` (one run for two rules with the same check), `kitconf.py --selftest` (`server`, `KIT_SERVER`); `tests/e2e.py`: joined named states on a dialog state, `expectFocus` pass and fail, `catalog.py show` and `deviations`.
+
 ## 0.12.6 · 2026-11-24
 From a first `mockup` run on a real project: the audit passed a screen whose spacing variables could have come from any library.
 

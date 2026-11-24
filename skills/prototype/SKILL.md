@@ -32,6 +32,8 @@ The note and the profile disagree, or neither covers the request: ask which one 
 - Load `kit.config.json` (`python3 <kit>/scripts/kitconf.py`). Missing → `kickoff`. No DS profile → `adopt`. Note `stack`, the target app in `apps[]` and its `type`.
 - Read the DS profile (`ds.json`, `catalog.md`) and the rules (`rules.py list`, above; the DS `rules.md` only when the output says so). The rules override everything else here. The user states a new rule while you build → record it through `context` (decision, then `rules.py add`), never only in the app.
 - Product context (`paths.context`, see `context`): `python3 <kit>/skills/context/scripts/context.py summary`; read UX principles, business rules, constraints and the `approved` decisions in scope. Building against an approved decision → stop and ask; never silently override it.
+## Step 1. Read the input
+
 - Input: the written request, or the wave handed over by `define` (R-ids, S-ids, assumptions, page and component decisions; reuse them, do not ask again).
 - Porting an existing page (to another stack, or from one app to another): the parity checklist of the `define` plan is the requirement (no plan: `python3 <kit>/skills/define/scripts/extract_rules.py <page and its scripts>` and complete it first). Keep every business rule: flow, conditions, limits, input checks, visible text, messages, shared storage, routes. Only the way it is built changes. A rule the new build cannot keep → say so before building; never drop or change it silently.
 - Exploration from `explore`: build from the **chosen** direction only (`<paths.explorations>/<slug>/<id>/index.html`, `decision.md`); apply the parts listed as merged. No recorded decision (`explore.py list` shows `exploring`) → stop and send the user back to the decision gate in `explore`. The exploration page is a layout and behaviour reference; still run the gates below for anything not in the DS (`dsFit.missing`). Open reference images with Read. Existing app: read the screens you change, one at a time.
@@ -42,18 +44,23 @@ The note and the profile disagree, or neither covers the request: ask which one 
 
 ## Step 2. Load the DS sources
 
-- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`catalog.py find <words>` to look a role up, `catalog.py show <id>` for details, `catalog.py patterns` for page layouts such as master-detail or split panes). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Follow each component's `usage.use` / `usage.avoid` rules. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
+- Component classes, variants, states and `components.map` from `catalog.md`, or from `catalog.json` when the profile has it (`C=<kit>/skills/document/scripts/catalog.py`: `python3 $C find <words>` to look a role up, `python3 $C show <id or .class>` for details, `python3 $C patterns` for page layouts such as master-detail or split panes; all three read `catalog.md` when there is no `catalog.json`). Never use a `deprecated` component: use its `replacedBy`. Say so in the report when you use an `experimental` one. Tokens from the CSS bundle (`ds.json > css.bundle`) or `tokens.file`. Token values win over prose when they disagree.
+- **Choose the variant from the usage rules**, not from the name: `find` prints each hit's `use` / `avoid` lines, `show` the whole entry. Read them for every component you place (a dialog that holds inputs may need a form variant, a list may forbid a nested menu). A component without usage rules: read its section of the DS library page (`ds.json > library`) before choosing; still none → the default variant, and say so in the report.
+- Intentional deviations, "needs design confirmation" and "proposal" items of the DS: `python3 $C deviations [words]` (`ds.json > deviations`). Keep them as they are; never "fix" one in the app.
 - Icons from `ds.json > icons`.
 - Never write a token, class, component name or version from memory. Source unreadable → stop and say so; never invent styles.
 
 ## Step 3. Map every element to the catalogue
 
+Read the parts of the app the change touches (shared shell, shared scripts, related screens) before writing.
 Build ladder, in this order; take the first step that works and say which one in the mapping table:
-1. **Reuse** a DS component (or the app's existing screen part that already uses it).
+0. **Needed at all?** Build what was asked and what the flow needs. An option or "later" nobody asked for is left out, with one line in the report.
+1. **Reuse** a DS component, a page pattern, or a part the app already has (a shared helper, a registered local block), the way the code around it uses it.
 2. **Compose** DS components and tokens (layout, spacing, surfaces), no new class.
-3. **Local** block (gate B in step 4), tokens only.
-4. **Propose** to the DS (gate C), still built as a local block.
-Write the least code that does the job: no new helper, wrapper or option nobody asked for.
+3. **Browser element** (`<details>`, `<dialog>`, `input type="date"`, `hidden`) only when the DS has no control for it, styled with DS classes and tokens.
+4. **Local** block (gate B in step 4), tokens only.
+5. **Propose** to the DS (gate C), still built as a local block.
+Write the least code that does the job: no new helper, wrapper or option nobody asked for. Fixing a bug in shared code: find every caller and fix it once there.
 
 Table: `element | DS component (class / React / Vue name, variant) | match level`.
 
@@ -101,6 +108,7 @@ Read the app's shape first:
 | `html`, `single` | New file `apps/<app>/<slug>/index.html`. The shared shell (header, nav, CSS, scripts) must be extracted first, or copied (drifts). | High; propose as its own plan |
 | `html`, `multi` | One more page file in the existing shell, its entry in the app's route table, then the app's `build` and `check` commands | Low |
 | `react`, `vue` (`spa`) | One route in the router plus one page component under `src/pages/` | Low |
+| `vue` page in an `html` app (`type: "page"`) | One page app (`kitconf.py add-page --like <page app> --dry-run`) and one host page in the host app's shape (its row above), then the page app's and the host's `build` and `check` | Low to medium |
 
 Announcement (AskUserQuestion, complete enough to decide without follow-up):
 
@@ -136,6 +144,8 @@ Rules for every stack:
 - Content cut off by a frame: fade the cut edge only if `catalog.md` lists such a utility; never on images, avatars, fixed-ratio frames, ellipsis text or inputs.
 - Version label: render `ds.json > version_label.text` in the footer and `<meta name="<version_label.meta>">`, from the version you read. Editing an existing app whose label differs from the profile → report it and suggest `sync`.
 - Breakpoints from `ds.json > breakpoints`; follow the DS's compact-screen pattern (for example a tab bar) if `catalog.md` has one.
+- Never cut, even to stay small: labels and focus for keyboard and screen readers (a dialog, menu or popover returns focus to the control that opened it when it closes; when that control is gone, such as a menu item, to the nearest control that stays, such as the menu's button), empty, error and loading states the flow has, input checks. Logic with branches or data handling (filter, parse, compute) is tried on every branch in step 6.
+- Hiding a feature after feedback: a file-level flag only with a comment that states the reason, the date and when to turn it back on (the project rule, if any, sets the wording: `rules.py list`); a feature decided as dropped is deleted, not kept behind a flag that is off.
 - Mock data is marked as mock. No real personal data. No real API, auth or persistence beyond `localStorage`.
 - Adding to an existing app: leave the rest of the app untouched.
 
@@ -158,7 +168,8 @@ Vue page in an `html` app: the host page keeps the shell (header, nav, DS CSS, s
 
 Run `validate` for the screens, states and flows of this wave (`V=<kit>/skills/validate/scripts/validation.py`; `python3 $V run --app <id>`; add them to its `plan.json` first). It covers page and console errors, horizontal overflow, accessibility, focus, touch targets and visual changes at 390, 768 and 1280 px in each mode; the build is not done until its report shows **Fail (0)**. Never write your own Playwright script for these checks.
 - Quick run while building (no plan yet, or a trial): `python3 $V init --app <id> --dir <scratch folder>` (`--page <file>` for one page), keep the screens of this wave, then `python3 $V run --app <id> --dir <scratch folder>`. Move the plan to `paths.validation` when the wave is done.
-- Brands and text size 200%: list them as named plan states (`brand=<value>` for at least two brands if `theming.brand.values` has several; `text=200%` for mobile or responsive screens). Everything must stay visible: no clipped text, no overlap, no lost buttons or inputs.
+- Brands and text size 200%: list them as named plan states (`brand=<value>` for at least two brands if `theming.brand.values` has several; `text=200%` for mobile or responsive screens). A dialog, menu or panel the wave adds is a state object (`{"name": "dlg-open", "prepare": "…click the opener…"}`): check it in the other brands and at 200 % too with `"brand=<value>+dlg-open"`, `"text=200%+dlg-open"`. Everything must stay visible: no clipped text, no overlap, no lost buttons or inputs.
+- Keyboard: every dialog, menu or popover the wave adds gets a flow that opens it, closes it with Escape (and with its Cancel or close button) and checks `{"expectFocus": "<opener>"}`; the tab-order check of `validate` does not see where focus lands after closing. Read the manual items of `<kit>/skills/validate/references/a11y-web.md` (`a11y-mobile.md` for phone platforms) that apply to the screens built (focus kept inside a dialog, errors said in words, toasts read through `aria-live`) and try them by hand; list the ones tried.
 - Page contract (`kitconf.py contract --app <app>`): each line has a check in the plan (a flow step `expectVisible` on what the contract makes appear, or a state), so a missed call fails instead of passing silently.
 - Porting a page: run the parity check. Same steps on the old and the new page (a flow per row group of the parity checklist, run against both entries with `--url`); compare visible text, messages, states and stored data (`localStorage` keys and values). Every row of the checklist ends "same" or a difference the user accepted.
 - No hard-coded values left: `python3 <kit>/skills/review/scripts/audit_app.py <app>` (hex, `rgb(`, px colour and spacing, per-stack patterns above) shows nothing new in the changed files.
@@ -172,12 +183,13 @@ Run `validate` for the screens, states and flows of this wave (`V=<kit>/skills/v
 - Optional project step after a build (`kit.config.json > prototype.post`, off by default; for example the project's own preview or publish script): `python3 <kit>/scripts/kitconf.py hook prototype.post --app <app>` runs it in the project root and prints its output and exit code. Run it only when it is set and the user wants it this time; the kit itself never publishes.
 - Decision log (if the project has one): each `approved` decision you built → `decisions.py set <id> implemented --note "<app, screens>"`. Design choices you made that nobody approved → `decisions.py add --status proposed`, and list them in the report.
 - Short report:
-  - element mapping table (element | DS component | match level), with differences from the reference image and why;
+  - element mapping table (element | DS component and variant | match level), with the usage rule that chose the variant; with a reference image also the differences from the image and why;
   - component decisions (A / B / C) and registry entries written;
   - new pages decided (own file or route, or inside the current file);
   - what the image did not show and how you handled it;
   - mock parts; open questions; deviations from the DS and intentional deviations kept from `rules.md`;
-  - warnings (version label mismatch, unattended defaults).
+  - warnings (version label mismatch, unattended defaults);
+  - one or two closing lines: what was left out by the build ladder (step 3), what was not checked, and the risks the user should know.
 
 ## Rules
 
@@ -185,5 +197,5 @@ Run `validate` for the screens, states and flows of this wave (`V=<kit>/skills/v
 - Never create a page file, folder or route before step 4b. Always announce and wait.
 - Never copy the style of the app in a reference image; take layout and behaviour only.
 - Never invent classes, tokens, component names or version numbers.
-- Keep items `rules.md` marks as intentional deviations, "needs design confirmation" or "proposal" as they are, and mention them in the report.
+- Keep items `rules.md` or `ds.json > deviations` (`catalog.py deviations`) mark as intentional deviations, "needs design confirmation" or "proposal" as they are, and mention them in the report.
 - New DS version for an existing app → `sync`. New component in the DS → `document`.

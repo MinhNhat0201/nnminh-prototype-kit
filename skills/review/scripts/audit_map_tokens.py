@@ -153,17 +153,28 @@ def occurrences(ctx, app, lib):
     return out
 
 
+def COMPONENT_TOKEN(ctx):
+    """Test for component-scoped tokens (ds.json > tokens.componentPattern, default "-components?-": --acme-space-components-
+    date-picker-width): they hold one component's value and are never proposed for an app value."""
+    rx = re.compile((ctx.ds.get("tokens") or {}).get("componentPattern") or r"-components?-")
+    return lambda name: bool(rx.search(name))
+
+
 def suggest(ctx, rules, prop, val, col, ln):
     """[(original value, confidence key, proposed token, note)]."""
     tr = ctx.tr
     color, length, scale = rules
     sem = {p for _, ps in color for p in ps}
     res = []
-    if prop.startswith("--"):
+    comp = COMPONENT_TOKEN(ctx)
+    custom = prop.startswith("--")
+    if custom and prop.startswith(ctx.prefix):
         return res  # token definitions are reported by audit_app.py under "redefined"
     if "var(" in val and not re.search(r",\s*(#|rgb)", val):
         return res
-    pre = next((p for pat, p in color if pat.match(prop)), None)
+    # a project's own custom property (--x-topup-a: #f64c2d) holds a colour without saying where it is used: every
+    # semantic colour role is a candidate and the level is at most "role" (the reader picks by where it is used)
+    pre = tuple(sem) if custom else next((p for pat, p in color if pat.match(prop)), None)
     if pre:
         for h in HEX.findall(val) + [m.group(0) for m in RGBF.finditer(val)]:
             mm = RGBF.fullmatch(h)
@@ -176,13 +187,15 @@ def suggest(ctx, rules, prop, val, col, ln):
                 res.append((h, "none", "", tr("map.note.alpha", a="%.2f" % alpha)))
                 continue
             rgb = rgba[:3]
-            cands = sorted(x for x in col.get(rgb, []) if x.startswith(pre))
-            if len(cands) == 1:
+            cands = sorted(x for x in col.get(rgb, []) if x.startswith(pre) and not comp(x))
+            if custom and cands:
+                res.append((h, "role", ", ".join(cands[:4]), tr("map.note.custom", name=prop)))
+            elif len(cands) == 1:
                 res.append((h, "exact", cands[0], ""))
             elif cands:
                 res.append((h, "role", ", ".join(cands[:4]), tr("map.note.same", n=len(cands))))
             else:
-                best = sorted((de(rgb, k), x) for k, xs in col.items() for x in xs if x.startswith(pre))[:1]
+                best = sorted((de(rgb, k), x) for k, xs in col.items() for x in xs if x.startswith(pre) and not comp(x))[:1]
                 if best and best[0][0] <= 4:
                     res.append((h, "near", best[0][1], tr("map.note.near_de", d="%.1f" % best[0][0])))
                 else:
@@ -191,6 +204,8 @@ def suggest(ctx, rules, prop, val, col, ln):
                     note = tr("map.note.other_role", token=semantic[0]) if semantic else tr("map.note.primitive", token=raw[0]) if raw else tr("map.note.no_token")
                     res.append((h, "none", "", note))
         return res
+    if custom:
+        return res  # lengths in a custom property: no property to tell spacing from radius or size
     for pat, pres, kind in length:
         if not pat.match(prop) or not pres:
             continue
@@ -201,7 +216,11 @@ def suggest(ctx, rules, prop, val, col, ln):
             if kind == "radius" and v >= 999:
                 res.append((m.group(0), "none", "", tr("map.note.pill")))
                 continue
-            cands = sorted(x for x in ln.get(v, []) if x.startswith(pres))
+            allc = sorted(x for x in ln.get(v, []) if x.startswith(pres))
+            cands = [x for x in allc if not comp(x)]   # a component's own token is never the token of an app value
+            if allc and not cands:
+                res.append((m.group(0), "none", "", tr("map.note.component_only", token=allc[0])))
+                continue
             if kind == "spacing" and scale:
                 generic = [x for x in cands if x.startswith(scale)]
                 if generic:
@@ -213,7 +232,7 @@ def suggest(ctx, rules, prop, val, col, ln):
             elif cands:
                 res.append((m.group(0), "role", ", ".join(cands[:4]), tr("map.note.same", n=len(cands))))
             else:
-                near = sorted((abs(k - v), x) for k, xs in ln.items() for x in xs if x.startswith(pres))[:1]
+                near = sorted((abs(k - v), x) for k, xs in ln.items() for x in xs if x.startswith(pres) and not comp(x))[:1]
                 if near and near[0][0] <= 1:
                     res.append((m.group(0), "near", near[0][1], tr("map.note.near_px", d="%g" % near[0][0])))
                 else:
@@ -229,7 +248,8 @@ def selftest():
     try:
         (d / "ds" / "acme" / "dist").mkdir(parents=True)
         (d / "ds" / "acme" / "dist" / "acme.css").write_text(
-            ":root{--acme-text-main:#112233;--acme-bg-page:#ffffff;--acme-space-4:16px;--acme-radius-m:8px}.acme-btn{color:var(--acme-text-main)}")
+            ":root{--acme-text-main:#112233;--acme-bg-page:#ffffff;--acme-space-4:16px;--acme-radius-m:8px;"
+            "--acme-space-components-picker-width:120px}.acme-btn{color:var(--acme-text-main)}")
         (d / "ds" / "acme" / "ds.json").write_text(json.dumps({"name": "acme", "version": "1.0.0", "tokens": {"prefix": "--acme-"},
                                                               "css": {"bundle": "dist/acme.css"}}))
         app = d / "apps" / "acme-web"
@@ -248,6 +268,13 @@ def selftest():
         col, ln = build_index(tok)
         got = suggest(ctx, prop_rules(ctx), "color", "#112233", col, ln) + suggest(ctx, prop_rules(ctx), "padding", "16px", col, ln)
         assert [(g[1], g[2]) for g in got] == [("exact", "--acme-text-main"), ("exact", "--acme-space-4")], got
+        # 0.12.7 (K-R8): a project custom property with a hex is mapped (at most "role"); a DS token definition is not;
+        # a component token is never proposed
+        got = suggest(ctx, prop_rules(ctx), "--x-topup-a", "#ffffff", col, ln)
+        assert [(g[1], g[2]) for g in got] == [("role", "--acme-bg-page")] and "--x-topup-a" in got[0][3], got
+        assert suggest(ctx, prop_rules(ctx), "--acme-bg-page", "#fff", col, ln) == []
+        got = suggest(ctx, prop_rules(ctx), "padding-top", "120px", col, ln)
+        assert [(g[1], g[2]) for g in got] == [("none", "")] and "picker-width" in got[0][3], got
     finally:
         shutil.rmtree(d, ignore_errors=True)
     print("audit_map_tokens.py selftest OK")

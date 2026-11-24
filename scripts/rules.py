@@ -102,7 +102,7 @@ ID_RX = re.compile(r"^([A-Z][A-Z0-9]{1,5})-(\d{3,})$")
 # Activity groups a rule may name in `skills` instead of (or with) skill names: rules for work that is not a skill.
 # A rule that names only activities is left out of `list --skill <skill>`. "*" = every skill and activity (like []).
 ACTIVITIES = ("scripts", "pr", "commit", "deploy", "release")
-PLACEHOLDERS = ("app", "path", "root", "platform", "stack", "page")
+PLACEHOLDERS = ("app", "path", "root", "platform", "stack", "page", "server")
 SKIP_EXIT = 77   # a check command exits 77 (or prints a line "SKIP: <reason>") when it does not apply or scanned nothing
 URL_RX = re.compile(r"https?://([A-Za-z0-9.-]+|\[[0-9a-fA-F:]+\])(?::(\d+))?")
 BLOCK = ("<!-- kit:rules:begin -->", "<!-- kit:rules:end -->")
@@ -640,15 +640,17 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, 
     {id, title, severity, category, app, command, exit, status, ok, reason, summary}.
     status: pass (exit 0), fail, or skipped: the command needs a server or URL that is not reachable, the app folder
     ({path}) does not exist, or the command exited 77 / printed "SKIP: <reason>" (not applicable, scanned nothing).
-    ok is True unless the status is fail. url: for a page app, the page a check URL naming the app opens (else its host pages)."""
+    ok is True unless the status is fail. url: for a page app, the page a check URL naming the app opens (else its host pages).
+    The same command line runs once per call (several rules sharing a project check, a project-wide check per app)."""
     rules, _ = load_rules(cfg)
     apps = {a.get("id"): a for a in cfg.get("apps") or []}
-    out, probed, words = [], {}, skip_words(cfg)
+    out, probed, words, ran = [], {}, skip_words(cfg), {}
     for r in rules:
         if r["status"] != "active" or not r["check"] or (rid and r["id"] != rid.upper()):
             continue
         if category and r["category"] != category or not skill_match(r, skill):
             continue
+        r = dict(r, check=kitconf.fill_server(r["check"], cfg))   # {server}: the project's static server (kit.config.json > server)
         per_app = any("{%s}" % k in r["check"] for k in ("app", "path", "platform", "stack", "page"))
         if per_app:
             targets = [a for a in ([app] if app else list(apps)) if a in apps and in_scope(r, a) and not exception_for(r, a)
@@ -673,7 +675,7 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, 
                 runs.append((a, r["check"], None, None))
         for a, cmd, pg, host in runs:
             ap = apps.get(a) or {}
-            vals = {"app": host or a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
+            vals = {"server": kitconf.server_url(cfg), "app": host or a or "", "path": ap.get("path", ""), "root": cfg["_root"], "platform": ap.get("platform") or "",
                     "stack": (ap.get("stack") or cfg.get("stack") or "") if a else "", "page": pg or ""}
             line = re.sub(r"\{(%s)\}" % "|".join(PLACEHOLDERS), lambda m: shlex.quote(vals[m.group(1)]) if vals[m.group(1)] else "", cmd)
             res = {"id": r["id"], "title": r["title"], "severity": r["severity"], "category": r["category"],
@@ -697,11 +699,13 @@ def run_checks(cfg, app=None, skill=None, category=None, rid=None, timeout=900, 
             elif "{path}" in r["check"] and a and not (Path(cfg["_root"]) / ap.get("path", "")).exists():
                 res["reason"] = "app folder %s not found: nothing to scan" % ap.get("path", "")
             else:
-                try:
-                    p = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True, timeout=timeout)
-                    code, lines = p.returncode, [x.rstrip() for x in (p.stdout + "\n" + p.stderr).splitlines() if x.strip()]
-                except subprocess.TimeoutExpired:
-                    code, lines = 124, ["timed out"]
+                if line not in ran:   # the same command line (several rules, or one per app without {app}) runs once
+                    try:
+                        p = subprocess.run(line, shell=True, cwd=cfg["_root"], capture_output=True, text=True, timeout=timeout)
+                        ran[line] = (p.returncode, [x.rstrip() for x in (p.stdout + "\n" + p.stderr).splitlines() if x.strip()])
+                    except subprocess.TimeoutExpired:
+                        ran[line] = (124, ["timed out"])
+                code, lines = ran[line]
                 why = skip_line(lines, words) if code in (0, SKIP_EXIT) else None
                 res.update(exit=code, summary=lines[-3:])
                 if code == SKIP_EXIT or why:
@@ -1291,6 +1295,14 @@ def selftest():
         assert all(r["severity"] == "must" for r in keep[:1])
         res = run_checks(cfg, skill="review")
         assert {(x["app"], x["ok"]) for x in res if x["id"] == "STY-001"} == {("web", True), ("phone", True)}, res
+        cnt = d / "ran.txt"
+        same = "%s -c \"open(%r, 'a').write('x')\"" % (shlex.quote(sys.executable), str(cnt))
+        ra = add_rule(cfg, "Shared check A", "process", "should", skills=["review"], check=same, body="x")
+        rb = add_rule(cfg, "Shared check B", "process", "should", skills=["review"], check=same, body="x")
+        res = [x for x in run_checks(cfg, skill="review") if x["id"] in (ra["id"], rb["id"])]
+        assert len(res) == 2 and all(x["status"] == "pass" for x in res) and cnt.read_text() == "x", "same command line runs once (K-R11)"
+        for x in (ra, rb):
+            Path(x["_path"]).unlink()
         (d / "product-context" / "decisions").mkdir(parents=True)
         import decisions as D
         did, _ = D.add_decision(cfg, "Pill buttons", status="approved", by="Lan")

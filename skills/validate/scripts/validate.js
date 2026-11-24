@@ -44,9 +44,12 @@
 // expectText [selector, text]: the element's text contains text; [selector, ""]: the element has no text (whitespace only).
 // expectVisible passes when at least one element that matches is visible, expectHidden when none is (also when none
 // matches); "sel >> nth=0" checks the first element only. The other steps act on the first element that matches.
+// expectFocus selector: keyboard focus is on that element or inside it (for example back on the button that opened a dialog
+// after Escape: {click: opener}, {press: 'Escape'}, {expectFocus: opener}); waits up to 2 s for the focus to move.
 //
 // States: objects {name, prepare, theme: {<ds.json theming key>: value}, textScale: 2, axe: false} or named strings:
-// "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2).
+// "<theming key>=<value>" (e.g. "brand=ocean": sets ds.json > theming.brand.attr) and "text=200%" (root font size x2),
+// joined with "+" to the name of a state object of the screen or plan ("brand=ocean+dlg-open", "text=200%+dlg-open").
 // plan.states are added to every screen. Theme values (and dark mode) are set with --set-theme when given (a JS body run
 // in the page with key and value), else by setting the theming attribute on <html>. axe runs on every state of the plan
 // (default, prepared, named), at the widest viewport; a state with "axe": false (or a screen with "axe": false) opts out;
@@ -257,6 +260,21 @@ async function runStep(page, s) {
       if (txt.trim()) throw new Error('text of ' + s.expectText[0] + ' is not empty: "' + txt.trim().slice(0, 80) + '"');
     } else if (!txt.includes(s.expectText[1])) throw new Error('text of ' + s.expectText[0] + ' does not contain "' + s.expectText[1] + '"');
   } else if (s.expectUrl) { if (!page.url().includes(s.expectUrl)) throw new Error('URL ' + page.url() + ' does not contain ' + s.expectUrl); }
+  else if (s.expectFocus !== undefined) {   // keyboard focus is on (or inside) the element that matches, e.g. back on the opener after Esc
+    const sel = s.expectFocus, t0 = Date.now(), wait = Math.min(T, 2000);
+    let info;
+    for (;;) {
+      info = await page.evaluate(sel => { const el = document.activeElement; let ok = false;
+        try { ok = !!(el && el !== document.body && (el.matches(sel) || el.closest(sel))); } catch (e) { return { bad: String(e.message || e) }; }
+        const d = !el || el === document.body ? 'body' : el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
+          ((el.getAttribute('class') || '').trim() ? '.' + el.getAttribute('class').trim().split(/\s+/).join('.') : '');
+        return { ok, d }; }, sel);
+      if (info.bad) throw new Error('expectFocus: bad selector ' + sel + ' (' + info.bad + ')');
+      if (info.ok || Date.now() - t0 > wait) break;
+      await page.waitForTimeout(100);
+    }
+    if (!info.ok) throw new Error('focus is on ' + info.d + ', not on ' + sel);
+  }
   else throw new Error('unknown step ' + JSON.stringify(s));
 }
 
@@ -320,12 +338,39 @@ async function setTheme(page, key, value) {
 }
 
 // Named states: "brand=ocean" (any ds.json theming key) and "text=200%" (root font size); objects pass through.
-function normState(st) {
+// Joined with "+", named parts and the name of a state object of the screen or plan combine into one view:
+// "brand=ocean+dlg-open" opens the state "dlg-open" (its prepare, reload, axe) with the brand set, "text=200%+dlg-open"
+// with the text doubled. Theme values and the text size are set before the state's prepare runs.
+function namedPart(part) {
+  const m = /^([\w-]+)\s*=\s*(.+)$/.exec(part);
+  if (!m) return null;
+  if (m[1] === 'text') { const v = m[2].trim(); return { textScale: parseFloat(v) / (v.endsWith('%') ? 100 : 1) }; }
+  return { theme: { [m[1]]: m[2].trim() } };
+}
+function normState(st, pool) {
   if (typeof st !== 'string') return st;
-  const m = /^([\w-]+)\s*=\s*(.+)$/.exec(st);
-  if (!m) return { name: st, error: 'unknown named state "' + st + '" (use <theming key>=<value> or text=200%)' };
-  if (m[1] === 'text') { const v = m[2].trim(); return { name: st, textScale: parseFloat(v) / (v.endsWith('%') ? 100 : 1) }; }
-  return { name: st, theme: { [m[1]]: m[2].trim() } };
+  const parts = st.split('+').map(x => x.trim()).filter(Boolean);
+  const out = { name: st, theme: {} };
+  let base = null;
+  for (const part of parts) {
+    const n = namedPart(part);
+    if (n) { Object.assign(out.theme, n.theme || {}); if (n.textScale) out.textScale = n.textScale; continue; }
+    const obj = (pool || {})[part];
+    if (!obj || base) return { name: st, error: 'unknown named state "' + st + '" (use <theming key>=<value>, text=200%, or ' +
+      '"<named>+<state name>" with one state object of the screen or plan)' };
+    base = obj;
+  }
+  if (base) {   // the state object's prepare, reload and axe; its own theme and text size first, the named parts win
+    for (const k of ['prepare', 'reload', 'axe']) if (base[k] !== undefined) out[k] = base[k];
+    out.theme = Object.assign({}, base.theme || {}, out.theme);
+    if (!out.textScale && base.textScale) out.textScale = base.textScale;
+  }
+  return out;
+}
+function statePool(list) {   // state objects by name, for "<named>+<state name>"
+  const pool = {};
+  for (const x of list) if (x && typeof x === 'object' && x.name) pool[x.name] = x;
+  return pool;
 }
 
 async function openPage(ctx, route, mode, prepare, errors, reload) {
@@ -614,7 +659,9 @@ async function discover(browser) {
   const screens = plan.screens && plan.screens.length ? plan.screens : [{ id: 'S01', name: 'Entry', route: '' }];
   for (const sc of screens) {
     await stopIfDown(urlFor(sc.route), 'screen ' + sc.id);
-    const states = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || [], plan.states || []).map(normState);
+    const raw = [{ name: 'default', prepare: sc.prepare }].concat(sc.states || [], plan.states || []);
+    const pool = statePool(raw);
+    const states = raw.map(x => normState(x, pool));
     const vps = sc.viewports && sc.viewports.length ? sc.viewports.map(Number) : viewports;
     for (const st of states) {
       for (const vp of vps) {

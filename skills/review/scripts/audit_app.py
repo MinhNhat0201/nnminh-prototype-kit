@@ -59,6 +59,7 @@ KIT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(KIT / "scripts"))
 from kitconf import load, ds_path, t, ds_vue, app_ds, css_load, fill_command, page_hosts, app_pages, url_names_app  # noqa: E402
 import rules as RULES  # noqa: E402  (scripts/rules.py)
+import kitconf  # noqa: E402
 
 SKIP_DIRS = {"node_modules", "dist", "build", ".vite", ".next", ".nuxt", "coverage", ".git"}
 EXT_HTML = {".html", ".htm"}
@@ -97,6 +98,8 @@ TW_PROP = {"bg": "background-color", "rounded": "border-radius", "leading": "lin
 COLORISH = re.compile(r"^(#|rgba?\(|hsla?\(|(white|black|red|blue|green|gray|grey|orange|yellow|purple|pink)$)", re.I)
 STYLE_OBJ = re.compile(r"\bstyle=\{\{(.*?)\}\}", re.S)
 VUE_STYLE = re.compile(r"(?:\s:|v-bind:)style=\"\{(.*?)\}\"", re.S)
+JS_LOOKUP = re.compile(r"""(?:querySelector(?:All)?|closest|matches)\(\s*['"`]([^'"`]+)['"`]""")
+JS_HAS = re.compile(r"""(?:getElementsByClassName|classList\.contains)\(\s*['"`]([\w-]+)['"`]""")
 UNITLESS = {"line-height", "opacity", "z-index", "font-weight", "flex", "flex-grow", "flex-shrink", "order", "zoom"}
 
 
@@ -572,7 +575,9 @@ def audit_app(ctx, app, lib):
         if f.suffix.lower() in EXT_SCRIPT | EXT_VUE | EXT_HTML:
             used |= set(ctx.USE.findall(txt))
     defined = app_names | {k for k, _ in ctx.DEF.findall(app_css)}
-    res["undefined_tokens"] = sorted(used - defined - lib["names"])
+    # a name cut where a script joins the rest ('var(--acme-gap-' + n + ')') is no token: skipped when a token starts with it
+    built = {u for u in used if u.endswith("-") and any(k.startswith(u) for k in defined | lib["names"])}
+    res["undefined_tokens"] = sorted(used - defined - lib["names"] - built)
 
     # 5. hard-coded values (raw values inside token definitions are counted under "redefined")
     scan = ctx.DEF.sub("", app_css) + "\n" + "\n".join(inline)
@@ -606,6 +611,14 @@ def audit_app(ctx, app, lib):
     app_defined = set(CLASS.findall(app_css))
     roots, mods, allc = lib["roots"], lib["mods"], lib["all_classes"]
     used_c, unknown = collections.Counter(), collections.Counter()
+    # classes scripts look up (querySelector('.x'), closest, matches, getElementsByClassName, classList.contains): hooks of
+    # a script (the DS theming panel, a shell), not variants
+    hooks = set()
+    for f, txt in texts.items():
+        if f.suffix.lower() in EXT_SCRIPT | EXT_HTML | EXT_VUE:
+            for sel in JS_LOOKUP.findall(txt):
+                hooks |= set(CLASS.findall(sel))
+            hooks |= set(JS_HAS.findall(txt))
     for attr in re.findall(r"""class(?:Name)?\s*[=:]\s*\\?["'`]([^"'`<>{}$]+)""", markup):
         toks = [x.strip("\\") for x in attr.split()]
         for tk in toks:
@@ -613,6 +626,7 @@ def audit_app(ctx, app, lib):
                 used_c[tk] += 1
                 for u in toks:
                     if u != tk and u not in mods[tk] and not u.startswith(ctx.local_prefix) and u not in allc and u not in app_defined \
+                            and u not in hooks \
                             and not re.match(r"^[\w-]+:|.*\[", u):
                         unknown[(tk, u)] += 1
     native = {}
@@ -697,9 +711,50 @@ ALIAS_VITE = re.compile(r"""['"]?([@\w$~][\w$~./-]*)['"]?\s*:\s*(?:(?:new\s+)?[\
 ALIAS_TS = re.compile(r'"([^"]+?)(?:/\*)?"\s*:\s*\[\s*"([^"]+?)(?:/\*)?"')
 
 
-def ds_vue_aliases(base, pkg):
-    """Import specifiers that mean the DS Vue package: the package name, and aliases of vite.config.* (resolve.alias)
-    and tsconfig.json (compilerOptions.paths) whose target lies in the package folder."""
+def ts_configs(f, seen=None):
+    """A tsconfig file and the files it extends (relative "extends", string or list), nearest first."""
+    seen = seen if seen is not None else set()
+    if f in seen or not f.is_file():
+        return []
+    seen.add(f)
+    out = [f]
+    m = re.search(r'"extends"\s*:\s*(\[[^\]]*\]|"[^"]*")', read(f))
+    for e in re.findall(r'"([^"]+)"', m.group(1)) if m else []:
+        if e.startswith("."):
+            p = (f.parent / e).resolve()
+            out += ts_configs(p if p.suffix == ".json" else p.with_name(p.name + ".json"), seen)
+    return out
+
+
+def alias_table(base, root):
+    """Import aliases an app sees: [(key, wildcard, target path)] from vite.config.* (resolve.alias: key and key/…) and
+    tsconfig*.json (compilerOptions.paths, "key" exact or "key/*"), in the app folder and every folder above it up to the
+    project root, following relative "extends"; nearest first. tsconfig targets resolve from the file's folder (or its
+    baseUrl), vite targets from the config's folder."""
+    out, seen, d = [], set(), base
+    while True:
+        for f in sorted(d.glob("vite.config.*")):
+            for k, v in ALIAS_VITE.findall(read(f)):
+                if not v.startswith(("http", "node:")):
+                    out.append((k, None, (f.parent / v).resolve()))
+        for top in sorted(d.glob("tsconfig*.json")):
+            for f in ts_configs(top.resolve(), seen):
+                txt = read(f)
+                bu = re.search(r'"baseUrl"\s*:\s*"([^"]*)"', txt)
+                anchor = (f.parent / bu.group(1)).resolve() if bu else f.parent
+                pm = re.search(r'"paths"\s*:\s*\{(.*?)\}', txt, re.S)
+                for k, v in re.findall(r'"([^"]+)"\s*:\s*\[\s*"([^"]+)"', pm.group(1)) if pm else []:
+                    wild = k.endswith("/*")
+                    out.append((k[:-2] if wild else k, wild, (anchor / (v[:-2] if v.endswith("/*") else v)).resolve()))
+        if d == root or root not in d.parents:
+            break
+        d = d.parent
+    return out
+
+
+def ds_vue_aliases(base, pkg, root=None):
+    """Import specifiers that mean the DS Vue package: the package name, and aliases (alias_table) whose target lies in the
+    package folder."""
     out = set()
     pj = pkg / "package.json"
     if pj.is_file():
@@ -707,31 +762,52 @@ def ds_vue_aliases(base, pkg):
             out.add(json.loads(read(pj)).get("name") or "")
         except ValueError:
             pass
-    for cfgf, rx in [(f, ALIAS_VITE) for f in sorted(base.glob("vite.config.*"))] + [(f, ALIAS_TS) for f in sorted(base.glob("tsconfig*.json"))]:
-        for k, v in rx.findall(read(cfgf)):
-            p = (base / v).resolve()
-            if not v.startswith(("http", "node:")) and (p == pkg or pkg in p.parents):
-                out.add(k)
+    for k, _w, p in alias_table(base, root or base):
+        if p == pkg or pkg in p.parents:
+            out.add(k)
     return {x for x in out if x}
 
 
 def ds_vue_usage(ctx, app, texts, pkg, names):
-    """{DS Vue component: uses} of an app: names imported from the DS Vue package (directly or through a local re-export
-    file such as src/ds.ts), counted by template tags (<Button>, <button>-cased kebab too); imported but no tag = 1."""
+    """{DS Vue component: uses} of an app: names imported from the DS Vue package (directly, or through a local re-export
+    file such as src/ds.ts, also one an alias points to outside the app: "@ds-vue" -> ../shared/ds.ts in a tsconfig of a
+    parent folder), counted by template tags (<Button>, <button>-cased kebab too); imported but no tag = 1."""
     base = (ctx.root / app["path"]).resolve()
-    alias = ds_vue_aliases(base, pkg) if base.is_dir() else set()
+    root = ctx.root.resolve()
+    table = alias_table(base, root) if base.is_dir() else []
+    names_pkg = ds_vue_aliases(base, pkg, root) if base.is_dir() else set()
+    texts = dict(texts)   # re-export files reached through an alias are read too (never counted as use)
+    extra = set()
+
+    def file_of(p):
+        for c in (p, p.with_name(p.name + ".ts"), p.with_name(p.name + ".js"), p / "index.ts", p / "index.js"):
+            if c in texts:
+                return c
+            if c.is_file() and c.suffix in (".ts", ".js", ".mjs"):
+                texts[c] = read(c)
+                extra.add(c)
+                return c
+        return None
 
     def target(f, spec):
-        """Resolved file of a relative import, the package folder for a DS specifier, else None."""
-        if any(spec == a or spec.startswith(a + "/") for a in alias):
+        """Resolved file of a relative or aliased import, the package folder for a DS specifier, else None."""
+        for k, wild, p in table:
+            if spec == k and wild is not True:
+                q = p
+            elif spec.startswith(k + "/") and wild is not False:
+                q = p / spec[len(k) + 1:]
+            else:
+                continue
+            if q == pkg or pkg in q.parents:
+                return pkg
+            return file_of(q)
+        if spec in names_pkg or any(spec.startswith(a + "/") for a in names_pkg):
             return pkg
         if spec.startswith("."):
             p = (f.parent / spec).resolve()
             if p == pkg or pkg in p.parents:
                 return pkg
-            for c in (p, p.with_name(p.name + ".ts"), p.with_name(p.name + ".js"), p / "index.ts", p / "index.js"):
-                if c in texts:
-                    return c
+            return file_of(p)
         return None
 
     def bindings(clause, spec):
@@ -751,8 +827,8 @@ def ds_vue_usage(ctx, app, texts, pkg, names):
         return out
 
     exports = {}   # re-export file -> {exported name: DS component}
-    for _ in range(2):  # a re-export of a re-export
-        for f, txt in texts.items():
+    for _ in range(3):  # a re-export of a re-export (alias files are read on the way)
+        for f, txt in list(texts.items()):
             for kind, clause, spec in IMPORT.findall(txt):
                 t_ = target(f, spec)
                 if kind == "export" and t_ is not None:
@@ -763,6 +839,8 @@ def ds_vue_usage(ctx, app, texts, pkg, names):
                             exports.setdefault(f, {})[loc] = comp
     used = collections.Counter()
     for f, txt in texts.items():
+        if f in extra:
+            continue   # a file outside the app read only to follow its re-exports
         local = {}
         for kind, clause, spec in IMPORT.findall(txt):
             t_ = target(f, spec)
@@ -808,11 +886,18 @@ def rule_rows(ctx, apps):
     return out
 
 
+NOT_RUN = re.compile(r"ECONNREFUSED|ERR_CONNECTION_REFUSED|Connection refused|command not found|No such file or directory|"
+                     r"Cannot find module|can't open file", re.I)
+
+
 def run_extra(ctx, apps):
-    """kit.config.json > review.extraChecks: [{name, command, parse?, level?}] -> rows per app id (None = project)."""
-    out = collections.defaultdict(list)
+    """kit.config.json > review.extraChecks: [{name, command, parse?, level?}] -> rows per app id (None = project).
+    A check that did not run is Skipped with the reason, never a Note or Deviation: its URL's server is down, it exited
+    77 or printed "SKIP: <reason>" (as rule checks), the command was not found (126, 127), or it failed with a connection
+    or missing-file error. The same command line runs once (cached)."""
+    out, cache, probed, words = collections.defaultdict(list), {}, {}, RULES.skip_words(ctx.cfg)
     for x in (ctx.cfg.get("review") or {}).get("extraChecks") or []:
-        cmd = x.get("command")
+        cmd = kitconf.fill_server(x.get("command"), ctx.cfg)   # {server}: kit.config.json > server (env KIT_SERVER)
         if not x.get("name") or not cmd:
             continue
         per_app = any(k in cmd for k in ("{app}", "{path}", "{platform}", "{stack}", "{page}"))
@@ -829,11 +914,30 @@ def run_extra(ctx, apps):
                                  "summary": ["page app: the URL names the app id, which is no page of the site; use {page} (host pages: %s)"
                                              % ", ".join(app_pages(ctx.cfg, aid))]})
                 continue
-            try:
-                r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
-                code, lines = r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()]
-            except subprocess.TimeoutExpired:
-                code, lines = 124, ["timed out"]
+            srv = RULES.needs_server(line)
+            if srv and srv not in probed:
+                probed[srv] = RULES.reachable(*srv)
+            if srv and not probed[srv]:
+                out[aid].append({"name": name, "command": line, "exit": "—", "level": "skipped",
+                                 "summary": ["needs a server at %s:%d, not reachable (start it, then run again)" % srv]})
+                continue
+            if line not in cache:   # the same command line (a project-wide check listed per app) runs once
+                try:
+                    r = subprocess.run(line, shell=True, cwd=ctx.root, capture_output=True, text=True, timeout=int(x.get("timeout", 900)))
+                    cache[line] = (r.returncode, [ln.rstrip() for ln in (r.stdout + "\n" + r.stderr).splitlines() if ln.strip()])
+                except subprocess.TimeoutExpired:
+                    cache[line] = (124, ["timed out"])
+            code, lines = cache[line]
+            why = RULES.skip_line(lines, words) if code in (0, RULES.SKIP_EXIT) else None
+            if code == RULES.SKIP_EXIT or why:
+                out[aid].append({"name": name, "command": line, "exit": code, "level": "skipped",
+                                 "summary": [why or "the check exited %d (does not apply)" % RULES.SKIP_EXIT]})
+                continue
+            if code in (126, 127) or (code and any(NOT_RUN.search(ln) for ln in lines)):   # the command or its target did not run
+                hit = next((ln for ln in lines if NOT_RUN.search(ln)), lines[-1] if lines else "")
+                out[aid].append({"name": name, "command": line, "exit": code, "level": "skipped",
+                                 "summary": ["did not run: " + hit[:200]]})
+                continue
             matched = [ln for ln in lines if re.search(x["parse"], ln)] if x.get("parse") else []
             summary = matched[:6] or lines[-1:]  # parse matched nothing: the last line, as documented
             # with parse, a matched line that counts something (a number other than 0) is a finding even at exit 0
@@ -1017,6 +1121,19 @@ def selftest():
     assert r["local"]["blocks"] == ["Chip list for tags (.x-*)"], r["local"]["blocks"]
     assert r["hard"]["hex"] == 2 and r["tokens"]["embedded"] == 1, (r["hard"]["hex"], r["tokens"])
     assert r["override"]["rules"] == 0, "genericClasses are not overrides"
+    # 0.12.7 (K-R10): a class a script looks up is a hook, not a variant; a token name a script completes is not undefined
+    (web / "hook.js").write_text("el.innerHTML = '<b class=\"acme-btn apr-reset acme-zzz\"></b>';\n"
+                                 "document.querySelector('.apr-reset'); el.style.background = 'var(--acme-bg' + '-' + n + ')';\n"
+                                 "el.style.color = 'var(--acme-b' + n + ')';\n")
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps(dict(dsj, review={})))
+    c2 = Ctx(d)
+    r2 = audit_app(c2, c2.apps()["web"], ds_facts(c2))
+    assert r2["components"]["unknown_modifiers"] == [("acme-btn.acme-zzz", 1)], r2["components"]["unknown_modifiers"]
+    (web / "hook.js").write_text("el.style.background = 'var(--acme-' + n + ')'; el.style.color = 'var(--acme-nope-' + n + ')';\n")
+    r2 = audit_app(ctx, ctx.apps()["web"], ds_facts(ctx))
+    assert r2["undefined_tokens"] == ["--acme-nope-"], r2["undefined_tokens"]
+    (web / "hook.js").unlink()
+    (d / "ds" / "acme" / "ds.json").write_text(json.dumps(dsj))
     assert r["css_lines"] == 3, r["css_lines"]
     ex = run_extra(ctx, ["web"])
     assert ex["web"][0]["command"].endswith(" desktop") and ex["web"][0]["level"] == "pass", ex
@@ -1046,8 +1163,43 @@ def selftest():
     assert r["dsvue"]["used"] == [("AcmeButton", 2), ("AcmeDialog", 1)], r["dsvue"]["used"]
     assert "apps/web/pg/" in report(ctx, r)
     ex = run_extra(ctx, ["pg", "web"])
-    assert ex["pg"][0]["level"] == "skipped" and ex["web"][0]["level"] == "pass", ex
+    assert ex["pg"][0]["level"] == "skipped" and ex["web"][0]["level"] == "skipped", ex
+    assert "not reachable" in ex["web"][0]["summary"][0], "a check whose server is down is Skipped, not a Note (K-R1)"
     assert ex["pg"][1]["command"].endswith(" apps/web/pg/") and ex["web"][1]["command"].endswith(" apps/web/"), ex
+    # 0.12.7: checks that did not run are Skipped (exit 77, SKIP line, command not found, connection refused); the same
+    # command line runs once (K-R1, K-R11)
+    cnt = d / "count.txt"
+    cfgj["review"]["extraChecks"] = [
+        {"name": "Skip77", "command": py + " -c \"import sys; print('nothing to scan'); sys.exit(77)\" {app}"},
+        {"name": "SkipLine", "command": py + " -c \"print('SKIP: no pages')\" {app}"},
+        {"name": "NoCmd", "command": "no-such-command-kit-selftest {app}"},
+        {"name": "Refused", "command": py + " -c \"import sys; print('Error: connect ECONNREFUSED 127.0.0.1:8765'); sys.exit(1)\" {app}"},
+        {"name": "Once", "command": py + " -c \"open(%r, 'a').write('x'); print('ok')\"" % str(cnt)},
+        {"name": "Once again", "command": py + " -c \"open(%r, 'a').write('x'); print('ok')\"" % str(cnt)},
+        {"name": "Srv", "command": py + " -c \"print('ok')\" {server}/apps/{app}/"}]
+    cfgj["server"] = "http://127.0.0.1:9/"
+    (d / "kit.config.json").write_text(json.dumps(cfgj))
+    ctx = Ctx(d)
+    ex = run_extra(ctx, ["web"])
+    lv = {x["name"]: x["level"] for x in ex["web"]}
+    assert lv == {"Skip77": "skipped", "SkipLine": "skipped", "NoCmd": "skipped", "Refused": "skipped", "Srv": "skipped"}, ex
+    assert ex["web"][4]["command"].endswith("http://127.0.0.1:9/apps/web/"), "{server} from kit.config.json > server"
+    assert ex["web"][1]["summary"] == ["no pages"] and "ECONNREFUSED" in ex["web"][3]["summary"][0], ex
+    assert [x["level"] for x in ex[None]] == ["pass", "pass"] and cnt.read_text() == "x", "same command line runs once"
+    # 0.12.7: an alias in a tsconfig of a parent folder (through extends) that points to a re-export file outside the app (K-R3)
+    ws = d / "ws"
+    (ws / "shared").mkdir(parents=True)
+    (ws / "app1" / "src").mkdir(parents=True)
+    (ws / "tsconfig.base.json").write_text('{"compilerOptions": {"paths": {"@ds": ["./shared/ds.ts"], "@ds/*": ["../packages/acme-vue/*"]}}}')
+    (ws / "app1" / "tsconfig.json").write_text('{"extends": "../tsconfig.base.json", "include": ["src/**/*"]}')
+    (ws / "shared" / "ds.ts").write_text('export { default as AcmeButton } from "@ds/AcmeButton.vue"\n')
+    (ws / "app1" / "src" / "Page.vue").write_text('<script setup lang="ts">import { AcmeButton } from "@ds"</script>'
+                                                  '<template><AcmeButton/><AcmeButton/></template>')
+    cfgj["apps"].append({"id": "ws1", "path": "ws/app1", "stack": "vue", "type": "page", "usedBy": ["apps/web/pg/ws1.js"]})
+    (d / "kit.config.json").write_text(json.dumps(cfgj))
+    ctx = Ctx(d)
+    r = audit_app(ctx, ctx.apps()["ws1"], ds_facts(ctx))
+    assert r["dsvue"]["used"] == [("AcmeButton", 2)], r["dsvue"]
     shutil.rmtree(d, ignore_errors=True)
     print("audit_app.py selftest OK")
 

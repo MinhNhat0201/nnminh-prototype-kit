@@ -10,6 +10,9 @@
  *   node audit_components_browser.js roots.json out.json http://localhost:8765/apps/acme-web/#/ [url ...]
  * Options: --width N (viewport width, default 1280), --project DIR (folder with kit.config.json, default cwd).
  * Needs Playwright with Chromium already installed; never runs `playwright install`.
+ * Height is compared only when the DS gives the class its own height: when the DS copy keeps the same height with its
+ * content removed (and has a box: a DS value of 'auto' is never compared). A wrapper or box whose height follows its content (menus, chip rows, logo boxes) is not reported for
+ * height (counted as contentHeight).
  * Limit: the control is cut from its parent, so rules like `.parent .child` and inherited colours can show false
  * differences. Trust a difference only when it repeats on several elements for the same property.
  */
@@ -71,7 +74,7 @@ const PROPS = ['height', 'padding-top', 'padding-right', 'padding-bottom', 'padd
       const seen = new Set();
       for (const root of roots) {
         const els = [...document.querySelectorAll('.' + CSS.escape(root))].filter(e => e.offsetParent && e.getBoundingClientRect().width > 0);
-        const diffs = {}; let n = 0, bad = 0;
+        const diffs = {}; let n = 0, bad = 0, auto = 0;
         for (const el of els) {
           const key = root + '|' + el.className;
           if (seen.has(key) || n >= 6) continue; seen.add(key); n++;
@@ -79,10 +82,17 @@ const PROPS = ['height', 'padding-top', 'padding-right', 'padding-bottom', 'padd
           const holder = doc.createElement('div'); holder.style.cssText = 'padding:8px;width:640px';
           holder.innerHTML = el.outerHTML; doc.body.appendChild(holder);
           const ref = holder.firstElementChild, a = getComputedStyle(el), b = win.getComputedStyle(ref);
-          const d = PROPS.filter(p => a.getPropertyValue(p) !== b.getPropertyValue(p));
+          let d = PROPS.filter(p => a.getPropertyValue(p) !== b.getPropertyValue(p));
+          if (d.includes('height')) {   // height set by the content (a wrapper, a list, a logo box): not a DS value to compare
+            const empty = ref.cloneNode(false); holder.appendChild(empty);
+            const dsH = b.getPropertyValue('height');   // 'auto': the DS copy has no box (display: contents, or hidden there)
+            const fixed = dsH !== 'auto' && win.getComputedStyle(empty).getPropertyValue('height') === dsH;
+            empty.remove();
+            if (!fixed) { d = d.filter(p => p !== 'height'); auto++; }
+          }
           if (d.length) { bad++; d.forEach(p => { (diffs[p] = diffs[p] || []).push([a.getPropertyValue(p), b.getPropertyValue(p)]); }); }
         }
-        if (n) result[root] = { checked: n, differ: bad, props: Object.fromEntries(Object.entries(diffs).map(([k, v]) => [k, { count: v.length, example: v[0] }])) };
+        if (n) result[root] = { checked: n, differ: bad, contentHeight: auto, props: Object.fromEntries(Object.entries(diffs).map(([k, v]) => [k, { count: v.length, example: v[0] }])) };
       }
       fr.remove();
       return result;
