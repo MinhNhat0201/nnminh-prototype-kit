@@ -51,6 +51,7 @@ Frame `Specs` to the right of the Wireflow board, 200px apart: horizontal auto l
 ### 3a. Find library resources (once per work item)
 - One `search_design_system` pass, limited (`includeLibraryKeys`) to the platform library. Collect the components (button, icon, app bar, toast, dialog, sheet, tag, input…) and variables: colour roles (bg, text, icon, stroke), spacing, radius, text styles.
 - Map CSS tokens to Figma variables by role and name: `ds.json > tokens.roles` gives the CSS prefix per role; the variable sits in the collections of `ds.json > figma.collections` with the same path (for example `--acme-text-secondary` → `text/secondary` in the semantic collection). No matching variable: list it under "no token"; never type a number.
+- The full spacing or radius scale: search returns only some steps. Read a whole library collection with `figma.teamLibrary.getVariablesInLibraryCollectionAsync(<variableSetKey>)` (the key is in any search result of that collection), then import the steps you need.
 - Import once per `use_figma` call: `importComponentByKeyAsync` / `importComponentSetByKeyAsync`, `importVariableByKeyAsync`, `importStyleByKeyAsync`. Never copy and detach library components.
 
 ### 3b. Build rules (step 4 checks each)
@@ -74,7 +75,7 @@ Frame `Specs` to the right of the Wireflow board, 200px apart: horizontal auto l
 2. The result has:
    - `pass`;
    - `parity`: screens on the wireflow missing from Specs (`missing`), extra screens (`extra`);
-   - `totals`: frames without auto layout, raw fills, strokes, text, spacing, radius, local variables, variables from other libraries or collections (`foreignVar`), instances not from a library;
+   - `totals`: frames without auto layout, raw fills, strokes, text, spacing, radius, local variables, local text styles (`localStyle`), variables from other libraries or collections (`foreignVar`: colour, spacing, radius and font-size variables are all checked), instances not from a library;
    - `collections`: variable collections used, with library name; `libraryLookup: false` means library names could not be read, so only collection names were checked;
    - `screens[].issues`: issues per screen.
 3. `pass: false`: fix exactly the listed issues and run again, until it passes or only user-accepted items remain (list each). `extra` screens: ask the user.

@@ -47,6 +47,31 @@ def figma_conf(cfg, platform):
     return libs, fg.get('collections') or {}, fg.get('modes') or {}
 
 
+def collection_names(libs, cols):
+    """Allowed collection names: a library's own `collections` (mobile and web libraries often name them
+    differently) win over ds.json > figma.collections. Empty list = collection names are not checked."""
+    names = []
+    for lib in libs:
+        own = lib.get('collections')
+        src = own if own is not None else cols
+        vals = src.values() if isinstance(src, dict) else src
+        names += [v for v in vals if v and v not in names]
+    return names
+
+
+def selftest():
+    web = {'name': 'W', 'platform': 'web', 'collections': {'semantic': 'Themes', 'spacing': 'Space'}}
+    mob = {'name': 'M', 'platform': 'mobile', 'collections': ['Color Mode']}
+    plain = {'name': 'P'}
+    top = {'semantic': 'Semantic', 'spacing': ''}
+    assert collection_names([web], top) == ['Themes', 'Space']
+    assert collection_names([mob], top) == ['Color Mode']
+    assert collection_names([plain], top) == ['Semantic']
+    assert collection_names([web, plain], top) == ['Themes', 'Space', 'Semantic']
+    assert collection_names([plain], {}) == []
+    print('selftest OK')
+
+
 def cmd_libs(a):
     cfg = load()
     libs, cols, modes = figma_conf(cfg, a.platform)
@@ -60,7 +85,7 @@ def cmd_render(a):
         'pageId': a.page_id.replace('-', ':'), 'specsId': a.specs_id.replace('-', ':'),
         'wireflowId': (a.wireflow_id or '').replace('-', ':'),
         'libraries': [l['name'] for l in libs if l.get('name')],
-        'collections': [v for v in cols.values() if v],
+        'collections': collection_names(libs, cols),
         'imageSuffix': list(dict.fromkeys([((cfg.get('figma') or {}).get('imageSuffix')) or IMG_SUFFIX,
                                            t(cfg, 'wireflow.imageSuffix'), IMG_SUFFIX])),
         'exemptPrefix': t(cfg, 'mockup.exemptPrefix'),
@@ -89,6 +114,8 @@ def main():
     r.add_argument('--wireflow-id', default='', help='node id of the Wireflow board (parity check)')
     r.add_argument('--platform', default='', help='only the libraries of this platform')
     r.add_argument('--out', default='', help='file to write (default: print)')
+    if sys.argv[1:] == ['--selftest']:
+        return selftest()
     a = ap.parse_args()
     {'libs': cmd_libs, 'render': cmd_render}[a.cmd](a)
 

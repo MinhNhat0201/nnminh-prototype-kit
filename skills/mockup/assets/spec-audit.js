@@ -1,8 +1,9 @@
 // Mockup audit (READ ONLY). spec_audit.py render fills __CONFIG__ from ds.json > figma and the node ids,
 // then the result is sent verbatim through use_figma.
 // pass = true when the Specs board has every screen of the Wireflow board, every frame with children uses
-// auto layout, every colour, text, spacing and radius is bound to a library variable or style, variables come
-// from the configured libraries and collections, and instances come from a library.
+// auto layout, every colour, text, spacing and radius is bound to a library variable or style, variables (colour,
+// spacing, radius, font size) come from the configured libraries and collections, text styles come from a library,
+// and instances come from a library.
 const CFG = __CONFIG__;
 // CFG: { pageId, specsId, wireflowId, libraries: [names], collections: [names], imageSuffix,
 //        exemptPrefix, iconPrefixes: [..], issueMax }
@@ -45,7 +46,7 @@ async function varInfo(id) {
   return (varCache[id] = { name: v ? v.name : '?', remote: !!(v && v.remote), col, lib });
 }
 const T = { screens: 0, frames: 0, noAutoLayout: 0, absolute: 0, rawFill: 0, rawStroke: 0, rawText: 0, rawSpacing: 0, rawRadius: 0,
-  localVar: 0, foreignVar: 0, instances: 0, instancesLib: 0, localInstances: 0, exempt: 0 };
+  localVar: 0, localStyle: 0, foreignVar: 0, instances: 0, instancesLib: 0, localInstances: 0, exempt: 0 };
 const bound = (n, f) => n.boundVariables && n.boundVariables[f];
 function under(n, stop, test) { let p = n.parent; while (p && p !== stop) { if (test(p)) return true; p = p.parent; } return false; }
 function note(list, msg) { if (list.length < ISSUE_MAX) list.push(msg); }
@@ -98,17 +99,25 @@ for (const scr of specs.children) {
       const isIcon = CFG.iconPrefixes.some(k => n.name.startsWith(k));
       if (kids > 0 && n.layoutMode === 'NONE' && !isIcon) { T.noAutoLayout++; S.noAutoLayout++; note(issues, 'No auto layout: ' + n.name); }
       if (n.layoutMode !== 'NONE') {
+        let rawSp = false;
         for (const f of ['paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom', 'itemSpacing', 'counterAxisSpacing']) {
-          if (typeof n[f] === 'number' && n[f] > 0 && !bound(n, f)) { T.rawSpacing++; S.raw++; note(issues, 'Spacing not bound to a variable ' + f + '=' + n[f] + ': ' + n.name); break; }
+          if (bound(n, f)) { await checkVar(bound(n, f), n, 'Spacing ' + f, issues); continue; }
+          if (!rawSp && typeof n[f] === 'number' && n[f] > 0) { rawSp = true; T.rawSpacing++; S.raw++; note(issues, 'Spacing not bound to a variable ' + f + '=' + n[f] + ': ' + n.name); }
         }
       }
       const rad = typeof n.cornerRadius === 'number' ? n.cornerRadius : n.topLeftRadius;
+      for (const f of ['topLeftRadius', 'cornerRadius']) if (bound(n, f)) { await checkVar(bound(n, f), n, 'Radius', issues); break; }
       if (rad > 0 && !bound(n, 'topLeftRadius') && !bound(n, 'cornerRadius') && !isIcon) { T.rawRadius++; S.raw++; note(issues, 'Radius not bound to a variable ' + rad + ': ' + n.name); }
     }
     if (n !== scr && 'layoutPositioning' in n && n.layoutPositioning === 'ABSOLUTE') T.absolute++;
     if (n.type === 'TEXT') {
       const style = n.textStyleId && n.textStyleId !== figma.mixed && n.textStyleId !== '';
       if (!style && !bound(n, 'fontSize')) { T.rawText++; S.raw++; note(issues, 'Text without a DS text style or font-size variable: ' + n.name); }
+      if (!style && bound(n, 'fontSize')) await checkVar(bound(n, 'fontSize'), n, 'Font size', issues);
+      if (style) {
+        const ts = await figma.getStyleByIdAsync(n.textStyleId);
+        if (ts && !ts.remote) { T.localStyle++; note(issues, 'Text style is local, not from a DS library (' + ts.name + '): ' + n.name); }
+      }
     }
     const rf = await paints(n, 'fills', n.type === 'TEXT' ? 'Text colour' : 'Fill', issues, iconCtx);
     const rs = await paints(n, 'strokes', 'Stroke', issues, iconCtx);
@@ -119,7 +128,7 @@ for (const scr of specs.children) {
 }
 const collections = {};
 for (const k in varCache) { const c = varCache[k]; const key = (c.remote ? 'library: ' + (c.lib || '?') + ' / ' : 'local: ') + c.col; collections[key] = (collections[key] || 0) + 1; }
-const pass = parity.missing.length === 0 && T.noAutoLayout === 0 && T.localVar === 0 && T.foreignVar === 0 && T.localInstances === 0 &&
+const pass = parity.missing.length === 0 && T.noAutoLayout === 0 && T.localVar === 0 && T.localStyle === 0 && T.foreignVar === 0 && T.localInstances === 0 &&
   T.rawFill + T.rawStroke + T.rawText + T.rawSpacing + T.rawRadius === 0;
 return { pass, parity, totals: T, collections, libraryLookup: Object.keys(libOfCollection).length > 0,
   exempt: exempt.slice(0, 40), screens: screens.filter(s => s.issues.length).map(s => ({ name: s.name, id: s.id, issues: s.issues })) };

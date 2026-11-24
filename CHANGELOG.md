@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.6 · 2026-11-24
+From a first `mockup` run on a real project: the audit passed a screen whose spacing variables could have come from any library.
+
+Mockup
+- The audit checks every bound variable, not only colours: padding, gap, radius and font-size variables must come from the configured libraries and collections (`foreignVar`, `localVar`). A text style that is local to the file counts as `localStyle` and fails the check.
+- `ds.json > figma.libraries[].collections` (object or list): collection names for that library when they differ from `figma.collections` (a mobile library often names its collections differently). `spec_audit.py render` uses them; without them the top-level list applies as before.
+- Step 3a: read a whole spacing or radius scale with `figma.teamLibrary.getVariablesInLibraryCollectionAsync`, since search returns only some steps.
+
+Tests: `spec_audit.py --selftest` (collection names per library); `audit_selftest.js` runs the audit on a fake Figma document (spacing and font size from another library, radius bound to a local variable, local text style); both in `tests/e2e.py`.
+
 ## 0.12.5 · 2026-11-24
 Fixes #29–#33, from a project that updated a sent wireflow board and packaged a new version. New behaviour is behind a flag or a new key whose default keeps 0.12.4, except that `update` pairs flow rows by label and screens (before: by position), `images --map` also writes `redraw.js`, and units marked dropped in their status line are archived.
 
