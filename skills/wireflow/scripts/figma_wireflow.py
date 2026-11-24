@@ -12,7 +12,8 @@ Commands:
             <out>/pending.json (imageScreens + nodeIds of their image frames, for upload_assets and upload)
   update    --map <map.json> --spec <dir> --flows <flows.json> --out <dir> [--png <dir>] [--prune] [--app ...]
             compares the board (map.json: mapjs result or an earlier build/update return) with flows.json: new
-            screens, new or relabelled edges, new rows and flows, row labels, flow names. Prints the diff (DIFF lines)
+            screens, new or relabelled edges, new rows and flows, row labels, flow names. Rows pair by label, then by
+            their screen ids, never by position (a row inserted in the middle is drawn there). Prints the diff (DIFF lines)
             and writes <out>/update.js (send verbatim to use_figma), images of the new screens, <out>/plan.json.
             Removed edges, chips, rows and flows are reported and kept, unless --prune. Cards are never deleted:
             with --prune, cards of screens in no flow move to the off-flow section, so links already sent keep working.
@@ -20,9 +21,19 @@ Commands:
             urls.json: {"imageScreens": [...], "urls": [...]} in the order upload_assets returned them; without
             imageScreens, <out>/pending.json (from `images --map`) gives the order.
             POSTs each image to its URL (images never pass through the model context).
-  mapjs     --root <board node id>          prints use_figma code: screen id -> card node, image frame node, flows
+  mapjs     --root <board node id> [--adopt [--suffix " · img" ...]]
+            prints use_figma code: screen id -> card node, image frame node, flows. --adopt first renames the layers
+            of a board built by an older or another template (localized names) to the kit names: image frame = a FRAME
+            filled with an image or named with a known image suffix (own, figma.adoptSuffixes, --suffix, every kit
+            locale's wireflow.imageSuffix), card = its parent, screen id = leading token of the image or card name,
+            board title = first text of the board header (else the largest text). Same map, plus _renamed
+            ([{id, from, to}]) and _skipped (image frames without a screen id). Without --adopt nothing is renamed.
   retitlejs --root <board node id> --title "..."   prints use_figma code: rename the board in place, copy image
             fills to repeated frames of the same screen (node ids stay, links already sent keep working)
+  redrawjs  --map <map.json> --screens <screens.json> (--ids S01,S02 | --changed <changed.json>) [--accent #RRGGBB]
+            prints use_figma code that clears the pins and click rings of those screens' image frames and draws them
+            again from screens.json with the board template's drawing code (after a new image: step 3b). Node ids stay.
+            `images --map` writes the same code to <out>/redraw.js.
   setmap    --config <pkg.json> --json <mapjs result | build/update return> [--file <Figma file link>]
             writes figma_file, figma_board, figma_page, figma (screen id -> card node) into the package config
   --selftest  diff checks, and the generated code run against a small Figma stand-in (figma_mock.js; needs node)
@@ -258,10 +269,41 @@ def kind(it):
     return {'e': 'edge', 'out': 'out-of-scope box', 'chip': 'back chip', 'n': 'screen'}.get(it[0], 'layer')
 
 
+def row_screens(items):
+    return {it[1] for it in items if it[0] in ('n', 'chip')}
+
+
+def pair_rows(old_rows, new_rows):
+    """For each row of flows.json, the index of its row on the board (None = a new row). Never by position: first the
+    same non-empty row label, then the same set of screen ids (screens and back chips), then the board row sharing the
+    most screen ids. Board rows left unpaired are rows flows.json no longer has."""
+    res, used = [None] * len(new_rows), set()
+    for i, r in enumerate(new_rows):
+        lab = r.get('label', '')
+        j = next((j for j, o in enumerate(old_rows) if lab and j not in used and o.get('label', '') == lab), None)
+        if j is not None:
+            res[i] = j
+            used.add(j)
+    for i, r in enumerate(new_rows):
+        s = row_screens(r['items'])
+        j = next((j for j, o in enumerate(old_rows) if s and res[i] is None and j not in used and row_screens(o['items']) == s), None)
+        if j is not None:
+            res[i] = j
+            used.add(j)
+    cand = sorted((-len(row_screens(r['items']) & row_screens(o['items'])), i, j) for i, r in enumerate(new_rows)
+                  for j, o in enumerate(old_rows) if res[i] is None and j not in used)
+    for score, i, j in cand:
+        if score < 0 and res[i] is None and j not in used:
+            res[i] = j
+            used.add(j)
+    return res
+
+
 def plan_update(bm, flows, out_default, prune=False):
     """(data for wireflow-update.js, diff lines, new cards to draw). Pure: works on the map and flows.json only.
 
-    Rows match by position inside a flow; items inside a row by sequence (difflib). Card nodes are reused, and moved
+    Rows of a flow pair by row label, then by their screen ids (pair_rows), never by position: a row inserted in the
+    middle is drawn at its place and the rows after it keep their nodes. Items inside a row match by sequence (difflib). Card nodes are reused, and moved
     when a screen changed place, so their ids and the links to them stay. An edge whose label or flag changed between
     the same neighbours is replaced in place (relabel). Removed items stay on the board unless prune."""
     old_flows = bm.get('_flows') or {}
@@ -280,15 +322,18 @@ def plan_update(bm, flows, out_default, prune=False):
     K = lambda it: key(it, out_default)
     claimed, diff, makes, remove, to_off = set(), [], [], [], []
 
-    # pass 1: rows to compare (flows by id, rows by position); equal items keep their nodes
-    jobs = []
+    # pass 1: rows to compare (flows by id, rows by label and screens: pair_rows); equal items keep their nodes
+    jobs, row_paired = [], {}
     for f in flows['flows']:
         of = old_flows.get(f['id'])
+        pairs = pair_rows(of['rows'], f['rows']) if of else [None] * len(f['rows'])
+        row_paired[f["id"]] = {j for j in pairs if j is not None}
         for ri, r in enumerate(f['rows']):
-            orow = of['rows'][ri] if of and ri < len(of['rows']) else None
+            orow = of['rows'][pairs[ri]] if pairs[ri] is not None else None
+            nxt = next((of['rows'][j] for j in pairs[ri + 1:] if j is not None), None) if of and not orow else None
             jobs.append({'here': f'{f["id"]} row {ri + 1}', 'old': orow, 'olds': orow['items'] if orow else [],
                          'new': r['items'], 'label': r.get('label', ''), 'flow': {'id': of['id']} if of else {'new': f['id']},
-                         'existing_flow': bool(of)})
+                         'existing_flow': bool(of), 'before': (nxt.get('labelId') or nxt['id']) if nxt else ''})
     jobs.append({'here': 'off-flow', 'old': off, 'olds': (off or {}).get('items', []), 'off': True,
                  'new': [['n', i] for i in flows.get('offflow', [])]})
     for j in jobs:
@@ -367,16 +412,17 @@ def plan_update(bm, flows, out_default, prune=False):
     new_ids = {f['id']: f for f in flows['flows']}
     for fid, of in old_flows.items():
         nf = new_ids.get(fid)
-        gone = list(enumerate(of['rows']))[len(nf['rows']):] if nf else list(enumerate(of['rows']))
+        gone = [(ri, r) for ri, r in enumerate(of['rows']) if not nf or ri not in row_paired.get(fid, ())]
         if not gone:
             continue
+        name = lambda ri, r: f'{fid} row {ri + 1}' + (f' "{r["label"]}"' if r.get('label') else '')
         if not prune:
-            diff.append((f'flow {fid}' if not nf else 'rows ' + ', '.join(f'{fid} row {ri + 1}' for ri, _ in gone))
+            diff.append((f'flow {fid}' if not nf else ('row ' if len(gone) == 1 else 'rows ') + ', '.join(name(ri, r) for ri, r in gone))
                         + ' not in flows.json: kept on the board (--prune removes it)')
             continue
         keep_flow = False
         for ri, r in gone:
-            here = f'{fid} row {ri + 1}'
+            here = name(ri, r)
             if any(o[0] == '?' for o in r['items']):
                 diff.append(f'{here} has layers the kit did not make: kept')
                 keep_flow = True
@@ -412,6 +458,8 @@ def plan_update(bm, flows, out_default, prune=False):
         op = {'flow': j['flow'], 'row': j['old']['id'] if j['old'] else '', 'items': j['final']}
         if not j['old']:
             op['label'] = ['', j['label']]
+            if j['before']:
+                op['before'] = j['before']  # drawn above the next row the board already has, not at the end
             if j['existing_flow']:
                 diff.append(f'new row {j["here"]}' + (f' "{j["label"]}"' if j['label'] else ''))
         elif j['old'].get('label', '') != j['label']:
@@ -473,6 +521,36 @@ def images(a):
         pend = {'imageScreens': on, 'nodeIds': [imgs[i] for i in on]}
         json.dump(pend, open(os.path.join(a.out, 'pending.json'), 'w', encoding='utf-8'), indent=1)
         print(f'upload_assets: count {len(on)}, nodeIds {json.dumps(pend["nodeIds"])} (in {os.path.join(a.out, "pending.json")})')
+        if on:
+            code = redraw_code(a, read_map(a.map), by, on)
+            open(os.path.join(a.out, 'redraw.js'), 'w', encoding='utf-8').write(code)
+            print(f'After the upload send {os.path.join(a.out, "redraw.js")} verbatim (use_figma): it redraws pins and click rings.')
+
+
+def redraw_code(a, bm, by, ids):
+    """use_figma code that clears and redraws the pins and click rings of these screens (wireflow-redraw.js)."""
+    cfg = load(require=False, app=getattr(a, 'app', '') or None) or {'language': 'en'}
+    look = argparse.Namespace(accent=getattr(a, 'accent', '') or '#2563EB', width=3200, scale=0.5)
+    return assemble('wireflow-redraw.js', dict(base_data(cfg, look, by, ids, {}), root=bm['_board'], ids=ids))
+
+
+def redrawjs(a):
+    by = load_screens(a.screens)
+    bm = read_map(a.map)
+    if a.changed:
+        ch = read_json(a.changed)
+        ids = list(dict.fromkeys((ch.get('changed') or []) + (ch.get('new') or [])))
+    else:
+        ids = [x.strip() for x in a.ids.split(',') if x.strip()]
+    if not ids:
+        fail('no screens: pass --ids S01,S02 or --changed <changed.json>')
+    bad = [i for i in ids if i not in by]
+    if bad:
+        fail('not in screens.json: ' + ', '.join(bad))
+    off = [i for i in ids if i not in (bm.get('_imgs') or {})]
+    if off:
+        print('// WARNING: not on the board (add them with `update` first): ' + ', '.join(off))
+    print(redraw_code(a, bm, by, [i for i in ids if i not in off]))
 
 
 MAPJS = """const b = await figma.getNodeByIdAsync(%(root)s);
@@ -481,6 +559,24 @@ let p = b; while (p && p.type !== 'PAGE') p = p.parent;
 await figma.setCurrentPageAsync(p);
 %(read)s
 return readBoard(b, p, %(suffix)s);"""
+
+ADOPTJS = """const b = await figma.getNodeByIdAsync(%(root)s);
+if (!b) throw new Error('Board not found: ' + %(root)s);
+let p = b; while (p && p.type !== 'PAGE') p = p.parent;
+await figma.setCurrentPageAsync(p);
+%(read)s
+%(adopt)s
+const SS = %(adopt_suffix)s, A = adoptBoard(b, SS, SS[0]);
+return Object.assign(readBoard(b, p, %(suffix)s), { _renamed: A.renamed, _skipped: A.skipped });"""
+
+
+def adopt_suffixes(cfg, extra=()):
+    """Image-frame name endings mapjs --adopt recognises: the board's own suffixes first, then figma.adoptSuffixes,
+    --suffix values and wireflow.imageSuffix of every kit locale."""
+    loc = sorted((HERE.parents[2] / 'locales').glob('*/wireflow.json'))
+    locs = [json.loads(f.read_text(encoding='utf-8')).get('wireflow.imageSuffix') for f in loc]
+    more = ((cfg or {}).get('figma') or {}).get('adoptSuffixes') or []
+    return list(dict.fromkeys(x for x in suffixes(cfg) + list(more) + list(extra) + locs if x))
 
 RETITLEJS = """const b = await figma.getNodeByIdAsync(%(root)s);
 if (!b) throw new Error('Board not found: ' + %(root)s);
@@ -508,7 +604,11 @@ def js_args(a, **extra):
 
 
 def mapjs_code(a):
-    return MAPJS % dict(js_args(a), read=js('wireflow-read.js'))
+    if not getattr(a, 'adopt', False):
+        return MAPJS % dict(js_args(a), read=js('wireflow-read.js'))
+    cfg = load(require=False) or {'language': 'en'}
+    return ADOPTJS % dict(js_args(a), read=js('wireflow-read.js'), adopt=js('wireflow-adopt.js'),
+                          adopt_suffix=json.dumps(adopt_suffixes(cfg, getattr(a, 'suffix', None) or []), ensure_ascii=False))
 
 
 def mapjs(a):
@@ -614,8 +714,34 @@ def selftest():
         'offflow': ['S09']}
     d, diff, makes = plan_update(bm, same, OUT)
     assert not diff and not d['rows'] and not d['remove'], (diff, d)
+    # issue 30: rows pair by label, then by screens, never by position; a row inserted in the middle shifts nothing
+    bm3 = {'_board': '2:1', '_imgs': {}, '_off': None, '_flows': {'WF-01': {'id': '2:2', 'title': 'WF-01 · A', 'titleId': '2:3', 'rows': [
+        {'id': '2:10', 'label': '', 'labelId': '', 'items': [n('S01', '2:11'), e('Open', '', '2:12'), n('S02', '2:13')]},
+        {'id': '2:20', 'label': 'From S02', 'labelId': '2:21', 'items': [e('Save', '', '2:22'), n('S03', '2:23')]},
+        {'id': '2:30', 'label': 'From S03', 'labelId': '2:31', 'items': [e('Back', '', '2:32'), ['chip', 'S01', '2:33']]}]}}}
+    rows = lambda *rs: {'flows': [{'id': 'WF-01', 'name': 'A', 'rows': list(rs)}]}
+    r1 = {'items': [['n', 'S01'], ['e', 'Open', ''], ['n', 'S02']]}
+    r2 = {'label': 'From S02', 'items': [['e', 'Save', ''], ['n', 'S03']]}
+    r3 = {'label': 'From S03', 'items': [['e', 'Back', ''], ['chip', 'S01']]}
+    mid = {'label': 'From S02, error', 'items': [['e', 'Save', 'u'], ['n', 'S04']]}
+    d, diff, makes = plan_update(bm3, rows(r1, mid, r2, r3), OUT)
+    assert diff == ['added edge "Save" [u] in WF-01 row 2', 'added screen S04 in WF-01 row 2', 'new row WF-01 row 2 "From S02, error"'] and makes == ['S04'], diff
+    assert len(d['rows']) == 1 and d['rows'][0]['row'] == '' and d['rows'][0]['before'] == '2:21' and not d['remove'], d
+    assert pair_rows(bm3['_flows']['WF-01']['rows'], [r3, r1, dict(r2, label='From S02, saved')]) == [2, 0, 1]
+    assert pair_rows(bm3['_flows']['WF-01']['rows'], [dict(r2, label=''), dict(r1, items=r1['items'] + [['e', 'x', ''], ['n', 'S09']])]) == [1, 0]
+    # a row that disappeared is reported (kept, or removed with --prune), never matched to the row that took its place
+    d, diff, _ = plan_update(bm3, rows(r1, r3), OUT)
+    assert diff == ['row WF-01 row 2 "From S02" not in flows.json: kept on the board (--prune removes it)'] and not d['rows'], diff
+    d, diff, _ = plan_update(bm3, rows(r1, r3), OUT, prune=True)
+    assert '2:20' in d['remove'] and '2:21' in d['remove'] and 'removed row WF-01 row 2 "From S02"' in diff, (d, diff)
+    assert 'screen S03 is in no flow: card moved to the off-flow section (was WF-01 row 2 "From S02")' in diff, diff
     selftest_codegen()
     print('figma_wireflow.py selftest OK')
+
+
+def run_code(run, tmp, code):
+    (tmp / 'code-run.js').write_text(code)
+    return run(tmp / 'code-run.js')
 
 
 def selftest_codegen():
@@ -662,6 +788,23 @@ def selftest_codegen():
             images(A(out=str(tmp / 'upd'), map=str(tmp / 'map.json'), screens='S02,S04'))
         pend = json.loads((tmp / 'upd' / 'pending.json').read_text())
         assert pend == {'imageScreens': ['S02'], 'nodeIds': [m['_imgs']['S02']]}, pend
+        # issue 31: a new capture of S02 moved its pin and added one, plus a click ring: redraw.js redraws them in place
+        scr[1]['pins'] = [{'found': True, 'leftPct': 50, 'topPct': 50}, {'found': True, 'leftPct': 80, 'topPct': 20}]
+        scr[1]['exits'] = [{'found': True, 'leftPct': 90, 'topPct': 90}]
+        (spec / 'screens.json').write_text(json.dumps(scr))
+        with contextlib.redirect_stdout(io.StringIO()):
+            images(A(out=str(tmp / 'upd'), map=str(tmp / 'map.json'), screens='S02'))
+        red = run(tmp / 'upd' / 'redraw.js')
+        assert red == {'board': m['_board'], 'frames': {'S02': 1}, 'cleared': 2, 'drawn': 3, 'missing': []}, red
+        doc = json.loads(state.read_text())
+        def find(nd, i):
+            return nd if nd['id'] == i else next((x for c in nd.get('children') or [] for x in [find(c, i)] if x), None)
+        kids = [c['name'] for c in find(doc['root'], m['_imgs']['S02'])['children']]
+        assert kids == ['Pin 1', 'Pin number 1', 'Pin 2', 'Pin number 2', 'Click ring'], kids
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            redrawjs(argparse.Namespace(map=str(tmp / 'map.json'), screens=str(spec / 'screens.json'), ids='S02,S04', changed='', app='', accent='#2563EB'))
+        assert 'not on the board' in buf.getvalue() and '"ids":["S02"]' in buf.getvalue() and 'function drawMarks' in buf.getvalue()
         # K-B3: relabel, new screen after the last card of its row, new row with a chip, new off-flow screen
         fl2 = {'flows': [{'id': 'WF-01', 'name': 'Create', 'rows': [
             {'items': [['n', 'S01'], ['e', 'Close', ''], ['n', 'S02'], ['e', 'Narrow', 'x'], ['n', 'S03']]},
@@ -678,12 +821,52 @@ def selftest_codegen():
         assert rows[0]['items'][3][2] == 'x' and rows[1]['label'] == 'From S03' and rows[1]['items'][0][2] == 'u', rows
         assert [x[1] for x in m2['_off']['items']] == ['S04'], m2['_off']
         (tmp / 'map.json').write_text(json.dumps(u))
+        # issue 30: a row inserted between two rows is drawn there; the rows around it keep their nodes
+        fl3 = dict(fl2, flows=[dict(fl2['flows'][0], rows=[fl2['flows'][0]['rows'][0],
+                                                           {'label': 'From S02', 'items': [['e', 'Help', ''], ['chip', 'S02']]},
+                                                           fl2['flows'][0]['rows'][1]])])
+        (tmp / 'flows.json').write_text(json.dumps(fl3))
+        with contextlib.redirect_stdout(io.StringIO()):
+            update(A(out=str(tmp / 'upd3'), map=str(tmp / 'map.json')))
+        u3 = run(tmp / 'upd3' / 'update.js')
+        r3 = u3['map']['_flows']['WF-01']['rows']
+        assert [r['label'] for r in r3] == ['', 'From S02', 'From S03'] and r3[0]['id'] == rows[0]['id'] and r3[2]['id'] == rows[1]['id'], r3
+        (tmp / 'map.json').write_text(json.dumps(u3))
+        (tmp / 'flows.json').write_text(json.dumps(fl2))
+        with contextlib.redirect_stdout(io.StringIO()):
+            update(A(out=str(tmp / 'upd4'), map=str(tmp / 'map.json'), prune=True))
+        u = run(tmp / 'upd4' / 'update.js')
+        assert [r['label'] for r in u['map']['_flows']['WF-01']['rows']] == ['', 'From S03'], u['map']['_flows']
+        (tmp / 'map.json').write_text(json.dumps(u))
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
             update(A(out=str(tmp / 'upd2'), map=str(tmp / 'map.json')))
         assert 'No change' in buf.getvalue(), buf.getvalue()
         (tmp / 'mapjs.js').write_text(mapjs_code(argparse.Namespace(root=m['_board'])))
         assert run(tmp / 'mapjs.js') == m2, 'mapjs reads the same map as the update return'
+        # issue 29: a board made by another template with localized names; --adopt renames it to the kit names
+        img = lambda i, name, fills=None, kids=(): {'id': i, 'type': 'FRAME', 'name': name, 'fills': fills or [], 'children': list(kids)}
+        foreign = {'seq': 900, 'root': {'id': '0:0', 'type': 'DOCUMENT', 'name': 'Doc', 'children': [{'id': '0:1', 'type': 'PAGE', 'name': 'P', 'children': [
+            img('9:1', 'Luồng cũ', None, [
+                img('9:2', 'Tiêu đề', None, [{'id': '9:3', 'type': 'TEXT', 'name': 'Wireflow v1', 'characters': 'Wireflow v1', 'fontSize': 32},
+                                             {'id': '9:4', 'type': 'TEXT', 'name': 'meta', 'characters': 'meta', 'fontSize': 16}]),
+                img('9:5', 'Hàng', None, [
+                    img('9:6', 'S01 Danh sách', None, [img('9:7', 'S01 · ảnh', None, [{'id': '9:8', 'type': 'ELLIPSE', 'name': 'Ellipse'}])]),
+                    img('9:9', 'S02b · Chi tiết', None, [img('9:10', 'Rectangle 5', [{'type': 'IMAGE', 'scaleMode': 'FILL'}],
+                                                              [img('9:13', 'Avatar', [{'type': 'IMAGE'}])])]),
+                    img('9:11', 'Logo', None, [img('9:12', 'Frame 3', [{'type': 'IMAGE'}])])])])]}]}}
+        state.write_text(json.dumps(foreign))
+        plain = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1')))
+        assert set(k for k in plain if not k.startswith('_')) == set(), plain  # default: nothing renamed, no ' · ảnh' in en
+        ad = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1', adopt=True, suffix=[' (screen)'])))
+        assert ad['S01'] == '9:6' and ad['S02b'] == '9:9' and ad['_imgs'] == {'S01': '9:7', 'S02b': '9:10'}, ad
+        assert {'id': '9:3', 'from': 'Wireflow v1', 'to': 'Board title'} in ad['_renamed'] and ad['_skipped'] == ['Frame 3'], ad
+        assert {(r['id'], r['to']) for r in ad['_renamed']} == {('9:7', 'S01 · image'), ('9:6', 'S01'), ('9:10', 'S02b · image'),
+                                                                ('9:9', 'S02b'), ('9:3', 'Board title')}, ad['_renamed']
+        again = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1')))
+        assert {k: v for k, v in again.items() if k != '_flows'} == {k: v for k, v in ad.items() if k not in ('_flows', '_renamed', '_skipped')}, again
+        rt = run_code(run, tmp, RETITLEJS % js_args(argparse.Namespace(root='9:1'), title='Wireflow v2'))
+        assert rt['titleText'] is True and rt['_imgs'] == ad['_imgs'], rt
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -692,7 +875,7 @@ def main():
     if '--selftest' in sys.argv:
         selftest()
         return
-    ap = argparse.ArgumentParser(description='Wireflow board for Figma. Commands: build, images, update, upload, mapjs, retitlejs, setmap.',
+    ap = argparse.ArgumentParser(description='Wireflow board for Figma. Commands: build, images, update, upload, mapjs, retitlejs, redrawjs, setmap.',
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     sub = ap.add_subparsers(dest='cmd', required=True)
 
@@ -723,7 +906,8 @@ def main():
     common(im)
     im.add_argument('--screens', default='', help='comma-separated screen ids (default: every screen)')
     im.add_argument('--changed', default='', help="changed.json of handoff's pkg.py capture: its changed and new screens")
-    im.add_argument('--map', default='', help='map.json: also write pending.json with the image frame ids for upload_assets')
+    im.add_argument('--map', default='', help='map.json: also write pending.json (image frame ids for upload_assets) and redraw.js')
+    im.add_argument('--accent', default='#2563EB', help='accent colour of pins and rings in redraw.js (#RRGGBB), as at the build')
     up = sub.add_parser('update', help='diff the board with flows.json and write update.js (new screens, edges, labels)')
     common(up)
     up.add_argument('--map', required=True, help='map.json (mapjs result, or a build/update return value)')
@@ -736,16 +920,27 @@ def main():
     u.add_argument('--urls', required=True)
     m = sub.add_parser('mapjs', help='print use_figma code that reads screen cards, image frames and flows of a board')
     m.add_argument('--root', required=True, help='board node id (123:456 or 123-456)')
+    m.add_argument('--adopt', action='store_true', help='first rename the layers of a board made by an older or another '
+                                                        'template to the kit names (returns _renamed)')
+    m.add_argument('--suffix', action='append', default=[], help='with --adopt: another image-frame name ending (repeatable; '
+                                                                 'kit.config.json > figma.adoptSuffixes adds more)')
     rt = sub.add_parser('retitlejs', help='print use_figma code that renames a board in place and syncs repeated images')
     rt.add_argument('--root', required=True)
     rt.add_argument('--title', required=True)
+    rd = sub.add_parser('redrawjs', help='print use_figma code that redraws pins and click rings of replaced screen images')
+    rd.add_argument('--map', required=True, help='map.json (mapjs result, or a build/update return value)')
+    rd.add_argument('--screens', required=True, help='screens.json of the new capture (pins, exits)')
+    rd.add_argument('--ids', default='', help='comma-separated screen ids')
+    rd.add_argument('--changed', default='', help="changed.json of handoff's pkg.py capture: its changed and new screens")
+    rd.add_argument('--app', default='', help='app id from kit.config.json > apps')
+    rd.add_argument('--accent', default='#2563EB', help='accent colour of pins and rings (#RRGGBB), as at the build')
     sm = sub.add_parser('setmap', help='write the board map into the package config (pkg.json)')
     sm.add_argument('--config', required=True)
     sm.add_argument('--json', required=True, help='mapjs result or build/update return value')
     sm.add_argument('--file', default='', help='Figma file link')
     a = ap.parse_args()
     {'build': build, 'images': images, 'update': update, 'upload': upload, 'mapjs': mapjs, 'retitlejs': retitlejs,
-     'setmap': setmap}[a.cmd](a)
+     'setmap': setmap, 'redrawjs': redrawjs}[a.cmd](a)
 
 
 if __name__ == '__main__':

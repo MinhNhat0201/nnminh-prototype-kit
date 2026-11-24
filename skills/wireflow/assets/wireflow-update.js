@@ -1,8 +1,9 @@
 // Updates a wireflow board in place (figma_wireflow.py update). Card and image frame node ids stay, so links already
 // sent keep working. Python computes every change; this code only applies it:
 //   D.newFlows [[flow, after]]   new flow frames (after = {id} existing node or {new} flow id, null = after the header)
-//   D.rows [{flow, row, off, label, items}]  final order of each changed row: ['id', node id] keeps or moves a node,
-//                                ['make', item] draws a new one; row '' = new row (off = the off-flow section)
+//   D.rows [{flow, row, off, label, items, before}]  final order of each changed row: ['id', node id] keeps or moves a
+//                                node, ['make', item] draws a new one; row '' = new row (off = the off-flow section),
+//                                drawn above the node `before` (label or row of the next row the board has), else last
 //   D.remove [node ids]          removed after the moves (--prune, replaced edges, relabelled rows)
 //   D.titles [[text node id, text]]  flow header text changes
 // Returns `map` (same shape as the mapjs result) and imageNodeIds / imageScreens of the new cards for upload_assets.
@@ -22,7 +23,7 @@ for (const [f, after] of D.newFlows) {
 }
 for (const r of D.rows) {
   const f = r.off ? null : r.flow.new ? fl[r.flow.new] : await node(r.flow.id);
-  const row = r.row ? await node(r.row) : r.off ? offSection(b) : addRow(f, r.label ? r.label[1] : '');
+  const row = r.row ? await node(r.row) : r.off ? offSection(b) : addRow(f, r.label ? r.label[1] : '', r.before ? await node(r.before) : null);
   if (r.row && r.label) { const [lid, text] = r.label;
     if (lid) { const t = await node(lid); if (text) { await figma.loadFontAsync(t.fontName); t.characters = text; } else t.remove(); }
     else if (text) f.insertChild(f.children.indexOf(row), rowLabel(text)); }

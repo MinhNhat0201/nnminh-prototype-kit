@@ -40,7 +40,8 @@ Commands:
       2b. Only the sentence of a line that points at screen images becomes the locale sentence; the rest stays.
       2c. Refresh the Figma links of spec/*.md from pkg.json > figma: the "Figma:" line of each "### Sxx" screen and the
           Figma column of tables whose first column is a screen code (index.md "Screens").
-      3. Move replaced or removed units to spec/archive.md and fix links (an older name from handoff.specFiles.legacy
+      3. Move replaced or dropped units (pkg.json > archive, or a status word in index.md or the unit's status line:
+         references/package-layout.md) to spec/archive.md and fix links (an older name from handoff.specFiles.legacy
          when the package already has that file or README/AGENTS/changelog point at it).
       4. Keep only pkg.json > changelog_keep versions (default 2) in requirements/changelog.md.
       5. Write AGENTS.md: reading path per role (BA, QC, Dev, wireflow), code conventions, grep labels. The Dev path and
@@ -786,16 +787,13 @@ def archive(cfg, pkg, pc):
     idx_p = spec / "index.md"
     if not idx_p.exists():
         return []
-    idx = idx_p.read_text(encoding="utf-8")
-    ids = set(pc.get("archive") or [])
-    status = "|".join(sorted({t(cfg, "handoff.archive.status"), t("en", "handoff.archive.status")}))
-    rx = r"^\|\s*([A-Z]+\d+)\s*\|[^\n]*?\|\s*(?:%s)[^|]*\|\s*\[\1\]\(\1\.md\)\s*\|\s*$" % status
-    for m in re.finditer(rx, idx, re.M):
-        ids.add(m.group(1))
+    # pkg.json > archive, plus units marked replaced or dropped (status cell in index.md or status line of the unit,
+    # words of handoff.archive.status in the project language or English: kitconf.dropped_units)
+    ids = set(pc.get("archive") or []) | set(kitconf.dropped_units(cfg, spec))
     ids = sorted(i for i in ids if (spec / f"{i}.md").exists())
     arc_name = special_name(cfg, pkg, "archive")
     arc = spec / arc_name
-    before = re.findall(r'<a id="([a-z]+\d+)"></a>', arc.read_text(encoding="utf-8")) if arc.exists() else []
+    before = re.findall(r'<a id="([a-z][a-z0-9-]*)"></a>', arc.read_text(encoding="utf-8")) if arc.exists() else []
     if not ids:
         return [x.upper() for x in before]
     if before:  # add to the archive of an earlier run
@@ -812,7 +810,7 @@ def archive(cfg, pkg, pc):
         if not p.exists():
             continue
         s = p.read_text(encoding="utf-8")
-        s2 = re.sub(r"\]\(((?:\./|spec/)?)(%s)\.md\)" % "|".join(ids),
+        s2 = re.sub(r"\]\(((?:\./|spec/)?)(%s)\.md\)" % "|".join(map(re.escape, ids)),
                     lambda m: f"]({m.group(1)}{arc_name}#{m.group(2).lower()})", s)
         if s2 != s:
             p.write_text(s2, encoding="utf-8")
@@ -1220,6 +1218,18 @@ def selftest():
     (pkg / "spec" / "old-cross.md").write_text("# cross\n")
     (pkg / "README.md").write_text("See `spec/luu-tru.md`.\n")
     assert special_name(cfg, pkg, "crossPage") == "old-cross.md" and special_name(cfg, pkg, "archive") == "luu-tru.md"
+    # issue 33: a unit whose status line says it was dropped (project language or English, hyphenated codes) is archived
+    (pkg / "spec" / "index.md").write_text("| Code | Title | Screens | File |\n|---|---|---|---|\n| FR-09 | A | S01 | [FR-09](FR-09.md) |\n"
+                                           "| FR-10 | B | — | [FR-10](FR-10.md) |\n| FR-11 | C | — | [FR-11](FR-11.md) |\n", encoding="utf-8")
+    (pkg / "spec" / "FR-09.md").write_text("# FR-09 · A\nTrạng thái: Đang dùng\nSee [FR-10](FR-10.md).\n", encoding="utf-8")
+    (pkg / "spec" / "FR-10.md").write_text("# FR-10 · B\nTrạng thái: Bỏ ở 1.5.0\n\n## Rules\n1. x\n", encoding="utf-8")
+    (pkg / "spec" / "FR-11.md").write_text("# FR-11 · C\nStatus: Dropped in 1.5.0\n", encoding="utf-8")
+    assert archive(dict(cfg, language="vi"), pkg, {}) == ["FR-10", "FR-11"]
+    arc = (pkg / "spec" / "luu-tru.md").read_text(encoding="utf-8")
+    assert '<a id="fr-10"></a>\n## FR-10 · B' in arc and "### Rules" in arc and not (pkg / "spec" / "FR-10.md").exists(), arc
+    assert "[FR-10](luu-tru.md#fr-10)" in (pkg / "spec" / "index.md").read_text() and \
+        "[FR-10](luu-tru.md#fr-10)" in (pkg / "spec" / "FR-09.md").read_text(encoding="utf-8")
+    assert archive(dict(cfg, language="vi"), pkg, {}) == ["FR-10", "FR-11"], "a later run keeps the earlier entries"
     shutil.rmtree(d, ignore_errors=True)
     # 0.10: route keeps the query of the last goto; pkg.json > csv; grep labels; proto copy; baseline comparison
     assert last_query([{"goto": "index.html"}, {"goto": "index.html?demo=1#/x"}, {"click": "#a"}]) == "?demo=1"

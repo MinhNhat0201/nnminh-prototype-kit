@@ -115,6 +115,7 @@ screens/screens.json requirements/flows.json requirements/spec-map.json
 ```
 
 `cross-page.md` and `archive.md` are the default names; a project may rename them in `kit.config.json > handoff.specFiles` (`crossPage`, `archive`; `legacy` lists older names still read as special files, never as units).
+A unit replaced or dropped in a version keeps its file until the handoff archives it: mark it with the status line `Status: Dropped in 1.5.0` (wording in `handoff`'s [package-layout.md](../handoff/references/package-layout.md#replaced-or-dropped-units)). `spec_md.py check` warns while such a unit is still a unit file.
 
 - `ds` in the frontmatter is the DS version label (`ds.json > version_label`) of the version you read.
 - Pin code `S01-2` = screen and pin number in screens.json (same number as on the viewer image).

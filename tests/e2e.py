@@ -431,6 +431,10 @@ def main():
     ix = pkg / "spec/index.md"
     ix.write_text(ix.read_text().replace("## Not matched", "## Screens\n\n| Code | Name | Page · route | Figma | Spec |\n|---|---|---|---|---|\n"
                                          "| S01 | Home | `index.html#/` | — | FR01 |\n\n## Not matched"))
+    # issue 33: a unit dropped in this version (status line in English) is archived by finalize
+    write(pkg / "spec/FR-03.md", "# FR-03 · Bulk edit\nStatus: Dropped in 1.0.0\n\n## Business rules\n1. **FR-03.1** Edit many.\n")
+    ix.write_text(ix.read_text().replace("| FR02 | More | Active | [FR02](FR02.md) |\n",
+                                         "| FR02 | More | Active | [FR02](FR02.md) |\n| FR-03 | Bulk edit | — | [FR-03](FR-03.md) |\n"))
     write(pkg / "spec/old-archive.md", "# Old archive (legacy name)\n")
     write(pkg / "spec/old-cross.md", "# Cross-page contract (legacy name)\n")
     write(pkg / "spec/flows.md", "# Wireflow\n\nEach step: screen → action → screen. Images are in `screens/<id>.webp`. "
@@ -469,6 +473,9 @@ def main():
     check("screens/<id>.webp" not in fl and "Each step: screen → action → screen. " in fl and "Spec in [index](index.md)." in fl,
           "finalize: only the image sentence replaced in flows.md (K-2)", fl)
     check("spec/old-cross.md" in agents, "AGENTS: Dev path points at the legacy cross-page file (K-3)", agents)
+    oa, ixs = (pkg / "spec/old-archive.md").read_text(), (pkg / "spec/index.md").read_text()
+    check(not (pkg / "spec/FR-03.md").exists() and '<a id="fr-03"></a>' in oa and "[FR-03](old-archive.md#fr-03)" in ixs
+          and "FR-03" in agents and "looks dropped" not in out, "finalize: a unit marked dropped is moved to the archive file (#33)", oa + ixs + out)
     fr2, ixs = (pkg / "spec/FR02.md").read_text(), (pkg / "spec/index.md").read_text()
     check("Figma: [S02](https://www.figma.com/design/TESTKEY/acme-test?node-id=1-3)" in fr2 and "none yet" not in fr2
           and "| S01 | Home | `index.html#/` | [Figma](https://www.figma.com/design/TESTKEY/acme-test?node-id=1-2) | FR01 |" in ixs,
@@ -580,6 +587,17 @@ def main():
     out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
                "--page-root", "prototype"], d)
     check("/apps/acme-web/settings/#/" in out, "demo links keep the page folder", out)
+    # issue 32: fill --manifest reads the capture manifest as a JS module (as capture.js does) and as JSON
+    man_js = d / "manifest-links.js"
+    write(man_js, "module.exports = { screens: [{ id: 'S03', steps: [{ goto: 'settings/index.html#/' }, { click: '#open' }] }] };\n")
+    write(fl, json.dumps({"flows": [{"id": "WF-01", "rows": [{"items": [["n", "S03"]]}]}]}))
+    out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
+               "--page-root", "prototype", "--manifest", man_js, "--no-md"], d)
+    check("REMINDER: WF-01: first screen S03 needs 2 step(s)" in out, "demo_links fill --manifest takes the JS capture manifest (#32)", out)
+    write(d / "manifest-links.json", json.dumps({"screens": [{"id": "S03", "steps": [{"click": "#open"}]}]}))
+    out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
+               "--manifest", d / "manifest-links.json", "--no-md", "--dry-run"], d)
+    check("needs 1 step(s)" in out, "demo_links fill --manifest still takes JSON (#32)", out)
 
     # ---------- 0.10 ----------
     # rules: skipped checks (server down, exit 77, SKIP line), activity groups, rules.from inheritance, import-md --layer ds

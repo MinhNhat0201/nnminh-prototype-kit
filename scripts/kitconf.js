@@ -20,7 +20,7 @@ const DEFAULTS = {
   prototype: { post: null },
   define: { messageCalls: ['toast', 'showToast', 'alert', 'confirm', 'prompt', 'notify', 'snackbar', 'showError', 'showMessage',
     'setCustomValidity'], storageCalls: [], storagePrefix: null },
-  figma: { imageSuffix: null },
+  figma: { imageSuffix: null, adoptSuffixes: [] },
   validate: { touchTarget: { default: 44, desktop: 24 }, axePath: null, setTheme: null, contentRoot: 'main, #app, [role=main]' },
   skills: {},
   rules: { categories: {} },
