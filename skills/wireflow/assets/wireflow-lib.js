@@ -37,6 +37,24 @@ async function linkButton(label, url, name, big) {
 
 const imageNodeIds = [], imageScreens = [], made = {};
 let edges = 0;
+// pins (numbered dots) and click rings of one screen inside its image frame; also used by the redraw code
+// (figma_wireflow.py redrawjs) after an image is replaced, so both draw the same marks. Returns the number of marks.
+function clearMarks(img) { let k = 0;
+  for (const c of [...img.children]) if (c.type === 'ELLIPSE' || c.type === 'TEXT' || /^(Pin|Click ring)/.test(c.name)) { c.remove(); k++; }
+  return k; }
+function drawMarks(img, s, w, h) {
+  let k = 0;
+  (s[5] || []).forEach((p, i) => { if (!p) return; // keep pin numbers; 0 = pin not found or outside the capture
+    const dot = figma.createEllipse(); dot.name = 'Pin ' + (i + 1); dot.resize(22, 22); dot.fills = solid(C.accent); dot.strokes = solid(C.white); dot.strokeWeight = 2;
+    dot.x = w * p[0] / 100 - 11; dot.y = h * p[1] / 100 - 11; img.appendChild(dot);
+    const n = txt(String(i + 1), 11, true, C.white); n.name = 'Pin number ' + (i + 1); n.x = dot.x + 11 - n.width / 2; n.y = dot.y + 11 - n.height / 2; img.appendChild(n);
+    k++;
+  });
+  const exits = !s[6] ? [] : Array.isArray(s[6][0]) ? s[6] : [s[6]];
+  for (const q of exits) { const r = figma.createEllipse(); r.name = 'Click ring'; r.resize(28, 28); r.fills = []; r.strokes = solid(C.accent); r.strokeWeight = 3;
+    r.x = w * q[0] / 100 - 14; r.y = h * q[1] / 100 - 14; img.appendChild(r); k++; }
+  return k;
+}
 function screenNode(id) {
   const s = D.screens[id]; // [name, file#route, width, height, unit, pins[[left%,top%] | 0], exits [[left%,top%]…] | 0]
   const w = Math.round(s[2] * S), h = Math.round(s[3] * S);
@@ -45,14 +63,7 @@ function screenNode(id) {
   img.name = id + IMG; img.resize(w, h); img.clipsContent = true; img.cornerRadius = 8;
   img.fills = solid(C.surface); img.strokes = solid(C.line); img.strokeWeight = 1;
   if (!made[id]) { imageNodeIds.push(img.id); imageScreens.push(id); made[id] = img.id; }
-  (s[5] || []).forEach((p, i) => { if (!p) return; // keep pin numbers; 0 = pin not found or outside the capture
-    const dot = figma.createEllipse(); dot.resize(22, 22); dot.fills = solid(C.accent); dot.strokes = solid(C.white); dot.strokeWeight = 2;
-    dot.x = w * p[0] / 100 - 11; dot.y = h * p[1] / 100 - 11; img.appendChild(dot);
-    const n = txt(String(i + 1), 11, true, C.white); n.x = dot.x + 11 - n.width / 2; n.y = dot.y + 11 - n.height / 2; img.appendChild(n);
-  });
-  const exits = !s[6] ? [] : Array.isArray(s[6][0]) ? s[6] : [s[6]];
-  for (const q of exits) { const r = figma.createEllipse(); r.resize(28, 28); r.fills = []; r.strokes = solid(C.accent); r.strokeWeight = 3;
-    r.x = w * q[0] / 100 - 14; r.y = h * q[1] / 100 - 14; img.appendChild(r); }
+  drawMarks(img, s, w, h);
   card.appendChild(img);
   add(card, txt(id + ' · ' + s[0], 14, true, C.text, w));
   add(card, txt([s[4], s[1]].filter(Boolean).join(' · '), 12, false, C.sub, w));

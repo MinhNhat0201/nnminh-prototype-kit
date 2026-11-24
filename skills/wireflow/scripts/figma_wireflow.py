@@ -24,6 +24,10 @@ Commands:
   mapjs     --root <board node id>          prints use_figma code: screen id -> card node, image frame node, flows
   retitlejs --root <board node id> --title "..."   prints use_figma code: rename the board in place, copy image
             fills to repeated frames of the same screen (node ids stay, links already sent keep working)
+  redrawjs  --map <map.json> --screens <screens.json> (--ids S01,S02 | --changed <changed.json>) [--accent #RRGGBB]
+            prints use_figma code that clears the pins and click rings of those screens' image frames and draws them
+            again from screens.json with the board template's drawing code (after a new image: step 3b). Node ids stay.
+            `images --map` writes the same code to <out>/redraw.js.
   setmap    --config <pkg.json> --json <mapjs result | build/update return> [--file <Figma file link>]
             writes figma_file, figma_board, figma_page, figma (screen id -> card node) into the package config
   --selftest  diff checks, and the generated code run against a small Figma stand-in (figma_mock.js; needs node)
@@ -511,6 +515,36 @@ def images(a):
         pend = {'imageScreens': on, 'nodeIds': [imgs[i] for i in on]}
         json.dump(pend, open(os.path.join(a.out, 'pending.json'), 'w', encoding='utf-8'), indent=1)
         print(f'upload_assets: count {len(on)}, nodeIds {json.dumps(pend["nodeIds"])} (in {os.path.join(a.out, "pending.json")})')
+        if on:
+            code = redraw_code(a, read_map(a.map), by, on)
+            open(os.path.join(a.out, 'redraw.js'), 'w', encoding='utf-8').write(code)
+            print(f'After the upload send {os.path.join(a.out, "redraw.js")} verbatim (use_figma): it redraws pins and click rings.')
+
+
+def redraw_code(a, bm, by, ids):
+    """use_figma code that clears and redraws the pins and click rings of these screens (wireflow-redraw.js)."""
+    cfg = load(require=False, app=getattr(a, 'app', '') or None) or {'language': 'en'}
+    look = argparse.Namespace(accent=getattr(a, 'accent', '') or '#2563EB', width=3200, scale=0.5)
+    return assemble('wireflow-redraw.js', dict(base_data(cfg, look, by, ids, {}), root=bm['_board'], ids=ids))
+
+
+def redrawjs(a):
+    by = load_screens(a.screens)
+    bm = read_map(a.map)
+    if a.changed:
+        ch = read_json(a.changed)
+        ids = list(dict.fromkeys((ch.get('changed') or []) + (ch.get('new') or [])))
+    else:
+        ids = [x.strip() for x in a.ids.split(',') if x.strip()]
+    if not ids:
+        fail('no screens: pass --ids S01,S02 or --changed <changed.json>')
+    bad = [i for i in ids if i not in by]
+    if bad:
+        fail('not in screens.json: ' + ', '.join(bad))
+    off = [i for i in ids if i not in (bm.get('_imgs') or {})]
+    if off:
+        print('// WARNING: not on the board (add them with `update` first): ' + ', '.join(off))
+    print(redraw_code(a, bm, by, [i for i in ids if i not in off]))
 
 
 MAPJS = """const b = await figma.getNodeByIdAsync(%(root)s);
@@ -721,6 +755,23 @@ def selftest_codegen():
             images(A(out=str(tmp / 'upd'), map=str(tmp / 'map.json'), screens='S02,S04'))
         pend = json.loads((tmp / 'upd' / 'pending.json').read_text())
         assert pend == {'imageScreens': ['S02'], 'nodeIds': [m['_imgs']['S02']]}, pend
+        # issue 31: a new capture of S02 moved its pin and added one, plus a click ring: redraw.js redraws them in place
+        scr[1]['pins'] = [{'found': True, 'leftPct': 50, 'topPct': 50}, {'found': True, 'leftPct': 80, 'topPct': 20}]
+        scr[1]['exits'] = [{'found': True, 'leftPct': 90, 'topPct': 90}]
+        (spec / 'screens.json').write_text(json.dumps(scr))
+        with contextlib.redirect_stdout(io.StringIO()):
+            images(A(out=str(tmp / 'upd'), map=str(tmp / 'map.json'), screens='S02'))
+        red = run(tmp / 'upd' / 'redraw.js')
+        assert red == {'board': m['_board'], 'frames': {'S02': 1}, 'cleared': 2, 'drawn': 3, 'missing': []}, red
+        doc = json.loads(state.read_text())
+        def find(nd, i):
+            return nd if nd['id'] == i else next((x for c in nd.get('children') or [] for x in [find(c, i)] if x), None)
+        kids = [c['name'] for c in find(doc['root'], m['_imgs']['S02'])['children']]
+        assert kids == ['Pin 1', 'Pin number 1', 'Pin 2', 'Pin number 2', 'Click ring'], kids
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            redrawjs(argparse.Namespace(map=str(tmp / 'map.json'), screens=str(spec / 'screens.json'), ids='S02,S04', changed='', app='', accent='#2563EB'))
+        assert 'not on the board' in buf.getvalue() and '"ids":["S02"]' in buf.getvalue() and 'function drawMarks' in buf.getvalue()
         # K-B3: relabel, new screen after the last card of its row, new row with a chip, new off-flow screen
         fl2 = {'flows': [{'id': 'WF-01', 'name': 'Create', 'rows': [
             {'items': [['n', 'S01'], ['e', 'Close', ''], ['n', 'S02'], ['e', 'Narrow', 'x'], ['n', 'S03']]},
@@ -768,7 +819,7 @@ def main():
     if '--selftest' in sys.argv:
         selftest()
         return
-    ap = argparse.ArgumentParser(description='Wireflow board for Figma. Commands: build, images, update, upload, mapjs, retitlejs, setmap.',
+    ap = argparse.ArgumentParser(description='Wireflow board for Figma. Commands: build, images, update, upload, mapjs, retitlejs, redrawjs, setmap.',
                                  formatter_class=argparse.RawDescriptionHelpFormatter, epilog=__doc__)
     sub = ap.add_subparsers(dest='cmd', required=True)
 
@@ -799,7 +850,8 @@ def main():
     common(im)
     im.add_argument('--screens', default='', help='comma-separated screen ids (default: every screen)')
     im.add_argument('--changed', default='', help="changed.json of handoff's pkg.py capture: its changed and new screens")
-    im.add_argument('--map', default='', help='map.json: also write pending.json with the image frame ids for upload_assets')
+    im.add_argument('--map', default='', help='map.json: also write pending.json (image frame ids for upload_assets) and redraw.js')
+    im.add_argument('--accent', default='#2563EB', help='accent colour of pins and rings in redraw.js (#RRGGBB), as at the build')
     up = sub.add_parser('update', help='diff the board with flows.json and write update.js (new screens, edges, labels)')
     common(up)
     up.add_argument('--map', required=True, help='map.json (mapjs result, or a build/update return value)')
@@ -815,13 +867,20 @@ def main():
     rt = sub.add_parser('retitlejs', help='print use_figma code that renames a board in place and syncs repeated images')
     rt.add_argument('--root', required=True)
     rt.add_argument('--title', required=True)
+    rd = sub.add_parser('redrawjs', help='print use_figma code that redraws pins and click rings of replaced screen images')
+    rd.add_argument('--map', required=True, help='map.json (mapjs result, or a build/update return value)')
+    rd.add_argument('--screens', required=True, help='screens.json of the new capture (pins, exits)')
+    rd.add_argument('--ids', default='', help='comma-separated screen ids')
+    rd.add_argument('--changed', default='', help="changed.json of handoff's pkg.py capture: its changed and new screens")
+    rd.add_argument('--app', default='', help='app id from kit.config.json > apps')
+    rd.add_argument('--accent', default='#2563EB', help='accent colour of pins and rings (#RRGGBB), as at the build')
     sm = sub.add_parser('setmap', help='write the board map into the package config (pkg.json)')
     sm.add_argument('--config', required=True)
     sm.add_argument('--json', required=True, help='mapjs result or build/update return value')
     sm.add_argument('--file', default='', help='Figma file link')
     a = ap.parse_args()
     {'build': build, 'images': images, 'update': update, 'upload': upload, 'mapjs': mapjs, 'retitlejs': retitlejs,
-     'setmap': setmap}[a.cmd](a)
+     'setmap': setmap, 'redrawjs': redrawjs}[a.cmd](a)
 
 
 if __name__ == '__main__':
