@@ -45,6 +45,8 @@ SELFTESTS = [
     [PY, S / "document/scripts/catalog.py", "--selftest"],
     [PY, S / "define/scripts/extract_rules.py", "--selftest"],
     ["node", S / "annotate/scripts/capture.js", "--selftest"],
+    [PY, S / "mockup/scripts/spec_audit.py", "--selftest"],
+    ["node", S / "mockup/scripts/audit_selftest.js"],
 ]
 OK = []
 
