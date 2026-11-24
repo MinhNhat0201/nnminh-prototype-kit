@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.12.5 · 2026-11-24
+Fixes #29–#33, from a project that updated a sent wireflow board and packaged a new version. New behaviour is behind a flag or a new key whose default keeps 0.12.4, except that `update` pairs flow rows by label and screens (before: by position), `images --map` also writes `redraw.js`, and units marked dropped in their status line are archived.
+
+Wireflow
+- `mapjs --adopt` (#29): on a board made by an older or another template (localized layer names), renames in the same `use_figma` call the image frames (a frame filled with an image, or named with a known image suffix: every kit locale's `wireflow.imageSuffix`, `figma.imageSuffix`, the new `figma.adoptSuffixes`, `--suffix`), their cards (the parent; screen id = leading token of the image or card name, such as `S01`, `S10b`) and the board title (first text of the board header, else the largest text) to the kit names, then returns the usual map plus `_renamed` (`{id, from, to}`) and `_skipped`. Underscore keys, so `setmap` does not take them for screens. Without `--adopt` nothing is renamed.
+- `update` (#30): rows of a flow pair with the board by row label, then by the set of screen ids in the row, then by the most shared screens, never by position. A row inserted in the middle is drawn above the next row the board has, and the rows after it keep their nodes; a board row with no partner is reported (`DIFF row … not in flows.json`) and kept, or removed with `--prune`.
+- Pins and click rings after a new image (#31): drawn by `drawMarks` in `wireflow-lib.js`, shared by the board template and the new `wireflow-redraw.js`. `images --map` writes `<out>/redraw.js` next to `pending.json`; `redrawjs --map <map.json> --screens <screens.json> --ids S01,S02` (or `--changed`) prints the same code. It clears the marks inside each image frame of those screens (repeated frames too) and draws them from the new `screens.json`; node ids stay. New pins and rings are named `Pin <n>`, `Pin number <n>`, `Click ring`.
+- `demo_links.py fill --manifest` (#32) takes the capture manifest as `capture.js` does: a CommonJS `manifest.js` (loaded with node, data only) or JSON.
+
+Handoff and annotate
+- Archive (#33): `pkg.py finalize` also archives a unit whose status line near the top of `spec/<code>.md` starts with a status word (`Status: Dropped in 1.5.0`, Vietnamese `Trạng thái: Bỏ ở 1.5.0`; label `handoff.archive.statusLabel`, words `handoff.archive.status` of the project language, English always read; English adds `Dropped`, `Dropped in`), and hyphenated codes (`FR-10`) in the index row or the status line; before, only a status cell of `spec/index.md` with plain codes (`FR01`) was read. `spec_md.py check` warns about a marked unit that is still a unit file. Wording in `skills/handoff/references/package-layout.md` ("Replaced or dropped units").
+
+Config
+- `figma.adoptSuffixes` (default `[]`): more image-frame name endings for `mapjs --adopt`; `kitconf.py check` reports a value that is not a list of strings.
+
+Tests: `figma_wireflow.py --selftest` (adopt on a foreign board, row pairing with an inserted and a removed row, redraw, all run against the Figma stand-in), `demo_links.py`, `pkg.py`, `spec_md.py`, `kitconf.py` selftests; `tests/e2e.py` cases for the JS manifest and the archive of a dropped unit.
+
 ## 0.12.4 · 2026-11-23
 Fixes from a project that ported HTML pages to Vue page apps with `extract_rules.py` and `validate parity` (K7-1…K7-3, K8-1, K8-2). Every new key has a default that keeps the 0.12.3 behaviour, except that `expectVisible` and `expectHidden` now look at every element that matches, and `extract_rules.py` reads a tag cut across `+` pieces as one.
 

@@ -3,14 +3,14 @@
   "owner": { "name": "nnminh" },
   "metadata": {
     "description": "Design-system-agnostic skills for HTML prototypes and design handoff",
-    "version": "0.12.4"
+    "version": "0.12.5"
   },
   "plugins": [
     {
       "name": "kit",
       "source": "./",
       "description": "Plan, build, annotate and hand off HTML prototypes with any design system",
-      "version": "0.12.4"
+      "version": "0.12.5"
     }
   ]
 }
