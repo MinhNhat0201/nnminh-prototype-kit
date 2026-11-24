@@ -94,9 +94,10 @@ async function flowFrame(parent, index, f) {
   return fl;
 }
 function rowLabel(label) { return txt(label, 14, true, C.sub, D.width - 160); }
-function addRow(fl, label) { // optional label line, then a wrapping row
-  if (label) add(fl, rowLabel(label));
-  const row = add(fl, box('HORIZONTAL', { name: 'Row', itemSpacing: 24 }), true);
+function addRow(fl, label, before) { // optional label line, then a wrapping row; before = node to insert above (else last)
+  let at = before ? fl.children.indexOf(before) : -1;
+  if (label) { put(fl, rowLabel(label), at); if (at >= 0) at++; }
+  const row = put(fl, box('HORIZONTAL', { name: 'Row', itemSpacing: 24 }), at, true);
   row.layoutWrap = 'WRAP'; row.counterAxisSpacing = 32; row.counterAxisAlignItems = 'CENTER';
   return row;
 }

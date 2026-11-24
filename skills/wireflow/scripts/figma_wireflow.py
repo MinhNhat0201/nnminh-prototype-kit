@@ -12,7 +12,8 @@ Commands:
             <out>/pending.json (imageScreens + nodeIds of their image frames, for upload_assets and upload)
   update    --map <map.json> --spec <dir> --flows <flows.json> --out <dir> [--png <dir>] [--prune] [--app ...]
             compares the board (map.json: mapjs result or an earlier build/update return) with flows.json: new
-            screens, new or relabelled edges, new rows and flows, row labels, flow names. Prints the diff (DIFF lines)
+            screens, new or relabelled edges, new rows and flows, row labels, flow names. Rows pair by label, then by
+            their screen ids, never by position (a row inserted in the middle is drawn there). Prints the diff (DIFF lines)
             and writes <out>/update.js (send verbatim to use_figma), images of the new screens, <out>/plan.json.
             Removed edges, chips, rows and flows are reported and kept, unless --prune. Cards are never deleted:
             with --prune, cards of screens in no flow move to the off-flow section, so links already sent keep working.
@@ -258,10 +259,41 @@ def kind(it):
     return {'e': 'edge', 'out': 'out-of-scope box', 'chip': 'back chip', 'n': 'screen'}.get(it[0], 'layer')
 
 
+def row_screens(items):
+    return {it[1] for it in items if it[0] in ('n', 'chip')}
+
+
+def pair_rows(old_rows, new_rows):
+    """For each row of flows.json, the index of its row on the board (None = a new row). Never by position: first the
+    same non-empty row label, then the same set of screen ids (screens and back chips), then the board row sharing the
+    most screen ids. Board rows left unpaired are rows flows.json no longer has."""
+    res, used = [None] * len(new_rows), set()
+    for i, r in enumerate(new_rows):
+        lab = r.get('label', '')
+        j = next((j for j, o in enumerate(old_rows) if lab and j not in used and o.get('label', '') == lab), None)
+        if j is not None:
+            res[i] = j
+            used.add(j)
+    for i, r in enumerate(new_rows):
+        s = row_screens(r['items'])
+        j = next((j for j, o in enumerate(old_rows) if s and res[i] is None and j not in used and row_screens(o['items']) == s), None)
+        if j is not None:
+            res[i] = j
+            used.add(j)
+    cand = sorted((-len(row_screens(r['items']) & row_screens(o['items'])), i, j) for i, r in enumerate(new_rows)
+                  for j, o in enumerate(old_rows) if res[i] is None and j not in used)
+    for score, i, j in cand:
+        if score < 0 and res[i] is None and j not in used:
+            res[i] = j
+            used.add(j)
+    return res
+
+
 def plan_update(bm, flows, out_default, prune=False):
     """(data for wireflow-update.js, diff lines, new cards to draw). Pure: works on the map and flows.json only.
 
-    Rows match by position inside a flow; items inside a row by sequence (difflib). Card nodes are reused, and moved
+    Rows of a flow pair by row label, then by their screen ids (pair_rows), never by position: a row inserted in the
+    middle is drawn at its place and the rows after it keep their nodes. Items inside a row match by sequence (difflib). Card nodes are reused, and moved
     when a screen changed place, so their ids and the links to them stay. An edge whose label or flag changed between
     the same neighbours is replaced in place (relabel). Removed items stay on the board unless prune."""
     old_flows = bm.get('_flows') or {}
@@ -280,15 +312,18 @@ def plan_update(bm, flows, out_default, prune=False):
     K = lambda it: key(it, out_default)
     claimed, diff, makes, remove, to_off = set(), [], [], [], []
 
-    # pass 1: rows to compare (flows by id, rows by position); equal items keep their nodes
-    jobs = []
+    # pass 1: rows to compare (flows by id, rows by label and screens: pair_rows); equal items keep their nodes
+    jobs, row_paired = [], {}
     for f in flows['flows']:
         of = old_flows.get(f['id'])
+        pairs = pair_rows(of['rows'], f['rows']) if of else [None] * len(f['rows'])
+        row_paired[f["id"]] = {j for j in pairs if j is not None}
         for ri, r in enumerate(f['rows']):
-            orow = of['rows'][ri] if of and ri < len(of['rows']) else None
+            orow = of['rows'][pairs[ri]] if pairs[ri] is not None else None
+            nxt = next((of['rows'][j] for j in pairs[ri + 1:] if j is not None), None) if of and not orow else None
             jobs.append({'here': f'{f["id"]} row {ri + 1}', 'old': orow, 'olds': orow['items'] if orow else [],
                          'new': r['items'], 'label': r.get('label', ''), 'flow': {'id': of['id']} if of else {'new': f['id']},
-                         'existing_flow': bool(of)})
+                         'existing_flow': bool(of), 'before': (nxt.get('labelId') or nxt['id']) if nxt else ''})
     jobs.append({'here': 'off-flow', 'old': off, 'olds': (off or {}).get('items', []), 'off': True,
                  'new': [['n', i] for i in flows.get('offflow', [])]})
     for j in jobs:
@@ -367,16 +402,17 @@ def plan_update(bm, flows, out_default, prune=False):
     new_ids = {f['id']: f for f in flows['flows']}
     for fid, of in old_flows.items():
         nf = new_ids.get(fid)
-        gone = list(enumerate(of['rows']))[len(nf['rows']):] if nf else list(enumerate(of['rows']))
+        gone = [(ri, r) for ri, r in enumerate(of['rows']) if not nf or ri not in row_paired.get(fid, ())]
         if not gone:
             continue
+        name = lambda ri, r: f'{fid} row {ri + 1}' + (f' "{r["label"]}"' if r.get('label') else '')
         if not prune:
-            diff.append((f'flow {fid}' if not nf else 'rows ' + ', '.join(f'{fid} row {ri + 1}' for ri, _ in gone))
+            diff.append((f'flow {fid}' if not nf else ('row ' if len(gone) == 1 else 'rows ') + ', '.join(name(ri, r) for ri, r in gone))
                         + ' not in flows.json: kept on the board (--prune removes it)')
             continue
         keep_flow = False
         for ri, r in gone:
-            here = f'{fid} row {ri + 1}'
+            here = name(ri, r)
             if any(o[0] == '?' for o in r['items']):
                 diff.append(f'{here} has layers the kit did not make: kept')
                 keep_flow = True
@@ -412,6 +448,8 @@ def plan_update(bm, flows, out_default, prune=False):
         op = {'flow': j['flow'], 'row': j['old']['id'] if j['old'] else '', 'items': j['final']}
         if not j['old']:
             op['label'] = ['', j['label']]
+            if j['before']:
+                op['before'] = j['before']  # drawn above the next row the board already has, not at the end
             if j['existing_flow']:
                 diff.append(f'new row {j["here"]}' + (f' "{j["label"]}"' if j['label'] else ''))
         elif j['old'].get('label', '') != j['label']:
@@ -614,6 +652,27 @@ def selftest():
         'offflow': ['S09']}
     d, diff, makes = plan_update(bm, same, OUT)
     assert not diff and not d['rows'] and not d['remove'], (diff, d)
+    # issue 30: rows pair by label, then by screens, never by position; a row inserted in the middle shifts nothing
+    bm3 = {'_board': '2:1', '_imgs': {}, '_off': None, '_flows': {'WF-01': {'id': '2:2', 'title': 'WF-01 · A', 'titleId': '2:3', 'rows': [
+        {'id': '2:10', 'label': '', 'labelId': '', 'items': [n('S01', '2:11'), e('Open', '', '2:12'), n('S02', '2:13')]},
+        {'id': '2:20', 'label': 'From S02', 'labelId': '2:21', 'items': [e('Save', '', '2:22'), n('S03', '2:23')]},
+        {'id': '2:30', 'label': 'From S03', 'labelId': '2:31', 'items': [e('Back', '', '2:32'), ['chip', 'S01', '2:33']]}]}}}
+    rows = lambda *rs: {'flows': [{'id': 'WF-01', 'name': 'A', 'rows': list(rs)}]}
+    r1 = {'items': [['n', 'S01'], ['e', 'Open', ''], ['n', 'S02']]}
+    r2 = {'label': 'From S02', 'items': [['e', 'Save', ''], ['n', 'S03']]}
+    r3 = {'label': 'From S03', 'items': [['e', 'Back', ''], ['chip', 'S01']]}
+    mid = {'label': 'From S02, error', 'items': [['e', 'Save', 'u'], ['n', 'S04']]}
+    d, diff, makes = plan_update(bm3, rows(r1, mid, r2, r3), OUT)
+    assert diff == ['added edge "Save" [u] in WF-01 row 2', 'added screen S04 in WF-01 row 2', 'new row WF-01 row 2 "From S02, error"'] and makes == ['S04'], diff
+    assert len(d['rows']) == 1 and d['rows'][0]['row'] == '' and d['rows'][0]['before'] == '2:21' and not d['remove'], d
+    assert pair_rows(bm3['_flows']['WF-01']['rows'], [r3, r1, dict(r2, label='From S02, saved')]) == [2, 0, 1]
+    assert pair_rows(bm3['_flows']['WF-01']['rows'], [dict(r2, label=''), dict(r1, items=r1['items'] + [['e', 'x', ''], ['n', 'S09']])]) == [1, 0]
+    # a row that disappeared is reported (kept, or removed with --prune), never matched to the row that took its place
+    d, diff, _ = plan_update(bm3, rows(r1, r3), OUT)
+    assert diff == ['row WF-01 row 2 "From S02" not in flows.json: kept on the board (--prune removes it)'] and not d['rows'], diff
+    d, diff, _ = plan_update(bm3, rows(r1, r3), OUT, prune=True)
+    assert '2:20' in d['remove'] and '2:21' in d['remove'] and 'removed row WF-01 row 2 "From S02"' in diff, (d, diff)
+    assert 'screen S03 is in no flow: card moved to the off-flow section (was WF-01 row 2 "From S02")' in diff, diff
     selftest_codegen()
     print('figma_wireflow.py selftest OK')
 
@@ -677,6 +736,23 @@ def selftest_codegen():
         assert [x[:2] for x in rows[0]['items']] == [['n', 'S01'], ['e', 'Close'], ['n', 'S02'], ['e', 'Narrow'], ['n', 'S03']], rows
         assert rows[0]['items'][3][2] == 'x' and rows[1]['label'] == 'From S03' and rows[1]['items'][0][2] == 'u', rows
         assert [x[1] for x in m2['_off']['items']] == ['S04'], m2['_off']
+        (tmp / 'map.json').write_text(json.dumps(u))
+        # issue 30: a row inserted between two rows is drawn there; the rows around it keep their nodes
+        fl3 = dict(fl2, flows=[dict(fl2['flows'][0], rows=[fl2['flows'][0]['rows'][0],
+                                                           {'label': 'From S02', 'items': [['e', 'Help', ''], ['chip', 'S02']]},
+                                                           fl2['flows'][0]['rows'][1]])])
+        (tmp / 'flows.json').write_text(json.dumps(fl3))
+        with contextlib.redirect_stdout(io.StringIO()):
+            update(A(out=str(tmp / 'upd3'), map=str(tmp / 'map.json')))
+        u3 = run(tmp / 'upd3' / 'update.js')
+        r3 = u3['map']['_flows']['WF-01']['rows']
+        assert [r['label'] for r in r3] == ['', 'From S02', 'From S03'] and r3[0]['id'] == rows[0]['id'] and r3[2]['id'] == rows[1]['id'], r3
+        (tmp / 'map.json').write_text(json.dumps(u3))
+        (tmp / 'flows.json').write_text(json.dumps(fl2))
+        with contextlib.redirect_stdout(io.StringIO()):
+            update(A(out=str(tmp / 'upd4'), map=str(tmp / 'map.json'), prune=True))
+        u = run(tmp / 'upd4' / 'update.js')
+        assert [r['label'] for r in u['map']['_flows']['WF-01']['rows']] == ['', 'From S03'], u['map']['_flows']
         (tmp / 'map.json').write_text(json.dumps(u))
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
