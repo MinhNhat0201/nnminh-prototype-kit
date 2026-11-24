@@ -56,8 +56,12 @@ Commands:
   rules.py coverage [--json]        must/should rules with and without an automated check, per category and per app
   rules.py conflicts                format errors, contradicting overrides, stale exceptions, superseded rules without
                     a successor, unknown apps, skills, categories or decisions; exit 1 on error
-  rules.py export   [--format md|html|claude] [--app A] [--out <file>] [--into <file>]   "Project rules" page, or
-                    the compact block for CLAUDE.md (between <!-- kit:rules:begin --> and <!-- kit:rules:end -->)
+  rules.py export   [--format md|html|claude] [--app A] [--out <file>] [--into <file>] [--detail brief|full]
+                    [--replace-from "<line>" [--replace-to "<line>"] | --append]   "Project rules" page, or the block
+                    for CLAUDE.md (between <!-- kit:rules:begin --> and <!-- kit:rules:end -->). --detail full: grouped
+                    by kit.config.json > rules.groups (else by category), with the rule text and exceptions.
+                    A file without the markers: --replace-from/--replace-to choose the lines the block replaces,
+                    --append adds it at the end; otherwise ERROR (0.12.6 appended)
   rules.py import-md <file> [--layer project] [--category process] [--map "Heading words=category"]... [--dry-run]
                     draft rule files (status proposed, since and decision Unconfirmed) from an existing rules
                     document: one rule per top-level bullet; writes <rules>/_import-review.md to confirm each one
@@ -321,8 +325,21 @@ def overriders(rules, rule, app):
             and RANK.get(o["layer"], -1) > RANK.get(rule["layer"], 99) and in_scope(o, app)]
 
 
+def project_overrides(cfg, rules, rule):
+    """For the project as a whole (no app): (overriding rules when every app the rule covers is overridden,
+    {app: overriding rules} when only some are). A project without apps compares with app None."""
+    apps = [a for a in app_ids(cfg) if in_scope(rule, a) and not exception_for(rule, a)]
+    if not apps:
+        return overriders(rules, rule, None), {}
+    per = {a: o for a in apps for o in [overriders(rules, rule, a)] if o}
+    if per and len(per) == len(apps):
+        return list({x["id"]: x for o in per.values() for x in o}.values()), {}
+    return [], per
+
+
 def resolve(cfg, rules, app=None, skill=None, category=None, severity=None, status="active", layer=None):
-    """(rules in force, [(rule, exception)], [(rule, overriding rules)]) for the filters."""
+    """(rules in force, [(rule, exception)], [(rule, overriding rules)]) for the filters. Without an app, a rule is
+    overridden when a later-layer rule overrides it for every app it covers (0.12.7; before, overrides needed an app)."""
     keep, excepted, overridden = [], [], []
     for r in rules:
         if status != "all" and r["status"] != status:
@@ -337,7 +354,7 @@ def resolve(cfg, rules, app=None, skill=None, category=None, severity=None, stat
         if e:
             excepted.append((r, e))
             continue
-        o = overriders(rules, r, app) if app else []
+        o = overriders(rules, r, app) if app else project_overrides(cfg, rules, r)[0]
         if o:
             overridden.append((r, o))
             continue
@@ -445,6 +462,12 @@ def validate(cfg, rules, parse_errs=()):
             if a["overrides"] == b["overrides"] and (not a["applies_to"] or not b["applies_to"] or set(a["applies_to"]) & set(b["applies_to"])):
                 err.append("%s and %s both override %s for the same apps (%s): keep one" % (
                     a["id"], b["id"], a["overrides"], ", ".join(sorted(set(a["applies_to"]) & set(b["applies_to"]))) or "all"))
+    known = {r["id"] for r in rules}
+    for g in (cfg.get("rules") or {}).get("groups") or []:
+        for x in [x for x in g.get("ids") or [] if x not in known]:
+            warn.append("kit.config.json > rules.groups %r: unknown rule %s" % (g.get("title") or "omit", x))
+        for x in [x for x in g.get("categories") or [] if x not in cats]:
+            warn.append("kit.config.json > rules.groups %r: unknown category %s" % (g.get("title") or "omit", x))
     return err, warn
 
 
@@ -740,40 +763,130 @@ def explain(cfg, rules, r, app=None):
     return "\n".join(L)
 
 
+def cat_name(cfg, c):
+    return T(cfg, "cat." + c) if t(cfg, "rules.cat." + c) != "rules.cat." + c else c
+
+
+def local_text(cfg, r, field):
+    """Title ("title") or rule text ("text") of a rule in the project language: a kit rule (English files) takes the
+    locale string rules.kitRule.<id>.<field> when the project language has one; every other rule is written in it."""
+    if r["layer"] == "kit":
+        k = "rules.kitRule.%s.%s" % (r["id"], field)
+        s = kitconf._locale(cfg.get("language") or "en").get(k)
+        if s:
+            return s
+    return r["title"] if field == "title" else statement(r)
+
+
+def group_rules(cfg, keep):
+    """[(heading, rules)]. kit.config.json > rules.groups (in order; {title, ids, categories, omit}): a rule goes to the
+    first group that lists its id, else the first that lists its category; inside a group, listed ids first in their
+    order. Rules no group takes, or every rule when there are no groups, are grouped by category (category order).
+    Rules of an omit group are left out (stated elsewhere in the file)."""
+    gs = ((cfg.get("rules") or {}).get("groups")) or []
+    pick = {}
+    for r in keep:
+        i = next((i for i, g in enumerate(gs) if r["id"] in (g.get("ids") or [])), None)
+        if i is None:
+            i = next((i for i, g in enumerate(gs) if r["category"] in (g.get("categories") or [])), None)
+        pick[r["id"]] = i
+    out = []
+    for i, g in enumerate(gs):
+        rs = [r for r in keep if pick[r["id"]] == i]
+        ids = g.get("ids") or []
+        rs.sort(key=lambda r: ids.index(r["id"]) if r["id"] in ids else len(ids))
+        if rs and not g.get("omit"):
+            out.append((g.get("title") or "", rs))
+    rest = [r for r in keep if pick[r["id"]] is None]
+    cats = categories(cfg)
+    for c in [c for c in cats if any(r["category"] == c for r in rest)] + sorted({r["category"] for r in rest} - set(cats)):
+        out.append((cat_name(cfg, c), [r for r in rest if r["category"] == c]))
+    return out
+
+
 def export_md(cfg, rules, app=None):
     keep, excepted, overridden = resolve(cfg, rules, app=app)
-    cats = categories(cfg)
     L = ["# " + (T(cfg, "export.titleApp", app=app) if app else T(cfg, "export.title")), "", T(cfg, "export.intro"), "",
          T(cfg, "export.count", n=len(keep), must=sum(r["severity"] == "must" for r in keep),
            should=sum(r["severity"] == "should" for r in keep)), ""]
-    for c in [c for c in cats if any(r["category"] == c for r in keep)] + sorted({r["category"] for r in keep} - set(cats)):
-        L += ["## " + (T(cfg, "cat." + c) if t(cfg, "rules.cat." + c) != "rules.cat." + c else c), ""]
-        for r in [r for r in keep if r["category"] == c]:
-            L += ["### %s · %s" % (r["id"], r["title"]), "",
+    for head, rs in group_rules(cfg, keep):
+        L += ["## " + head, ""]
+        for r in rs:
+            body = r["_body"].strip()
+            if r["layer"] == "kit" and local_text(cfg, r, "text") != statement(r):   # translated: the rule text, not the English body
+                body = local_text(cfg, r, "text")
+            L += ["### %s · %s" % (r["id"], local_text(cfg, r, "title")), "",
                   "*%s · %s · %s: %s%s*" % (T(cfg, "sev." + r["severity"]), T(cfg, "layer." + r["layer"]), T(cfg, "f.appliesTo"),
                                            where_text(cfg, r), (" · " + T(cfg, "f.decision") + " " + r["decision"]) if r["decision"] else ""), "",
-                  r["_body"].strip() or "—", ""]
+                  body or "—", ""]
             ex = [e for e in r["exceptions"] if isinstance(e, dict)]
             if ex:
                 L += ["%s: %s" % (T(cfg, "h.exceptions"), "; ".join("%s (%s)" % (e["app"], e["note"]) for e in ex)), ""]
     if excepted or overridden:
-        L += ["## " + T(cfg, "h.notForApp", app=app), ""]
+        L += ["## " + (T(cfg, "h.notForApp", app=app) if app else T(cfg, "h.overridden")), ""]
         L += ["- %s · %s: %s" % (r["id"], r["title"], e["note"]) for r, e in excepted]
         L += ["- %s · %s: %s" % (r["id"], r["title"], T(cfg, "forApp.overridden", ids=", ".join(x["id"] for x in o))) for r, o in overridden]
         L.append("")
     return "\n".join(L)
 
 
-def export_claude(cfg, rules):
+def export_claude(cfg, rules, detail="brief"):
+    """The CLAUDE.md block. brief: one line per rule (id, severity, title), in severity order. full: grouped
+    (group_rules), each rule as its text (title when it has no text), exceptions and partial overrides, in the project
+    language; no titles or check commands (rules.py show has them), so the block stays close to hand-written rules."""
     keep, _, _ = resolve(cfg, rules)
-    L = [BLOCK[0], "## " + T(cfg, "claude.title"), "", T(cfg, "claude.intro"), ""]
-    for r in keep:
-        if r["severity"] == "note":
-            continue
-        L.append("- **%s** (%s): %s%s" % (r["id"], r["severity"], r["title"],
-                                         (" [%s]" % ", ".join(r["applies_to"])) if r["applies_to"] else ""))
-    L += ["", BLOCK[1]]
-    return "\n".join(L)
+    if detail != "full":
+        L = [BLOCK[0], "## " + T(cfg, "claude.title"), "", T(cfg, "claude.intro"), ""]
+        L += ["- **%s** (%s): %s%s" % (r["id"], r["severity"], local_text(cfg, r, "title"),
+                                       (" [%s]" % ", ".join(r["applies_to"])) if r["applies_to"] else "") for r in keep]
+        return "\n".join(L + ["", BLOCK[1]])
+    L = [BLOCK[0], "## " + T(cfg, "claude.title"), "", T(cfg, "claude.introFull"), ""]
+    every = set(app_ids(cfg))
+    for head, rs in group_rules(cfg, keep):
+        L += ["### " + head, ""]
+        for r in rs:
+            scope = list(r["applies_to"]) or (r["_profile_apps"] if r["_src"] == "ds" and set(r["_profile_apps"] or []) < every else [])
+            text = local_text(cfg, r, "text").strip().replace("\n", "\n  ")
+            L.append("- **%s** (%s%s): %s" % (r["id"], T(cfg, "sev." + r["severity"]).lower(), "; " + ", ".join(scope) if scope else "",
+                                              text or local_text(cfg, r, "title")))
+            for e in [e for e in r["exceptions"] if isinstance(e, dict)]:
+                L.append("  - %s %s: %s" % (T(cfg, "h.exceptions"), e.get("app"), e.get("note")))
+            part = {}
+            for a, o in project_overrides(cfg, rules, r)[1].items():
+                for x in o:
+                    part.setdefault(x["id"], []).append(a)
+            L += ["  - " + T(cfg, "claude.overriddenFor", id=i, apps=", ".join(a)) for i, a in part.items()]
+        L.append("")
+    return "\n".join(L + [BLOCK[1]])
+
+
+def write_into(path, block, start=None, end=None, append=False):
+    """Put the block into a file: between the kit:rules markers when the file has both; else in place of the lines from
+    the first line starting with `start` up to (not including) the first later line starting with `end` (end of file
+    without `end`); else at the end of the file only with append or when the file is empty or missing.
+    Returns what was done; exits with ERROR when there is nowhere to put it."""
+    p = Path(path)
+    old = p.read_text(encoding="utf-8") if p.is_file() else ""
+    if BLOCK[0] in old and BLOCK[1] in old:
+        new, how = old[:old.index(BLOCK[0])] + block + old[old.index(BLOCK[1]) + len(BLOCK[1]):], "replaced the block"
+    elif start:
+        lines = old.split("\n")
+        i = next((i for i, x in enumerate(lines) if x.startswith(start)), None)
+        if i is None:
+            die("%s has no line starting with %r (--replace-from)" % (path, start))
+        j = next((j for j in range(i + 1, len(lines)) if end and lines[j].startswith(end)), None)
+        if end and j is None:
+            die("%s has no line starting with %r after line %d (--replace-to)" % (path, end, i + 1))
+        tail = lines[j:] if j is not None else []
+        new = "\n".join(lines[:i] + [block] + ([""] + tail if tail else [""]))
+        how = "replaced lines %d-%d with the block" % (i + 1, (j if j is not None else len(lines)))
+    elif append or not old.strip():
+        new, how = old.rstrip("\n") + ("\n\n" if old.strip() else "") + block + "\n", "added the block at the end"
+    else:
+        die("%s has no %s ... %s markers. Put them where the block goes, or give --replace-from \"<first line>\" "
+            "[--replace-to \"<line after the block>\"], or --append to add the block at the end" % (path, BLOCK[0], BLOCK[1]))
+    p.write_text(new, encoding="utf-8")
+    return how
 
 
 def export_html(cfg, md):
@@ -1100,16 +1213,13 @@ def cmd_export(cfg, a):
     rules, _ = load_rules(cfg)
     c = kitconf.for_app(cfg, a.app) if a.app else cfg
     if a.format == "claude":
-        txt = export_claude(c, rules)
+        txt = export_claude(c, rules, a.detail)
         if a.into:
-            p = Path(a.into)
-            old = p.read_text(encoding="utf-8") if p.is_file() else ""
-            if BLOCK[0] in old and BLOCK[1] in old:
-                new = old[:old.index(BLOCK[0])] + txt + old[old.index(BLOCK[1]) + len(BLOCK[1]):]
-            else:
-                new = old.rstrip("\n") + ("\n\n" if old else "") + txt + "\n"
-            p.write_text(new, encoding="utf-8")
-            print("Wrote the rules block into %s" % a.into)
+            how = write_into(a.into, txt, a.replace_from, a.replace_to, a.append)
+            print("Wrote the rules block into %s (%s, %d bytes)" % (a.into, how, len(txt.encode("utf-8"))))
+            omit = [x for g in (c.get("rules") or {}).get("groups") or [] if g.get("omit") for x in g.get("ids") or []]
+            if omit:
+                print("NOTE left out (rules.groups omit): " + ", ".join(omit))
             return 0
     else:
         txt = export_md(c, rules, a.app)
@@ -1217,6 +1327,50 @@ def selftest():
         assert BLOCK[0] in export_claude(cfg, rules) and "STY-901" in export_claude(cfg, rules)
         assert "<main>" in export_html(cfg, md)
         assert "Lan" in explain(cfg, rules, find(rules, r3["id"]), "web")
+        # 0.12.7: project-wide overrides, notes kept, groups, rule text, kit rules in the project language, --into
+        vi = kitconf._locale("vi")
+        miss = [r["id"] for r in rules if r["layer"] == "kit" and not all(vi.get("rules.kitRule.%s.%s" % (r["id"], f)) for f in ("title", "text"))]
+        assert not miss, "kit rules without a Vietnamese title and text in locales/vi/rules.json: %s" % miss
+        add_rule(cfg, "Touch targets per density", "a11y", "should", decision=did, overrides="A11Y-902", reason="DS density", body="Targets follow density.")
+        add_rule(cfg, "Demo only", "handoff", "note", decision=did, body="Prototypes are demos.")
+        rules, _ = load_rules(cfg)
+        keep, _, ovr = resolve(cfg, rules)
+        ids = [r["id"] for r in keep]
+        assert "A11Y-902" not in ids and "A11Y-902" in {r["id"] for r, _ in ovr}, "overridden for every app"
+        assert "DEN-901" in ids and project_overrides(cfg, rules, find(rules, "DEN-901"))[1] == {"old": [find(rules, r2["id"])]}, "partial"
+        assert "A11Y-902" not in export_claude(cfg, rules) and "(note)" in export_claude(cfg, rules), "brief: overrides applied, notes kept"
+        full = export_claude(cfg, rules, "full")
+        assert "### " + t(cfg, "rules.cat.styling") in full and "Only tokens." not in full, full[:600]   # STY-001 superseded
+        assert t(cfg, "rules.kitRule.STY-901.text") in full and "Colours, spacing" not in full, "kit rule in Vietnamese"
+        assert t(cfg, "rules.claude.overriddenFor", id=r2["id"], apps="old") in full and "Prototypes are demos." in full
+        assert "- **%s** (" % r3["id"] in full and "Buttons are pills." in full and "Pill buttons" not in full, "rule text, no title"
+        cfg["rules"]["groups"] = [{"title": "2. Source", "ids": [r3["id"], "STY-901"]}, {"title": "3. Apps", "categories": ["a11y"]},
+                                  {"omit": True, "ids": ["EML-901"]}]
+        assert not [w for w in validate(cfg, rules)[1] if "rules.groups" in w]
+        cfg["rules"]["groups"].append({"title": "x", "ids": ["NOPE-001"]})
+        assert any("NOPE-001" in w for w in validate(cfg, rules)[1])
+        cfg["rules"]["groups"].pop()
+        g = group_rules(cfg, keep)
+        assert [h for h, _ in g][:2] == ["2. Source", "3. Apps"] and [r["id"] for r in g[0][1]] == [r3["id"], "STY-901"], [(h, [r["id"] for r in rs]) for h, rs in g]
+        assert all(r["category"] == "a11y" for r in g[1][1]) and "EML-901" not in {r["id"] for _, rs in g for r in rs}
+        assert "### 2. Source" in export_claude(cfg, rules, "full") and "## 2. Source" in export_md(cfg, rules)
+        cfg["rules"]["groups"] = []
+        f = d / "C.md"
+        f.write_text("# P\n\n## 1. Keep\n\nx\n\n## 2. Old\n\nold rules\n\n## 8. After\n\ny\n")
+        try:
+            write_into(f, "BLOCK")
+            raise AssertionError("no markers: must stop")
+        except SystemExit:
+            pass
+        write_into(f, BLOCK[0] + "\nA\n" + BLOCK[1], "## 2.", "## 8.")
+        assert f.read_text() == "# P\n\n## 1. Keep\n\nx\n\n%s\nA\n%s\n\n## 8. After\n\ny\n" % BLOCK, repr(f.read_text())
+        write_into(f, BLOCK[0] + "\nB\n" + BLOCK[1], "## 2.", "## 8.")   # markers win on the next run
+        assert "\nB\n" in f.read_text() and "\nA\n" not in f.read_text() and f.read_text().count(BLOCK[0]) == 1
+        f.write_text("# P\n\n## 2. Old\n\nz\n")
+        write_into(f, "BLK", "## 2.")
+        assert f.read_text() == "# P\n\nBLK\n", repr(f.read_text())
+        write_into(f, "MORE", append=True)
+        assert f.read_text() == "# P\n\nBLK\n\nMORE\n" and write_into(d / "new.md", "N") and (d / "new.md").read_text() == "N\n"
         src = d / "old-rules.md"
         src.write_text("# Rules\n\n## Styling\n\n- Use tokens only. No hex.\n  Also no rgb().\n- **Never** override DS CSS.\n\n"
                        "## Pages\n\nIntro paragraph.\n\n1. Ask before a new page.\n```\n- not a rule\n```\n")
@@ -1326,6 +1480,11 @@ def main():
     p = sub.add_parser("export", help="Project rules page or the CLAUDE.md block")
     p.add_argument("--format", choices=("md", "html", "claude"), default="md"); p.add_argument("--app")
     p.add_argument("--out"); p.add_argument("--into", help="claude format: replace the block in this file")
+    p.add_argument("--detail", choices=("brief", "full"), default="brief",
+                   help="claude format: brief = id, severity and title per rule; full = grouped, with rule text and exceptions")
+    p.add_argument("--replace-from", help="--into a file without markers: first line (prefix) of the part the block replaces")
+    p.add_argument("--replace-to", help="with --replace-from: the line (prefix) after the replaced part (default: end of file)")
+    p.add_argument("--append", action="store_true", help="--into a file without markers: add the block at the end (0.12.6 behaviour)")
     p = sub.add_parser("import-md", help="draft rule files from an existing rules document")
     p.add_argument("file"); p.add_argument("--layer", default="project", choices=("project", "app", "ds"))
     p.add_argument("--app", help="ds layer: the DS profile of this app (apps[].ds); default the top-level ds")

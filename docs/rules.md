@@ -116,8 +116,16 @@ A project adds its own in `kit.config.json > rules.categories`, for example `{"m
 | `check [--app A] [--skill S] [--category C] [--id ID] [--json <file>\|-]` | Runs the `check` commands of the active rules in scope: `ok`, `FAIL` or `skip` per rule and app (JSON: `status`, `reason`, `perApp`; `ok` is false only for a failure); exit 1 when a `must` rule fails. |
 | `coverage [--json]` | Must and should rules with and without an automated check, per category and per app, and how many checks need a running server. |
 | `conflicts` | Format errors; two overrides of one rule for the same app; overrides from the same or an earlier layer; exceptions on deprecated or superseded rules; superseded rules without a valid successor; unknown apps, skills, categories or decisions. Exit 1 on error. |
-| `export [--format md\|html\|claude] [--app A] [--out f] [--into CLAUDE.md]` | A "Project rules" page grouped by category (Markdown or self-contained HTML), or the compact block for `CLAUDE.md` between `<!-- kit:rules:begin -->` and `<!-- kit:rules:end -->` (replaced in place on every run). |
+| `export [--format md\|html\|claude] [--app A] [--out f] [--into CLAUDE.md] [--detail brief\|full] [--replace-from "<line>" [--replace-to "<line>"] \| --append]` | A "Project rules" page (Markdown or self-contained HTML), or the block for `CLAUDE.md` between `<!-- kit:rules:begin -->` and `<!-- kit:rules:end -->` (replaced in place on every run). See "Export" below. |
 | `import-md <file> [--layer project\|app\|ds] [--app A] [--category process] [--map "heading words=category"]… [--dry-run]` | Splits an existing rules document into draft rule files: one per top-level bullet or numbered item, category from the heading (a category name in it, or `--map`), status `proposed`, `since` and `decision` `Unconfirmed`, the source section quoted in the body. The title is the first sentence (cut at `.`, `!` or `?`, never at `:`); code spans keep their text (`/* LOCAL`, `FLAG_NAME`); file names fold diacritics (`d` for the stroked d). Severity is `must` when the bullet uses a must word (English always, plus the project language: locale `rules.import.mustWords`), else `should`. `--layer ds` writes into the DS profile's `rules/` folder (`--app`: that app's profile). Writes `_import-review.md` next to the drafts listing what to confirm for each. It never guesses decisions or dates. |
+
+## Export
+
+- **Rules in force for the whole project** (no `--app`): a rule that a later-layer rule overrides for every app it covers is left out (listed under "Replaced by a rule of a later layer" in the page); one overridden for some apps only stays, and the `claude --detail full` block says "Replaced by <id> for: <apps>". `list` without `--app` follows the same rule. Notes (`severity: note`) are kept.
+- **Groups.** `kit.config.json > rules.groups` (ordered list, default `[]`): `{"title": "2. Source of truth", "ids": ["PRC-500", …], "categories": ["a11y"]}`. A rule goes to the first group that lists its id, else the first that lists its category; listed ids come first, in their order. A group with `"omit": true` (no title needed) leaves its rules out of the export, for rules the file states elsewhere. Rules no group takes are grouped by category after the groups. Without groups the page and the full block are grouped by category. `conflicts` warns about an unknown id or category in a group.
+- **`--format claude --detail brief`** (default): one line per rule (id, severity, title), in severity order, as before. **`--detail full`**: a `###` heading per group; per rule the id, severity, apps when not every app, the rule text (first paragraph of the body, or the title when the body is empty; the "Why" and later paragraphs stay in the file), exceptions and partial overrides. Titles and `check` commands are left out (`show` has them) so the block stays close in size to the hand-written rules it replaces.
+- **Project language.** Kit rule files are English; their title and text come from `locales/<language>/rules.json` (`rules.kitRule.<id>.title`, `.text`) when the project language has them (Vietnamese ships with the kit), in `md`, `html` and `claude`. A new kit rule adds both strings to every non-English locale (`rules.py --selftest` checks Vietnamese).
+- **`--into` a file without the markers**: `--replace-from "## 2."` replaces the lines from the first line starting with that text up to the line starting with `--replace-to` (not included; end of file without it), and the next runs find the markers; `--append` adds the block at the end. Without either, `export` stops with an error (0.12.6 appended silently). A missing or empty file gets the block.
 
 ## How skills use it
 
@@ -169,14 +177,14 @@ python3 <kit>/scripts/rules.py supersede DEN-002 --by DEN-004 --decision D-012
 
 ### A new project inherits the kit and DS rules
 
-`kickoff` creates `rules/` (empty except a README). From the first session `rules.py list` already returns the kit rules and the rules of the DS profile in `ds/<name>/rules/`. The project adds only its own rules; where it needs something else for one app it adds an app rule with `overrides` and a reason, which `conflicts` validates. `export --format claude --into CLAUDE.md` keeps a short summary in the project's `CLAUDE.md`.
+`kickoff` creates `rules/` (empty except a README). From the first session `rules.py list` already returns the kit rules and the rules of the DS profile in `ds/<name>/rules/`. The project adds only its own rules; where it needs something else for one app it adds an app rule with `overrides` and a reason, which `conflicts` validates. `export --format claude --into CLAUDE.md` keeps a short summary in the project's `CLAUDE.md` (the `CLAUDE.md` template has the markers); `--detail full` with `rules.groups` writes the whole rule text, grouped like the hand-written sections it replaces.
 
 ## Migrating an existing rules document
 
 1. `python3 <kit>/scripts/rules.py import-md docs/rules.md --map "colour=styling" --map "handoff=handoff" --dry-run`, then without `--dry-run`.
 2. Go through `rules/_import-review.md` with the user: severity, category, date, decision. Merge or delete drafts that are not rules.
 3. Set each confirmed rule to `status: active` with `since` and `decision`; `rules.py conflicts` must pass.
-4. Keep the old document until every rule is in the registry; then point it at `rules.py export`.
+4. Keep the old document until every rule is in the registry; then point it at `rules.py export`. To replace rule sections of `CLAUDE.md`: set `rules.groups` to the old section titles, run `export --format claude --detail full --into CLAUDE.md --replace-from "<first heading>" [--replace-to "<heading after>"]` once, compare line by line, then fix the rule files (never the block) and export again.
 
 ## Compatibility
 
