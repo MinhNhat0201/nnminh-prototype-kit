@@ -580,6 +580,17 @@ def main():
     out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
                "--page-root", "prototype"], d)
     check("/apps/acme-web/settings/#/" in out, "demo links keep the page folder", out)
+    # issue 32: fill --manifest reads the capture manifest as a JS module (as capture.js does) and as JSON
+    man_js = d / "manifest-links.js"
+    write(man_js, "module.exports = { screens: [{ id: 'S03', steps: [{ goto: 'settings/index.html#/' }, { click: '#open' }] }] };\n")
+    write(fl, json.dumps({"flows": [{"id": "WF-01", "rows": [{"items": [["n", "S03"]]}]}]}))
+    out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
+               "--page-root", "prototype", "--manifest", man_js, "--no-md"], d)
+    check("REMINDER: WF-01: first screen S03 needs 2 step(s)" in out, "demo_links fill --manifest takes the JS capture manifest (#32)", out)
+    write(d / "manifest-links.json", json.dumps({"screens": [{"id": "S03", "steps": [{"click": "#open"}]}]}))
+    out = run([PY, "-I", S / "wireflow/scripts/demo_links.py", "fill", "--screens", scr, "--flows", fl, "--app", "acme-web",
+               "--manifest", d / "manifest-links.json", "--no-md", "--dry-run"], d)
+    check("needs 1 step(s)" in out, "demo_links fill --manifest still takes JSON (#32)", out)
 
     # ---------- 0.10 ----------
     # rules: skipped checks (server down, exit 77, SKIP line), activity groups, rules.from inheritance, import-md --layer ds

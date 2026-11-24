@@ -2,7 +2,7 @@
 """Demo-site links per wireflow flow (shared by the flows text of a spec and by the Figma wireflow board).
 
   python3 -I demo_links.py fill --screens <screens.json> --flows <flows.json> --app <app id>
-                                [--site <https base URL>] [--manifest <manifest.json>] [--page-root <folder>]
+                                [--site <https base URL>] [--manifest <manifest.js|.json>] [--page-root <folder>]
                                 [--md <flows.md> | --no-md] [--dry-run]
   python3 -I demo_links.py --selftest
 
@@ -13,6 +13,8 @@
   --md): under the heading of the flow (`## WF-01 · ...`), the "Open demo:" line (locale label
   `annotate.line.openDemo`) gets the link, or is added right after the heading. A flow without a heading is a WARN.
   The spec check of `annotate` (run by `pkg.py finalize`) needs every flows.json link in flows.md. --no-md skips it.
+- --manifest takes the capture manifest as capture.js reads it: a CommonJS module (manifest.js, loaded with node, the
+  way capture.js loads it) or a JSON file.
 - With --manifest: when the first screen needs clicks to reach (`steps`) and the flow has no `start`, prints a
   REMINDER so the agent fills `start` with the exact on-screen label (for example: Click "New").
 - Page path of a screen: when it contains the app path (`apps[].path`), the part after it is kept; when it is a
@@ -25,6 +27,8 @@ The script makes no network call.
 import argparse
 import json
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import urlparse
@@ -124,6 +128,33 @@ def read_json(p):
         sys.exit(f'ERROR: {p} is not valid JSON: {e}')
 
 
+def load_manifest(p):
+    """The capture manifest: a .json file, or a CommonJS module (manifest.js) loaded with node like capture.js does
+    (functions in it are dropped; only data such as screens[].steps is read)."""
+    if str(p).lower().endswith('.json'):
+        return read_json(p)
+    if not Path(p).is_file():
+        sys.exit(f'ERROR: file not found: {p}')
+    node = shutil.which('node')
+    if not node:
+        sys.exit(f'ERROR: {p} is a JS manifest and node is not installed (install Node 18+ or pass a JSON manifest)')
+    code = 'process.stdout.write(JSON.stringify(require(require("path").resolve(process.argv[1]))))'
+    r = subprocess.run([node, '-e', code, str(p)], capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f'ERROR: could not load the manifest {p}: ' + (r.stderr.strip().splitlines() or ['node failed'])[-1])
+    try:
+        m = json.loads(r.stdout or 'null')
+    except json.JSONDecodeError as e:
+        sys.exit(f'ERROR: {p} did not export plain data: {e}')
+    if not isinstance(m, dict):
+        sys.exit(f'ERROR: {p} does not export an object (module.exports = {{ screens: [...] }})')
+    return m
+
+
+def manifest_steps(m):
+    return {s['id']: s.get('steps') or [] for s in m.get('screens', []) if isinstance(s, dict) and s.get('id')}
+
+
 def load_screens(p):
     s = read_json(p)
     return {x['id']: x for x in (s if isinstance(s, list) else s.get('screens', []))}
@@ -139,8 +170,7 @@ def fill(a):
     flows = read_json(a.flows)
     steps = {}
     if a.manifest:
-        man = read_json(a.manifest)
-        steps = {s['id']: s.get('steps') or [] for s in man.get('screens', [])}
+        steps = manifest_steps(load_manifest(a.manifest))
     flows['home'] = app_url(site, app_path)
     rows, warn, err = [], [], []
     for f in flows.get('flows', []):
@@ -210,6 +240,21 @@ def selftest():
     assert 'Open demo: [old](%s/b/) · Start: S03' % S in out and 'x.example.com' not in out, out
     assert out.endswith('## WF-03 · Done\n\nOpen demo: [WF-03](%s/c/)\n' % S), repr(out[-80:])
     assert md_links(out, fl, L, 'Start')[0] == out, 'idempotent'
+    # issue 32: the capture manifest as a JS module (capture.js format) or JSON gives the same steps
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        man = {'screens': [{'id': 'S01', 'steps': [{'goto': 'index.html#/'}]}, {'id': 'S02', 'steps': [{'click': '#new'}]}]}
+        (Path(d) / 'm.json').write_text(json.dumps(man))
+        want = {'S01': [{'goto': 'index.html#/'}], 'S02': [{'click': '#new'}]}
+        assert manifest_steps(load_manifest(str(Path(d) / 'm.json'))) == want
+        if shutil.which('node'):
+            (Path(d) / 'steps.js').write_text("module.exports = id => [{ click: '#' + id }];")
+            (Path(d) / 'manifest.js').write_text("const s = require('./steps');\nmodule.exports = { viewport: { width: 1280 },\n"
+                                                 "  screens: [{ id: 'S01', steps: [{ goto: 'index.html#/' }] },\n"
+                                                 "            { id: 'S02', steps: s('new'), check: () => true }] };\n")
+            assert manifest_steps(load_manifest(str(Path(d) / 'manifest.js'))) == want
+        else:
+            print('SKIP: node not found, JS manifest not loaded')
     print('demo_links.py selftest OK')
 
 
@@ -224,7 +269,7 @@ def main():
     f.add_argument('--flows', required=True, help='flows.json to update in place')
     f.add_argument('--app', required=True, help='app id from kit.config.json > apps')
     f.add_argument('--site', default='', help='https base URL of the demo site (default: kit.config.json > deploy.site)')
-    f.add_argument('--manifest', help='capture manifest with per-screen steps')
+    f.add_argument('--manifest', help='capture manifest with per-screen steps (manifest.js as capture.js reads it, or JSON)')
     f.add_argument('--page-root', default='', help='leading folder of the captured page paths to drop (e.g. prototype)')
     f.add_argument('--md', default='', help='text wireflow to update (default: <flows.json folder>/../spec/flows.md)')
     f.add_argument('--no-md', action='store_true', help='write flows.json only')

@@ -64,6 +64,7 @@ python3 -I $S/demo_links.py fill --screens <screens.json> --flows <flows.json> -
 - Page paths keep their folder (`tasks/index.html` → `<site>/<app path>/tasks/`). Captures of a package copy served from the package folder: `--page-root prototype`.
 - `--site` defaults to `kit.config.json > deploy.site`. No site at all: skip; the board has no buttons, and say so in the report.
 - Link = site + page path + hash route of the first screen. A flow with a hand-set `url` keeps it. Links must be https on the site, else ERROR.
+- `--manifest` takes the capture manifest of `annotate` as it is: `manifest.js` (loaded with node, as `capture.js` does) or JSON.
 - With `--manifest`: a REMINDER lists flows whose first screen needs steps and has no `start`. Fill `start` with the exact on-screen label; never guess.
 - `fill` also writes each link into `spec/flows.md` (the "Open demo" line under each flow heading; `--md <file>`, `--no-md` to skip).
 - Links open the page and route only; they do not replay the steps. A site behind sign-in needs an account for that app. The site is the live build and can be newer than the captures.
