@@ -29,6 +29,25 @@
 - Each screen in `spec/<unit>.md` is a `### S01 · <name>` section with the route, a "How to reach" line (label `annotate.line.reach`) and `Figma: [S01](<node link>)`. The screen table in `spec/index.md` has a Figma column instead of an image column.
 - Screens that depend on the machine date (calendar, "today") may differ from the Figma capture: say so in `pkg.json > agents_note`.
 
+## Replaced or dropped units
+
+`pkg.py finalize` moves a unit to the archive file (`handoff.specFiles.archive`, default `spec/archive.md`), one heading
+level down under `<a id="<code in lower case>">`, and points every link to `<code>.md` at that anchor. A unit is archived when:
+
+- its code is in `pkg.json > archive`, or
+- the status line near the top of `spec/<code>.md` (first 12 lines), or a cell of its row in `spec/index.md` (the row
+  that links `[<code>](<code>.md)`), starts with a status word. Letter case and `**bold**` do not matter; text after the
+  word (version, replacing code) is kept.
+
+| Language | Status line label | Status words (`handoff.archive.status`) |
+|---|---|---|
+| English | `Status:` | `Dropped`, `Dropped in`, `Removed`, `Removed in`, `Replaced in` |
+| Vietnamese | `Trạng thái:` | `Đã bỏ`, `Bỏ ở`, `Thay ở` |
+
+English words are read in every project language. Examples: `Status: Dropped in 1.5.0`, `Status: Replaced in 1.5.0 by FR-12`,
+`Trạng thái: Bỏ ở 1.5.0`, `Trạng thái: Thay ở 1.5.0 bằng FR-12`. Only the part before ` · ` of the status line is read,
+so other fields may follow on the same line. `spec_md.py check` warns about a marked unit that is still a unit file.
+
 ## README: "Which file for what" (with a spec)
 
 Write in the project language. Keep only rows for files the package has (drop `cross-page.md` for a single-page app).

@@ -293,6 +293,44 @@ def spec_files(cfg):
     return {"archive": arc, "crossPage": cross, "special": stems, "legacy": kinds}
 
 
+def archive_words(cfg):
+    """Status words that mark a spec unit as replaced or dropped (handoff.archive.status of the project language, and
+    the English ones), longest first."""
+    words = {w.strip() for lang in (cfg, "en") for w in t(lang, "handoff.archive.status").split("|") if w.strip()}
+    return sorted(words, key=len, reverse=True)
+
+
+def dropped_units(cfg, spec):
+    """{unit id: status text} of the units marked replaced or dropped in a spec folder. A unit is marked when a cell of
+    its row in index.md (the row that links "[ID](ID.md)") or the value of the status line near the top of ID.md
+    ("Status: Dropped in 1.2.0", label handoff.archive.statusLabel, project language or English) starts with a
+    status word (archive_words), in any letter case."""
+    spec = Path(spec)
+    word = re.compile(r"^\**\s*(?:%s)(?!\w)" % "|".join(re.escape(w) for w in archive_words(cfg)), re.I)
+    labels = "|".join(re.escape(x) for x in {t(cfg, "handoff.archive.statusLabel"), t("en", "handoff.archive.statusLabel")})
+    line = re.compile(r"^\s*(?:[-*]\s+)?\**(?:%s)\**\s*:\s*\**\s*(.+)$" % labels, re.I)
+    out = {}
+    idx = spec / "index.md"
+    for ln in (idx.read_text(encoding="utf-8").split("\n") if idx.is_file() else []):
+        m = ln.startswith("|") and re.search(r"\[([^\]\s]+)\]\(\1\.md\)", ln)
+        if m:
+            cells = [c.strip() for c in ln.strip().strip("|").split("|")]
+            hit = next((c for c in cells[1:] if word.match(c) and m.group(0) not in c), None)
+            if hit:
+                out[m.group(1)] = hit.strip("* ")
+    for p in sorted(spec.glob("*.md")):
+        if p.stem in out or p.stem in spec_files(cfg)["special"]:
+            continue
+        for ln in p.read_text(encoding="utf-8").split("\n")[:12]:
+            m = line.match(ln)
+            if m:
+                val = m.group(1).split(" · ")[0].strip().strip("*").strip()
+                if word.match(val):
+                    out[p.stem] = val
+                break
+    return out
+
+
 def csv_header(cfg, kind):
     """(header line, [role per column or None]) of requirements/checklist-<kind>.csv.
     handoff.csv.<kind> may be null (locale header), a comma string or a list (standard column order),
@@ -979,6 +1017,17 @@ def selftest():
     assert "npm install" not in st and "ws/app2/app.config.ts" in st and 'entry: "src/pages/tasks/main.ts"' in st \
         and "./App.vue" in st and "../../bridge" not in st and "node build.mjs --app app2 --page tasks" in st, st
     assert "ws/app2/dist/tasks.js, ws/app1/dist/tasks.js" in st, st
+    # issue 33: dropped units from the status cell of index.md or the status line of the unit (vi and English words)
+    sp = d / "spec"
+    sp.mkdir()
+    (sp / "index.md").write_text("| Code | Title | Status | File |\n|---|---|---|---|\n| FR-01 | A | Active | [FR-01](FR-01.md) |\n"
+                                 "| FR-02 | B | Thay ở 1.1.0 bằng FR-05 | [FR-02](FR-02.md) |\n| N11 | C | — | [N11](N11.md) |\n",
+                                 encoding="utf-8")
+    for u, head in (("FR-01", "Trạng thái: Đang dùng"), ("FR-02", ""), ("N11", "**Trạng thái:** Bỏ ở 1.5.0 · Màn: —"),
+                    ("FR-03", "Status: Dropped in 1.5.0"), ("FR-04", "Trạng thái: Bỏ qua bước 2"), ("FR-06", "Status: removed")):
+        (sp / f"{u}.md").write_text(f"# {u} · x\n{head}\n", encoding="utf-8")
+    dr = dropped_units({"language": "vi"}, sp)
+    assert dr == {"FR-02": "Thay ở 1.1.0 bằng FR-05", "N11": "Bỏ ở 1.5.0", "FR-03": "Dropped in 1.5.0", "FR-06": "removed"}, dr
     print("kitconf selftest OK")
 
 

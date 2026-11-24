@@ -63,6 +63,10 @@ Figma: [S01](<node link on the wireflow board>)
 - …
 ```
 
+A unit replaced or dropped in this version gets a status line under the title, `Status: Dropped in 1.5.0` (or
+`Replaced in 1.5.0 by FR-12`; Vietnamese `Trạng thái: Bỏ ở 1.5.0`). The handoff archives it; wording in
+`handoff`'s [package-layout.md](../../handoff/references/package-layout.md#replaced-or-dropped-units).
+
 Write these labels as words so they can be grepped: "needs confirmation", "Deviation from spec", "Out of scope",
 "intentional deviation", "No screen for this item yet." (`annotate.label.*`).
 

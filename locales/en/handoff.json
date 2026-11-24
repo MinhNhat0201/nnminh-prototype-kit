@@ -1,7 +1,8 @@
 {
  "handoff.spec.figmaPending": "not on the Figma board yet (package awaiting Figma)",
  "handoff.spec.colImage": "Image",
- "handoff.archive.status": "Removed|Removed in|Replaced in",
+ "handoff.archive.status": "Dropped|Dropped in|Removed|Removed in|Replaced in",
+ "handoff.archive.statusLabel": "Status",
  "handoff.archive.title": "# Archive: replaced or removed units",
  "handoff.archive.intro": "Kept for traceability; no longer true for the current prototype. The replacing code is on the \"Basis\" line of each entry.",
  "handoff.changelog.first": "First release",

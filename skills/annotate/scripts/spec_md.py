@@ -25,7 +25,9 @@ check:  every unit file is listed in index.md; linked files and images exist; ev
         "app: <id>" in the frontmatter compares with that app's DS profile (apps[].ds).
         Without screens/screens.json (a package source folder) and without --screens, the screen, pin and image
         checks are skipped with one NOTE line. A generated "Design notes" block whose pin codes no longer match
-        screens.json is an ERROR (run notes).
+        screens.json is an ERROR (run notes). A unit marked replaced or dropped (status cell in index.md, or the status
+        line of the unit: words of handoff.archive.status, project language or English) that is still a unit file is a
+        WARN: the archive step of handoff has not run on it.
 notes:  write or refresh the generated parts of each spec/<unit>.md from screens.json (and requirements/spec-map.json):
         the screen sections ("### S01 · name", route, how to reach, Figma) and the "Design notes" table, one row per pin.
         Only text between <!-- kit:screens:begin --> / <!-- kit:notes:begin {...} --> and their :end markers is
@@ -275,6 +277,11 @@ def check(a):
                     err.append(f"{p.name}: pin {pin_s}-{pin_n} points to a screen that is not in screens.json.")
                 elif int(pin_n) > len(sc.get("pins", [])):
                     err.append(f"{p.name}: pin {pin_s}-{pin_n} exceeds the pin count of the screen ({len(sc.get('pins', []))}).")
+    arc_name = kitconf.spec_files(cfg)["archive"]
+    for uid, status in sorted(kitconf.dropped_units(cfg, spec).items()):
+        if (spec / f"{uid}.md") in units:
+            warn.append(f'{uid}.md looks dropped or replaced ("{status}") but is still a unit file: the archive step of '
+                        f'handoff (pkg.py finalize) moves it to spec/{arc_name}; change the status if the unit is still in force.')
     heads = {t(lang(cfg), "annotate.h.unmatched"), t("en", "annotate.h.unmatched")}
     unmatched = section(index, heads)
     for sid in screens if has_screens else []:
@@ -882,6 +889,13 @@ def selftest_notes():
                 check(NS(root=d, screens=None))
             o = out.getvalue()
             assert o.count("NOTE: no screens/screens.json") == 1 and "ERROR" not in o, o
+            # issue 33: a unit marked dropped that was not archived is a WARN (English status line, hyphenated code)
+            (r / "spec/FR-02.md").write_text("# FR-02 · Old\nStatus: Dropped in 1.1.0\n", encoding="utf-8")
+            (r / "spec/index.md").write_text((r / "spec/index.md").read_text(encoding="utf-8") + "| [FR-02](FR-02.md) |\n", encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.suppress(SystemExit):
+                check(NS(root=d, screens=None))
+            assert 'WARN:  FR-02.md looks dropped or replaced ("Dropped in 1.1.0")' in out.getvalue() and "FR-01.md looks" not in out.getvalue(), out.getvalue()
         finally:
             os.chdir(cwd)
 

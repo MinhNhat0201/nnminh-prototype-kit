@@ -2,6 +2,7 @@
  "handoff.spec.figmaPending": "chưa có trên bảng Figma (gói đang chờ Figma)",
  "handoff.spec.colImage": "Ảnh",
  "handoff.archive.status": "Đã bỏ|Bỏ ở|Thay ở",
+ "handoff.archive.statusLabel": "Trạng thái",
  "handoff.archive.title": "# Lưu trữ: đơn vị đã thay hoặc đã bỏ",
  "handoff.archive.intro": "Giữ để truy vết, không còn đúng với prototype hiện tại. Tra mã thay thế ở dòng \"Căn cứ\" của từng mục.",
  "handoff.changelog.first": "Phát hành đầu",
