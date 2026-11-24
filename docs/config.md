@@ -68,7 +68,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
   "review": { "extraChecks": [] },
   "prototype": { "post": null },
   "define": { "messageCalls": ["toast", "showToast", "alert", "confirm", "prompt", "notify", "snackbar", "showError", "showMessage", "setCustomValidity"], "storageCalls": [], "storagePrefix": null },
-  "figma": { "imageSuffix": null },
+  "figma": { "imageSuffix": null, "adoptSuffixes": [] },
   "validate": { "touchTarget": { "default": 44, "desktop": 24 } },
   "skills": {},
   "rules": { "categories": {} },
@@ -126,6 +126,7 @@ Scripts find `kit.config.json` by walking up from the current directory. `script
 | `email.maxItems` | items kept in the feature or changelog section; the rest points to the file in the package | `12` | `share` |
 | `email.template` | path (project root) of the project's email layout: `.md` / `.txt` (plain body; the HTML body is built from it) or `.html` (HTML body; the plain body is its text). `{language}` in the path is the project language. Placeholders: `{greeting}`, `{intro}`, `{figma}`, `{demo}`, `{sections}`, `{package}`, `{how_to_open}`, `{feedback}`, `{thanks}`, `{signature}`, `{feature}`, `{version}`, `{app}`, `{pbi}`, `{subject}`, `{attachment}`; unknown ones stay as written (NOTE) | `null` (the kit layout) | `share` |
 | `figma.imageSuffix` | layer-name suffix of the screen image frames on the wireflow board, e.g. `" · image"` | `null` (`" · image"`; `mapjs`, `retitlejs` and the `mockup` audit also accept the locale suffix `wireflow.imageSuffix` and the English one) | `wireflow`, `mockup` |
+| `figma.adoptSuffixes` | more layer-name endings that mark a screen image frame on a board built by an older or another template, read by `figma_wireflow.py mapjs --adopt` (with `--suffix`), e.g. `[" · img", " (screen)"]` | `[]` (the kit locales' `wireflow.imageSuffix`, `figma.imageSuffix` and any frame filled with an image are always recognised) | `wireflow` |
 | `deploy.type` | `none`, `vercel`, `static` | `none` | demo links in `wireflow`, `share`, `handoff` |
 | `deploy.site` | base URL of the deployed prototypes | `null` | same |
 | `paths.context` | product context files and the decision log (`decisions/`) | `product-context` | `context`, `define`, `explore`, `prototype`, `handoff` |

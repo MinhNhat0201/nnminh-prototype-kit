@@ -21,7 +21,13 @@ Commands:
             urls.json: {"imageScreens": [...], "urls": [...]} in the order upload_assets returned them; without
             imageScreens, <out>/pending.json (from `images --map`) gives the order.
             POSTs each image to its URL (images never pass through the model context).
-  mapjs     --root <board node id>          prints use_figma code: screen id -> card node, image frame node, flows
+  mapjs     --root <board node id> [--adopt [--suffix " · img" ...]]
+            prints use_figma code: screen id -> card node, image frame node, flows. --adopt first renames the layers
+            of a board built by an older or another template (localized names) to the kit names: image frame = a FRAME
+            filled with an image or named with a known image suffix (own, figma.adoptSuffixes, --suffix, every kit
+            locale's wireflow.imageSuffix), card = its parent, screen id = leading token of the image or card name,
+            board title = first text of the board header (else the largest text). Same map, plus _renamed
+            ([{id, from, to}]) and _skipped (image frames without a screen id). Without --adopt nothing is renamed.
   retitlejs --root <board node id> --title "..."   prints use_figma code: rename the board in place, copy image
             fills to repeated frames of the same screen (node ids stay, links already sent keep working)
   redrawjs  --map <map.json> --screens <screens.json> (--ids S01,S02 | --changed <changed.json>) [--accent #RRGGBB]
@@ -554,6 +560,24 @@ await figma.setCurrentPageAsync(p);
 %(read)s
 return readBoard(b, p, %(suffix)s);"""
 
+ADOPTJS = """const b = await figma.getNodeByIdAsync(%(root)s);
+if (!b) throw new Error('Board not found: ' + %(root)s);
+let p = b; while (p && p.type !== 'PAGE') p = p.parent;
+await figma.setCurrentPageAsync(p);
+%(read)s
+%(adopt)s
+const SS = %(adopt_suffix)s, A = adoptBoard(b, SS, SS[0]);
+return Object.assign(readBoard(b, p, %(suffix)s), { _renamed: A.renamed, _skipped: A.skipped });"""
+
+
+def adopt_suffixes(cfg, extra=()):
+    """Image-frame name endings mapjs --adopt recognises: the board's own suffixes first, then figma.adoptSuffixes,
+    --suffix values and wireflow.imageSuffix of every kit locale."""
+    loc = sorted((HERE.parents[2] / 'locales').glob('*/wireflow.json'))
+    locs = [json.loads(f.read_text(encoding='utf-8')).get('wireflow.imageSuffix') for f in loc]
+    more = ((cfg or {}).get('figma') or {}).get('adoptSuffixes') or []
+    return list(dict.fromkeys(x for x in suffixes(cfg) + list(more) + list(extra) + locs if x))
+
 RETITLEJS = """const b = await figma.getNodeByIdAsync(%(root)s);
 if (!b) throw new Error('Board not found: ' + %(root)s);
 let p = b; while (p && p.type !== 'PAGE') p = p.parent;
@@ -580,7 +604,11 @@ def js_args(a, **extra):
 
 
 def mapjs_code(a):
-    return MAPJS % dict(js_args(a), read=js('wireflow-read.js'))
+    if not getattr(a, 'adopt', False):
+        return MAPJS % dict(js_args(a), read=js('wireflow-read.js'))
+    cfg = load(require=False) or {'language': 'en'}
+    return ADOPTJS % dict(js_args(a), read=js('wireflow-read.js'), adopt=js('wireflow-adopt.js'),
+                          adopt_suffix=json.dumps(adopt_suffixes(cfg, getattr(a, 'suffix', None) or []), ensure_ascii=False))
 
 
 def mapjs(a):
@@ -711,6 +739,11 @@ def selftest():
     print('figma_wireflow.py selftest OK')
 
 
+def run_code(run, tmp, code):
+    (tmp / 'code-run.js').write_text(code)
+    return run(tmp / 'code-run.js')
+
+
 def selftest_codegen():
     """Generated code: placeholders filled; with node, build -> images -> update -> mapjs run against figma_mock.js."""
     tmp = Path(tempfile.mkdtemp(prefix='wireflow-'))
@@ -811,6 +844,29 @@ def selftest_codegen():
         assert 'No change' in buf.getvalue(), buf.getvalue()
         (tmp / 'mapjs.js').write_text(mapjs_code(argparse.Namespace(root=m['_board'])))
         assert run(tmp / 'mapjs.js') == m2, 'mapjs reads the same map as the update return'
+        # issue 29: a board made by another template with localized names; --adopt renames it to the kit names
+        img = lambda i, name, fills=None, kids=(): {'id': i, 'type': 'FRAME', 'name': name, 'fills': fills or [], 'children': list(kids)}
+        foreign = {'seq': 900, 'root': {'id': '0:0', 'type': 'DOCUMENT', 'name': 'Doc', 'children': [{'id': '0:1', 'type': 'PAGE', 'name': 'P', 'children': [
+            img('9:1', 'Luồng cũ', None, [
+                img('9:2', 'Tiêu đề', None, [{'id': '9:3', 'type': 'TEXT', 'name': 'Wireflow v1', 'characters': 'Wireflow v1', 'fontSize': 32},
+                                             {'id': '9:4', 'type': 'TEXT', 'name': 'meta', 'characters': 'meta', 'fontSize': 16}]),
+                img('9:5', 'Hàng', None, [
+                    img('9:6', 'S01 Danh sách', None, [img('9:7', 'S01 · ảnh', None, [{'id': '9:8', 'type': 'ELLIPSE', 'name': 'Ellipse'}])]),
+                    img('9:9', 'S02b · Chi tiết', None, [img('9:10', 'Rectangle 5', [{'type': 'IMAGE', 'scaleMode': 'FILL'}],
+                                                              [img('9:13', 'Avatar', [{'type': 'IMAGE'}])])]),
+                    img('9:11', 'Logo', None, [img('9:12', 'Frame 3', [{'type': 'IMAGE'}])])])])]}]}}
+        state.write_text(json.dumps(foreign))
+        plain = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1')))
+        assert set(k for k in plain if not k.startswith('_')) == set(), plain  # default: nothing renamed, no ' · ảnh' in en
+        ad = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1', adopt=True, suffix=[' (screen)'])))
+        assert ad['S01'] == '9:6' and ad['S02b'] == '9:9' and ad['_imgs'] == {'S01': '9:7', 'S02b': '9:10'}, ad
+        assert {'id': '9:3', 'from': 'Wireflow v1', 'to': 'Board title'} in ad['_renamed'] and ad['_skipped'] == ['Frame 3'], ad
+        assert {(r['id'], r['to']) for r in ad['_renamed']} == {('9:7', 'S01 · image'), ('9:6', 'S01'), ('9:10', 'S02b · image'),
+                                                                ('9:9', 'S02b'), ('9:3', 'Board title')}, ad['_renamed']
+        again = run_code(run, tmp, mapjs_code(argparse.Namespace(root='9:1')))
+        assert {k: v for k, v in again.items() if k != '_flows'} == {k: v for k, v in ad.items() if k not in ('_flows', '_renamed', '_skipped')}, again
+        rt = run_code(run, tmp, RETITLEJS % js_args(argparse.Namespace(root='9:1'), title='Wireflow v2'))
+        assert rt['titleText'] is True and rt['_imgs'] == ad['_imgs'], rt
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -864,6 +920,10 @@ def main():
     u.add_argument('--urls', required=True)
     m = sub.add_parser('mapjs', help='print use_figma code that reads screen cards, image frames and flows of a board')
     m.add_argument('--root', required=True, help='board node id (123:456 or 123-456)')
+    m.add_argument('--adopt', action='store_true', help='first rename the layers of a board made by an older or another '
+                                                        'template to the kit names (returns _renamed)')
+    m.add_argument('--suffix', action='append', default=[], help='with --adopt: another image-frame name ending (repeatable; '
+                                                                 'kit.config.json > figma.adoptSuffixes adds more)')
     rt = sub.add_parser('retitlejs', help='print use_figma code that renames a board in place and syncs repeated images')
     rt.add_argument('--root', required=True)
     rt.add_argument('--title', required=True)

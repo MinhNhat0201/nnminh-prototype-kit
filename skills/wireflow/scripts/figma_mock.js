@@ -2,7 +2,7 @@
 // Minimal stand-in for the Figma plugin API, only for `figma_wireflow.py --selftest` (no Figma connector needed).
 // Runs generated use_figma code against an in-memory document and prints the return value as JSON.
 //   node figma_mock.js <code.js> <state.json>   state.json keeps the document between runs (created when missing)
-// It models only what the wireflow code uses: node tree, names, ids, characters, insert/append/remove, find*.
+// It models only what the wireflow code uses: node tree, names, ids, characters, fills, fontSize, insert/append/remove, find*.
 'use strict';
 const fs = require('fs');
 const [codeFile, stateFile] = process.argv.slice(2);
@@ -31,8 +31,10 @@ class Node {
   findOne(f) { return this.findAll(f)[0] || null; }
   async setReactionsAsync() {}
 }
-const ser = n => ({ id: n.id, type: n.type, name: n.name, characters: n.characters || undefined, children: n.children && n.children.map(ser) });
+const ser = n => ({ id: n.id, type: n.type, name: n.name, characters: n.characters || undefined, fontSize: n.fontSize,
+  fills: Array.isArray(n.fills) && n.fills.length ? n.fills : undefined, children: n.children && n.children.map(ser) });
 function load(o, parent) { const n = new Node(o.type, { id: o.id, name: o.name, characters: o.characters || '' });
+  if (o.fills) n.fills = o.fills; if (o.fontSize) n.fontSize = o.fontSize;
   if (o.children) for (const c of o.children) { const k = load(c, n); k.parent = n; n.children.push(k); } return n; }
 
 const doc = fs.existsSync(stateFile) ? JSON.parse(fs.readFileSync(stateFile, 'utf8')) : null;

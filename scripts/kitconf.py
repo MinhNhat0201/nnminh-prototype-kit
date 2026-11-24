@@ -53,7 +53,7 @@ DEFAULTS = {
     "prototype": {"post": None},
     "define": {"messageCalls": ["toast", "showToast", "alert", "confirm", "prompt", "notify", "snackbar", "showError",
                                 "showMessage", "setCustomValidity"], "storageCalls": [], "storagePrefix": None, "skipRegions": []},
-    "figma": {"imageSuffix": None},
+    "figma": {"imageSuffix": None, "adoptSuffixes": []},
     "validate": {"touchTarget": {"default": 44, "desktop": 24}, "axePath": None, "setTheme": None,
                  "contentRoot": "main, #app, [role=main]", "threshold": 0.5, "minPixels": 100, "artifactsDir": None},
     "skills": {},
@@ -695,6 +695,9 @@ def check(cfg):
         errs.append("ds is missing: point it at a DS profile folder, e.g. \"ds/acme\"")
     elif cfg["_ds"] is None:
         errs.append(f"ds.json not found in {cfg['ds']}")
+    ads = (cfg.get("figma") or {}).get("adoptSuffixes")
+    if ads is not None and (not isinstance(ads, list) or not all(isinstance(x, str) and x for x in ads)):
+        errs.append("figma.adoptSuffixes must be a list of non-empty strings (image-frame name endings, e.g. \" · img\")")
     ids = set()
     for a in cfg["apps"]:
         if not a.get("id") or not a.get("path"):
@@ -841,6 +844,7 @@ def selftest():
         "skills": {"handoff": {"model": "m1", "effort": "high"}}}))
     c = load(d)
     assert c["email"]["demoLinks"] is True and c["email"]["maxItems"] == 12, "email defaults"
+    assert c["figma"]["adoptSuffixes"] == [] and check(dict(c, figma={"adoptSuffixes": "x"})), "figma.adoptSuffixes default and check"
     assert c["handoff"]["zipName"] == "Design - {pbi}" and c["handoff"]["dsLabel"] == "auto", "handoff defaults kept"
     assert check(c) == [], check(c)
     sf = spec_files(c)
