@@ -57,7 +57,7 @@ DEFAULTS = {
     "validate": {"touchTarget": {"default": 44, "desktop": 24}, "axePath": None, "setTheme": None,
                  "contentRoot": "main, #app, [role=main]", "threshold": 0.5, "minPixels": 100, "artifactsDir": None},
     "skills": {},
-    "rules": {"categories": {}},
+    "rules": {"categories": {}, "groups": []},
     "paths": {"changelog": "CHANGELOG.md", "plans": "docs/plans", "audits": "docs/audits", "explorations": "docs/explorations", "context": "product-context", "validation": "docs/validation", "verify": "docs/verify", "rules": "rules"},
 }
 
@@ -792,6 +792,12 @@ def check(cfg):
     cats = (cfg.get("rules") or {}).get("categories")
     if not isinstance(cats, dict) or any(not re.fullmatch(r"[A-Z][A-Z0-9]{1,5}", str(v)) for v in cats.values()):
         errs.append("rules.categories must be an object {category: ID prefix of 2-6 capital letters or digits}")
+    grp = (cfg.get("rules") or {}).get("groups")
+    if not isinstance(grp, list) or any(not isinstance(g, dict) or not (isinstance(g.get("title"), str) and g["title"] or g.get("omit"))
+                                        or any(not isinstance(g.get(k, []), list) or not all(isinstance(x, str) for x in g.get(k, []))
+                                               for k in ("ids", "categories")) for g in grp):
+        errs.append("rules.groups must be a list of {\"title\", \"ids\": [rule ids], \"categories\": [categories], \"omit\": false}"
+                    " (title required unless omit)")
     df = cfg.get("define") or {}
     for k in ("messageCalls", "storageCalls"):
         v = df.get(k)
@@ -897,6 +903,11 @@ def selftest():
     c["email"]["template"] = "missing.md"
     c["rules"]["categories"] = {"motion": "mo"}
     assert len(check(c)) == 3, check(c)
+    # 0.12.7: rules.groups
+    c["rules"]["groups"] = [{"title": "A", "ids": ["STY-001"]}, {"omit": True, "ids": ["PRC-001"]}]
+    assert len(check(c)) == 3, check(c)
+    c["rules"]["groups"] = [{"ids": ["STY-001"]}]
+    assert len(check(c)) == 4 and "rules.groups" in check(c)[-1], check(c)
     # 0.10: css.load, rules.from, changelog, placeholders
     c = load(d)
     assert css_load(c, "web") == {"load": "embed", "linkPath": None}, "embed by default"

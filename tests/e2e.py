@@ -229,6 +229,14 @@ def main():
     run(R + ["export", "--format", "claude", "--into", "CLAUDE.md"], d)
     cm = (d / "CLAUDE.md").read_text()
     check(cm.count("<!-- kit:rules:begin -->") == 1 and "**STY-001** (must)" in cm, "rules export claude: block in CLAUDE.md, idempotent")
+    write(d / "docs/AGENTS.md", "# Agents\n\n## 1. Setup\n\nkeep\n\n## 2. Rules\n\nold text\n\n## 9. End\n\nkeep too\n")
+    out = run(R + ["export", "--format", "claude", "--into", "docs/AGENTS.md"], d, expect=1)
+    check("no <!-- kit:rules:begin -->" in out and "old text" in (d / "docs/AGENTS.md").read_text(), "rules export: no markers, no silent append", out)
+    out = run(R + ["export", "--format", "claude", "--detail", "full", "--into", "docs/AGENTS.md", "--replace-from", "## 2.", "--replace-to", "## 9."], d)
+    ag = (d / "docs/AGENTS.md").read_text()
+    check("old text" not in ag and "## 1. Setup" in ag and "## 9. End" in ag and "Only DS tokens in app CSS." in ag
+          and "acme-mobile" in ag and ag.count("<!-- kit:rules:begin -->") == 1,
+          "rules export claude --detail full --replace-from/--replace-to: rule text and exceptions", out)
     run(R + ["export", "--format", "html", "--app", "acme-mobile", "--out", "docs/rules.html"], d)
     rh = (d / "docs/rules.html").read_text()
     check("<main>" in rh and "STY-001" in rh and "DEN-001" in rh, "rules export html for an app")

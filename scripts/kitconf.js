@@ -23,7 +23,7 @@ const DEFAULTS = {
   figma: { imageSuffix: null, adoptSuffixes: [] },
   validate: { touchTarget: { default: 44, desktop: 24 }, axePath: null, setTheme: null, contentRoot: 'main, #app, [role=main]' },
   skills: {},
-  rules: { categories: {} },
+  rules: { categories: {}, groups: [] },
   paths: { changelog: 'CHANGELOG.md', plans: 'docs/plans', audits: 'docs/audits', explorations: 'docs/explorations', context: 'product-context', validation: 'docs/validation', verify: 'docs/verify', rules: 'rules' },
 };
 const DS_DEFAULTS = {

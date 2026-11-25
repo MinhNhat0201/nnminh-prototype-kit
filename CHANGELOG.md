@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.12.7 · 2026-11-25
+From a project that tried to replace the hand-written rule sections of its `CLAUDE.md` with `rules.py export --format claude --into CLAUDE.md`: the block had only ids and titles, was appended at the end, kept kit rules that DS or project rules replace, dropped notes and listed rules by severity, with kit titles in English. Behaviour changes: `export --into` a file without the `kit:rules` markers stops with an error (0.12.6 appended; `--append` keeps that), `list` and `export` without `--app` leave out a rule that a later layer overrides for every app it covers, the brief `claude` block keeps `note` rules, and kit rule titles and texts appear in the project language in exports.
+
+Rules
+- `export --format claude --detail full`: a `###` heading per group, and per rule the id, severity, apps when not every app, the rule text (first paragraph of the body; the title when there is none), its exceptions, and "Replaced by <id> for: <apps>" when a later-layer rule replaces it for some apps only. No titles, reasons or `check` commands (`show` has them), so the block stays close in size to hand-written rules. `--detail brief` (default) is the 0.12.6 list.
+- `--into` a file without the markers: `--replace-from "<line>" [--replace-to "<line>"]` replaces the lines from the first line that starts with the first text up to the line that starts with the second (end of file without it) and writes the markers, so the next run replaces the block in place; `--append` adds the block at the end. A missing or empty file gets the block. The result line names what was replaced and the block size.
+- Overrides for the whole project (`project_overrides`): without `--app`, a rule is overridden when an active later-layer rule overrides it for every app it covers (apps outside its scope or excepted do not count); a project without apps compares as before with no app. `export --format md` without an app lists them under "Replaced by a rule of a later layer".
+- `kit.config.json > rules.groups` (default `[]`): ordered `{title, ids, categories, omit}`. A rule goes to the first group that lists its id, else its category; listed ids first, in their order; the rest by category after the groups. `omit: true` leaves rules out of the export (stated elsewhere in the file). Used by `export --format md|html` and `claude --detail full`; without groups both group by category. `kitconf.py check` checks the shape, `rules.py conflicts` warns about unknown ids or categories.
+- Kit rules in the project language: `locales/<lang>/rules.json > rules.kitRule.<id>.title` and `.text` (Vietnamese for all 21 kit rules) are used by `export` (`md`, `html`, `claude`). `rules.py --selftest` fails when a kit rule has no Vietnamese title or text; `docs/authoring.md` says a new kit rule adds both.
+
+Docs: `docs/rules.md` ("Export" section, migration step), `docs/config.md` (`rules.groups`), `skills/context/SKILL.md`, `skills/kickoff/SKILL.md` (a `CLAUDE.md` without markers).
+
+Tests: `rules.py --selftest` (overrides for every app and for some apps, notes kept, groups and omit, Vietnamese kit rules, `write_into` with markers, `--replace-from`/`--replace-to`, error without markers, `--append`), `kitconf.py --selftest` (`rules.groups` shape); `tests/e2e.py`: export into a file without markers fails and leaves it unchanged, `--detail full --replace-from/--replace-to` keeps the sections around it and writes rule text and exceptions.
+
 ## 0.12.6 · 2026-11-24
 From a first `mockup` run on a real project: the audit passed a screen whose spacing variables could have come from any library.
 
