@@ -707,8 +707,13 @@ def main():
         # validate: named states (theme, text 200%), reload step, axe from a path, waivers, contrast detail, compare (K-F6..F10, F19, B7)
         vt = d / "vt"
         write(vt / "index.html", "<!doctype html><html lang=\"en\"><head><title>t</title></head><body>\n"
-              "<div id=\"shell\"><a href=\"#/x\">Shell link</a></div><main><p>Body text</p><div id=\"seen\" hidden>seen</div></main>\n"
-              "<script>if (localStorage.getItem('seen')) document.getElementById('seen').hidden = false;\n"
+              "<div id=\"shell\"><a href=\"#/x\">Shell link</a></div><main><p>Body text</p><div id=\"seen\" hidden>seen</div>\n"
+              "<button id=\"open\">Open</button><button id=\"open2\">Open 2</button><div id=\"dlg\" role=\"dialog\" hidden><input id=\"nm\" aria-label=\"Name\"></div></main>\n"
+              "<script>let opener = null; const dlg = document.getElementById('dlg');\n"
+              "for (const b of document.querySelectorAll('#open, #open2')) b.onclick = () => { opener = b; dlg.hidden = false; document.getElementById('nm').focus();"
+              " if (document.documentElement.dataset.brand === 'ocean') console.error('dlg-with-brand'); };\n"
+              "addEventListener('keydown', e => { if (e.key === 'Escape' && !dlg.hidden) { dlg.hidden = true; if (opener.id === 'open') opener.focus(); else document.activeElement.blur(); } });\n"
+              "if (localStorage.getItem('seen')) document.getElementById('seen').hidden = false;\n"
               "new MutationObserver(() => { const h = document.documentElement; if (h.dataset.brand === 'ocean') console.error('brand-applied');\n"
               " if (h.style.fontSize) console.error('font-' + h.style.fontSize); }).observe(document.documentElement, { attributes: true });</script>\n"
               "</body></html>\n")
@@ -718,10 +723,13 @@ def main():
               " contrastRatio: 4.48, expectedContrastRatio: '4.5:1' } }] }] }] }) };\n")
         vd = d / "valdir-states"
         vplan = {"axe": {"exclude": ["#nothing"]}, "states": ["text=200%"], "screens": [
-            {"id": "S01", "route": "", "states": ["brand=ocean"]},
+            {"id": "S01", "route": "", "states": ["brand=ocean", {"name": "dlg-open", "prepare": "document.getElementById('open').click()"},
+                                                  "brand=ocean+dlg-open", "text=200%+dlg-open"]},
             {"id": "S02", "route": "", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"goto": "#/", "reload": True}, {"expectVisible": "#seen"}]}],
             "flows": [{"name": "reload step", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"reload": True}, {"expectVisible": "#seen"}]},
-                      {"name": "hash only", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"goto": "#/"}, {"expectVisible": "#seen", "timeout": 400}]}]}
+                      {"name": "hash only", "steps": [{"eval": "localStorage.setItem('seen','1')"}, {"goto": "#/"}, {"expectVisible": "#seen", "timeout": 400}]},
+                      {"name": "esc returns focus", "steps": [{"click": "#open"}, {"expectFocus": "#nm"}, {"press": "Escape"}, {"expectFocus": "#open"}]},
+                      {"name": "esc loses focus", "steps": [{"click": "#open2"}, {"press": "Escape"}, {"expectFocus": "#open2", "timeout": 500}]}]}
         write(vd / "plan.json", json.dumps(vplan))
         write(vd / "waivers.json", json.dumps([{"check": "a11y", "id": "color-contrast", "selector": "#shell", "reason": "shared frame, other work"}]))
         srv2, base2 = serve(vt)
@@ -737,8 +745,14 @@ def main():
             check(all(it.get("axe") for it in res["items"]),
                   "validate: axe runs on every state of the plan, not only default and theme states (K11-7)", json.dumps(res["items"])[:2000])
             fl = {f["name"]: f["ok"] for f in res["flows"]}
-            check(not any(it.get("fatal") for it in res["items"]) and fl == {"reload step": True, "hash only": False},
+            check(not any(it.get("fatal") for it in res["items"]) and fl["reload step"] and not fl["hash only"],
                   "validate: reload step and goto reload: true load the page again; a hash-only goto does not", json.dumps(res)[:2000])
+            check("dlg-with-brand" in errs.get(("S01", "brand=ocean+dlg-open"), "") and "font-32px" in errs.get(("S01", "text=200%+dlg-open"), "")
+                  and "dlg-with-brand" not in errs.get(("S01", "dlg-open"), "x"),
+                  "validate: a named state joined with + to a state object opens that state with the brand or text size set", str(errs))
+            check(fl["esc returns focus"] and not fl["esc loses focus"]
+                  and "not on #open2" in json.dumps([f for f in res["flows"] if f["name"] == "esc loses focus"]),
+                  "validate: expectFocus passes when focus is back on the opener, fails with where it is", json.dumps(res["flows"])[:2000])
             rep = (r1 / "report.md").read_text()
             check(res["axe"]["version"] == "4.9.9" and "main > p 4.48:1 (needs 4.5:1), #777777 on #ffffff" in rep
                   and "#shell > a 2.85:1" in rep and "shared frame, other work" in rep and "## Known / waived (" in rep,
@@ -1142,6 +1156,14 @@ def main():
         cj.rename(d / "catalog.json.keep")
     out = run([PY, S / "document/scripts/catalog.py", "find", "shell"], d)
     check("[page pattern]" in out and "no catalog.json" in out, "catalog find: reads catalog.md when catalog.json is missing (K11-4)", out)
+    out = run([PY, S / "document/scripts/catalog.py", "show", "app-shell"], d)
+    check('"acme-main"' in out and "no catalog.json" in out, "catalog show: reads catalog.md when catalog.json is missing (0.12.7)", out)
+    dsj_p = d / "ds/acme/ds.json"
+    keep_ds = dsj_p.read_text()
+    write(dsj_p, json.dumps(dict(json.loads(keep_ds), deviations=[{"component": "Button", "kind": "intentional", "text": "Pill radius kept"}])))
+    out = run([PY, S / "document/scripts/catalog.py", "deviations", "button"], d)
+    check("Pill radius kept" in out and "intentional" in out, "catalog deviations: ds.json > deviations listed and filtered (0.12.7)", out)
+    write(dsj_p, keep_ds)
     if had_json:
         (d / "catalog.json.keep").rename(cj)
     run([PY, S / "document/scripts/catalog.py", "build"], d)

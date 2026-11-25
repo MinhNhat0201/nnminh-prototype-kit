@@ -48,6 +48,7 @@ DEFAULTS = {
     "email": {"subject": "[{app}] Design - {feature} - {version}", "attachLimitMB": 3, "demoLinks": True, "maxItems": 12,
               "template": None},
     "deploy": {"type": "none", "site": None},
+    "server": None,
     "sync": {"command": None, "check": None, "prepare": None, "post": None},
     "review": {"extraChecks": []},
     "prototype": {"post": None},
@@ -80,6 +81,7 @@ DS_DEFAULTS = {
     "figma": {"libraries": [], "collections": {}, "modes": {}},
     "preset": {},
     "patterns": [],
+    "deviations": [],
 }
 
 STACKS = ("html", "react", "vue")
@@ -406,6 +408,21 @@ def app_pages(cfg, app_id):
         if page not in out:
             out.append(page)
     return out
+
+
+SERVER_DEFAULT = "http://localhost:8765"
+
+
+def server_url(cfg):
+    """Base URL of the project's static server for check commands ({server}): env KIT_SERVER, else kit.config.json >
+    server, else http://localhost:8765. No trailing slash."""
+    import os
+    return (os.environ.get("KIT_SERVER") or (cfg or {}).get("server") or SERVER_DEFAULT).rstrip("/")
+
+
+def fill_server(cmd, cfg):
+    """A check command with {server} replaced by server_url (done first, so a URL built from it is seen as a URL)."""
+    return (cmd or "").replace("{server}", server_url(cfg)) if cmd and "{server}" in cmd else cmd
 
 
 def url_names_app(cmd):
@@ -810,6 +827,9 @@ def check(cfg):
             re.compile(rx)
         except (re.error, TypeError):
             errs.append("define.skipRegions: %r is no regular expression (each one matches a whole region to leave out)" % (rx,))
+    sv = cfg.get("server")
+    if sv is not None and not (isinstance(sv, str) and re.match(r"^https?://[^\s/]+", sv)):
+        errs.append("server must be the base URL of the project's static server (http://localhost:8765) or null")
     vd = cfg.get("validate") or {}
     if not isinstance(vd.get("minPixels", 100), int) or isinstance(vd.get("minPixels"), bool) or not isinstance(vd.get("threshold", 0.5), (int, float)):
         errs.append("validate.minPixels must be a whole number of pixels and validate.threshold a percent")
@@ -890,6 +910,15 @@ def selftest():
     c["apps"][2]["usedBy"] = ["apps/web/pg/pg.js", "apps/webx/pg.js"]
     assert page_hosts(c, "pg") == [("web", "apps/web/pg/pg.js"), (None, "apps/webx/pg.js")], page_hosts(c, "pg")
     assert app_pages(c, "pg") == ["apps/web/pg/", "apps/webx/"], app_pages(c, "pg")
+    import os as _os
+    _old = _os.environ.pop("KIT_SERVER", None)
+    assert fill_server("node a.js {server}/apps/{app}/", {"server": "http://127.0.0.1:8792/"}) == "node a.js http://127.0.0.1:8792/apps/{app}/"
+    assert fill_server("x {server}/", {}) == "x http://localhost:8765/" and fill_server("x", {}) == "x"
+    _os.environ["KIT_SERVER"] = "http://127.0.0.1:9100"
+    assert server_url({"server": "http://h:1"}) == "http://127.0.0.1:9100", "env KIT_SERVER wins"
+    _os.environ.pop("KIT_SERVER")
+    if _old is not None:
+        _os.environ["KIT_SERVER"] = _old
     assert url_names_app("node a11y.js http://localhost:8765/apps/{app}/") and not url_names_app("x.py {app} http://h/{page}")
     c["apps"][2]["usedBy"] = ["apps/web/pg.js"]
     c["apps"] += [{"id": "bad", "path": "x", "ds": "ds/none"}, {"id": "pg2", "path": "y", "type": "page"}]
@@ -922,6 +951,11 @@ def selftest():
     c["_ds"]["changelog"] = {"path": "docs/news.json"}
     assert ds_changelog(c) == (str((d / "docs" / "news.json").resolve()), "json"), "project-root fallback, format from the name"
     assert fill_command("x {app} {path} {other}", app="a b", path="") == "x 'a b'  {other}"
+    assert not [e for e in check(c) if e.startswith("server")]
+    c["server"] = "localhost:8765"
+    assert [e for e in check(c) if e.startswith("server")], "server needs a scheme"
+    c["server"] = "http://127.0.0.1:8792"
+    assert not [e for e in check(c) if e.startswith("server")]
     c["_ds"]["css"]["load"] = "inline"
     c["_ds"]["changelog"] = {"format": "yaml"}
     c["_ds"]["rules"] = {"from": "../none"}

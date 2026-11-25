@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Machine-readable component catalogue: catalog.json next to catalog.md in the DS profile.
 
-catalog.md stays the human source for classes, variants, states, tokens and components.map. catalog.json adds
+catalog.md stays the human source for classes, variants, states, tokens and components.map ('- Use:' and '- Avoid:'
+lines of a component, items split by " | ", become its usage rules). catalog.json adds
 what agents need to act safely and keeps the fields people maintain: Figma mapping, status (active, experimental,
 deprecated with a replacement), usage rules and accessibility notes. Rebuilding never drops those fields.
 
@@ -13,7 +14,10 @@ Commands:
   catalog.py patterns              Page patterns and templates (master-detail, split layouts, list pages…): the
                                    '## Patterns' section of catalog.md ('### <Name>' with '- Class:', '- Use:') and
                                    ds.json > patterns ([{"name", "classes", "use"}]). Works without catalog.json.
-  catalog.py show <id>             Print one component as JSON.
+  catalog.py show <id|.class>      Print one component (or page pattern) as JSON.
+  catalog.py deviations [words]    Intentional deviations, "needs design confirmation" and "proposal" items of the DS
+                                   (ds.json > deviations: a list, or a JSON file in the profile holding one; each
+                                   {"component", "kind", "text", "where"?}); words filter by component or text.
   catalog.py set <id> [--status active|experimental|deprecated] [--replaced-by <id>] [--reason "..."]
                       [--figma-component "Button"] [--figma-key <key>] [--figma-node <node id>]
                       [--use "..."] [--avoid "..."] [--a11y "..."]
@@ -36,7 +40,7 @@ from rules import ascii_fold  # noqa: E402
 SCHEMA = "kit-catalog/1"
 STATUSES = ("active", "experimental", "deprecated")
 MAINTAINED = ("figma", "status", "replacedBy", "reason", "usage", "a11y")
-FIELD = re.compile(r"^- (Class|Variants|States|Source|Notes|Structure|Tokens|Use):\s*(.*)$")
+FIELD = re.compile(r"^- (Class|Variants|States|Source|Notes|Structure|Tokens|Use|Avoid):\s*(.*)$")
 PATTERN_SECTIONS = ("patterns", "page patterns", "page templates", "templates")
 TICK = re.compile(r"`([^`]+)`")
 EXT_SCAN = {".html", ".htm", ".tsx", ".jsx", ".ts", ".js", ".vue", ".css"}
@@ -200,7 +204,8 @@ def parse_catalog(md):
             "code": {"html": ("." + base) if base else "", "react": m.get("react", ""), "vue": m.get("vue", "")},
             "figma": {"component": "", "key": "", "node": ""},
             "status": "active", "replacedBy": None, "reason": "",
-            "usage": {"use": [], "avoid": []},
+            "usage": {"use": [x.strip() for x in f.get("use", "").split(" | ") if x.strip()],
+                      "avoid": [x.strip() for x in f.get("avoid", "").split(" | ") if x.strip()]},
             "a11y": [s.strip() for s in re.split(r"(?<=\.)\s+", notes) if re.search(r"aria|touch target|label|focus|contrast|keyboard", s, re.I)],
         })
     return out
@@ -336,16 +341,11 @@ def from_sources(cfg, d):
 
 def cmd_find(cfg, d, a):
     words = [w.lower() for w in a.words]
-    if cat_path(cfg, d).is_file():
-        data = read_cat(cfg, d)
-    else:
-        data = from_sources(cfg, d)
-        print("NOTE: no %s: searched catalog.md and ds.json > patterns (catalog.py build writes the full catalogue)"
-              % cat_path(cfg, d).name)
+    data = load_any(cfg, d)
     hits = []
     for c in data["components"]:
         hay = " ".join([c["id"], c["name"], c.get("class") or "", c["code"].get("react", ""), c["code"].get("vue", ""),
-                        c.get("structure", ""), " ".join(c["usage"].get("use", []))]).lower()
+                        c.get("structure", ""), " ".join((c.get("usage") or {}).get("use", []))]).lower()
         score = sum(3 if re.search(r"\b%s(?:s|es)?\b" % re.escape(w), hay) else (1 if re.search(r"\b%s" % re.escape(w), hay) else 0) for w in words)
         if score:
             hits.append((score, c))
@@ -353,6 +353,11 @@ def cmd_find(cfg, d, a):
         flag = " [DEPRECATED → %s]" % c["replacedBy"] if c["status"] == "deprecated" else (" [experimental]" if c["status"] == "experimental" else "")
         code = ("react: " + c["code"]["react"][:30]) if c["code"].get("react") else ("vue: " + c["code"].get("vue", "")[:30]) if c["code"].get("vue") else ""
         print("%-20s .%-22s %-37s%s" % (c["id"], c.get("class") or "-", code, flag))
+        u = c.get("usage") or {}
+        if u.get("use") or u.get("avoid"):  # usage rules travel with the hit, so the variant is chosen from them
+            print("%22s use: %s" % ("", " | ".join(u.get("use") or []) or "-"))
+            if u.get("avoid"):
+                print("%22s avoid: %s" % ("", " | ".join(u["avoid"])))
     for pt in data.get("patterns") or []:
         hay = " ".join([pt["id"], pt["name"], " ".join(pt.get("classes") or []), pt.get("use", ""), pt.get("structure", "")]).lower()
         if any(re.search(r"\b%s" % re.escape(w), hay) for w in words):
@@ -378,12 +383,54 @@ def cmd_patterns(cfg, d, a):
               "calling a page layout missing.")
 
 
+def load_any(cfg, d):
+    """catalog.json, or the same content read from catalog.md and ds.json when there is none (with a NOTE)."""
+    if cat_path(cfg, d).is_file():
+        return read_cat(cfg, d)
+    print("NOTE: no %s: read catalog.md and ds.json > patterns (catalog.py build writes the full catalogue)"
+          % cat_path(cfg, d).name)
+    return from_sources(cfg, d)
+
+
 def cmd_show(cfg, d, a):
-    for c in read_cat(cfg, d)["components"]:
-        if c["id"] == a.id:
+    data = load_any(cfg, d)
+    key = a.id.lstrip(".")
+    for c in data["components"]:
+        if c["id"] == a.id or c.get("class") == key:
             print(json.dumps(c, ensure_ascii=False, indent=2))
             return
+    for pt in data.get("patterns") or []:
+        if pt["id"] == a.id:
+            print(json.dumps(pt, ensure_ascii=False, indent=2))
+            return
     die("component %s not found" % a.id)
+
+
+KINDS = ("intentional", "confirm", "proposal")
+
+
+def deviations(cfg, d):
+    """ds.json > deviations: [{component, kind (intentional | confirm | proposal), text, where?}], inline or a JSON file
+    (relative to the profile) holding that list."""
+    v = (cfg["_ds"] or {}).get("deviations") or []
+    if isinstance(v, str):
+        p = d / v
+        if not p.is_file():
+            die("ds.json > deviations names %s, which is not in the profile" % v)
+        v = json.loads(p.read_text(encoding="utf-8"))
+        v = v.get("deviations", []) if isinstance(v, dict) else v
+    return [x for x in v if isinstance(x, dict) and x.get("text")]
+
+
+def cmd_deviations(cfg, d, a):
+    words = [w.lower() for w in a.words]
+    items = [x for x in deviations(cfg, d)
+             if all(w in ("%s %s" % (x.get("component", ""), x.get("text", ""))).lower() for w in words)]
+    for x in items:
+        print("%-24s %-12s %s%s" % (x.get("component") or "-", x.get("kind") or "intentional", x["text"][:160],
+                                    "  (%s)" % x["where"] if x.get("where") else ""))
+    if not items:
+        print("No recorded deviation%s (ds.json > deviations)." % (" matches" if words else ""))
 
 
 def cmd_set(cfg, d, a):
@@ -492,6 +539,8 @@ def selftest():
     assert [p["id"] for p in pats] == ["master-detail", "settings-page"] and pats[0]["classes"] == ["pg-split", "pg-side"], pats
     assert pats[0]["source"] == "catalog.md" and pats[1]["classes"] == ["pg-set"] and "compact" in pats[0]["use"], pats
     assert [c["id"] for c in parse_catalog(md)] == ["button"], "patterns are not components"
+    u = parse_catalog("## Components\n\n### Dialog\n\n- Class: `.dlg`\n- Use: confirm | a form: `.dlg.form`\n- Avoid: long pages\n")[0]["usage"]
+    assert u == {"use": ["confirm", "a form: `.dlg.form`"], "avoid": ["long pages"]}, u
     m = parse_map(["| Class | Used in apps | React | Vue |", "|---|---|---|---|", "| `.btn` | 992 |  | `<Button>` |"])
     assert m["btn"] == {"react": "", "vue": "`<Button>`", "kind": ""}, m
     assert parse_map(["| `.btn` | `Button` | `<Btn>` | input |"])["btn"]["kind"] == "input", "no header: positional columns"
@@ -501,6 +550,21 @@ def selftest():
     src = from_sources({"_ds": {"patterns": []}}, d / "ds")
     assert [c["id"] for c in src["components"]] == ["srch"] and src["components"][0]["name"] == "Search", src
     assert [p["id"] for p in src["patterns"]] == ["list-page"], src
+    import contextlib, io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cmd_show({"_ds": {"patterns": []}}, d / "ds", argparse.Namespace(id=".srch"))
+    assert '"vue": "`<Search>`"' in buf.getvalue() and "NOTE: no catalog.json" in buf.getvalue(), buf.getvalue()
+    (d / "ds" / "dev.json").write_text(json.dumps({"deviations": [
+        {"component": "Dialog", "kind": "intentional", "text": "Header is 56 px, not 48 px as in Figma", "where": "#dialog"},
+        {"component": "Tabs", "kind": "confirm", "text": "Underline 3 px"}, {"component": "x"}]}))
+    cfg2 = {"_ds": {"deviations": "dev.json"}}
+    assert [x["component"] for x in deviations(cfg2, d / "ds")] == ["Dialog", "Tabs"]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        cmd_deviations(cfg2, d / "ds", argparse.Namespace(words=["dialog"]))
+    assert "56 px" in buf.getvalue() and "Tabs" not in buf.getvalue(), buf.getvalue()
+    assert deviations({"_ds": {"deviations": [{"component": "A", "text": "t"}]}}, d) == [{"component": "A", "text": "t"}]
     print("catalog.py selftest OK")
 
 
@@ -515,6 +579,7 @@ def main():
     sub.add_parser("build"); sub.add_parser("check"); sub.add_parser("patterns")
     p = sub.add_parser("find"); p.add_argument("words", nargs="+")
     p = sub.add_parser("show"); p.add_argument("id")
+    p = sub.add_parser("deviations"); p.add_argument("words", nargs="*")
     p = sub.add_parser("set"); p.add_argument("id")
     p.add_argument("--status"); p.add_argument("--replaced-by"); p.add_argument("--reason")
     p.add_argument("--figma-component"); p.add_argument("--figma-key"); p.add_argument("--figma-node")
@@ -522,7 +587,8 @@ def main():
     p = sub.add_parser("scan"); p.add_argument("--app", required=True)
     a = ap.parse_args()
     cfg, d = profile(a)
-    {"build": cmd_build, "check": cmd_check, "find": cmd_find, "show": cmd_show, "set": cmd_set, "scan": cmd_scan, "patterns": cmd_patterns}[a.cmd](cfg, d, a)
+    {"build": cmd_build, "check": cmd_check, "find": cmd_find, "show": cmd_show, "set": cmd_set, "scan": cmd_scan, "patterns": cmd_patterns,
+     "deviations": cmd_deviations}[a.cmd](cfg, d, a)
 
 
 if __name__ == "__main__":

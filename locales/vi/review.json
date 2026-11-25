@@ -84,5 +84,7 @@
  "review.extra.title": "Kiểm tra của dự án (kit.config.json > review.extraChecks)",
  "review.rule": "Quy tắc",
  "review.b.dsvue_used": "Component Vue của DS đang dùng (theo thẻ trong template, chỉ import thì tính 1) ({n}): {list}",
- "review.b.page_host": "App trang: bản build thành {files}. Phiên bản DS và CSS DS lấy từ app chủ {apps} khi trang không tự khai. Kiểm trình duyệt mở trang của app chủ {pages} (`{{page}}` trong lệnh kiểm)"
+ "review.b.page_host": "App trang: bản build thành {files}. Phiên bản DS và CSS DS lấy từ app chủ {apps} khi trang không tự khai. Kiểm trình duyệt mở trang của app chủ {pages} (`{{page}}` trong lệnh kiểm)",
+ "review.map.note.custom": "biến riêng {name}: chọn token theo chỗ dùng",
+ "review.map.note.component_only": "chỉ có token của component {token}, không dùng cho giá trị của app"
 }

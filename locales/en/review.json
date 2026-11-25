@@ -84,5 +84,7 @@
  "review.extra.title": "Project checks (kit.config.json > review.extraChecks)",
  "review.rule": "Rule",
  "review.b.dsvue_used": "DS Vue components used (template tags, or 1 when only imported) ({n}): {list}",
- "review.b.page_host": "Page app: built into {files}. DS version and DS CSS come from the host app(s) {apps} when the page declares none. Browser checks open the host page(s) {pages} (`{{page}}` in check commands)"
+ "review.b.page_host": "Page app: built into {files}. DS version and DS CSS come from the host app(s) {apps} when the page declares none. Browser checks open the host page(s) {pages} (`{{page}}` in check commands)",
+ "review.map.note.custom": "custom property {name}: pick the token by where it is used",
+ "review.map.note.component_only": "only the component token {token} matches; component tokens are not for app values"
 }

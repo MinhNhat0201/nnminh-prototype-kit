@@ -2,7 +2,7 @@
 
 Drawn from `emil-design-eng` and `review-animations` by Emil Kowalski (emilkowalski/skills, MIT), rewritten for prototypes built with a DS.
 Read it in `review` (screen review, step 3) and in `prototype` (steps 5 and 6) when a screen adds or changes animation.
-**Values always come from the DS motion tokens** (durations and easings in `ds.json > tokens`, and the DS enter, leave and view-change classes when the catalogue has them); never a curve or duration of your own.
+**Values always come from the DS motion tokens** (durations and easings: the token prefixes in `ds.json > tokens.roles.duration` and `tokens.roles.easing`, else motion tokens of the CSS bundle, and the DS enter, leave and view-change classes when the catalogue has them); never a curve or duration of your own.
 Where the DS has no fitting token: write "platform deviation, needs design confirmation" and send it to `document`.
 
 ## 1. Should it move at all (by frequency)
