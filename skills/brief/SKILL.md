@@ -36,7 +36,7 @@ Model and effort: `kit.config.json > skills.brief` (`model`, `effort`) when set.
 | `handoff` | One zip for BA, QC, developers | "package it", "handoff for PBI 1234" |
 | `share` | Draft the handoff email (never sends) | "write the handoff email" |
 | `verify` | Compare a developer build with the approved prototype; differences become defects or approved deviations | "check the implementation", "design QA", "compare the build with the design" |
-| `review` | Read-only audit of an app against the DS | "audit", "how far are we from the DS" |
+| `review` | Read-only audit of an app against the DS, or a critique of one screen or flow | "audit", "how far are we from the DS", "review this screen", "does this look right" |
 | `sync` | Bring a new DS version into apps | "update to the new DS version" |
 | `contribute` | Review local components, propose them to the DS | "which local components can go into the DS" |
 | `document` | Write and maintain DS docs and tokens | "document this component", "change a token" |

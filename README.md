@@ -64,12 +64,12 @@ Call a skill as `/kit:<skill>`. Claude also picks the right skill from a plain r
 | `handoff` | Builds one zip for BA, QC and developers. `pkg.py relink` adds Figma links to a draft package; `pkg.py smoke` opens the unpacked package in Chromium. |
 | `share` | Drafts the handoff email. It never sends. |
 | `verify` | Compares the developers' build with the approved prototype. Each difference is a defect or an approved deviation. |
-| `review` | Audits an app against the DS (read-only) and proposes fixes. |
+| `review` | Two read-only modes: audits an app against the DS and proposes fixes, or critiques one screen or flow with a screen-type checklist. |
 | `sync` | Brings a new DS version into the apps. |
 | `contribute` | Scores local components and proposes them to the DS, with two approval gates. |
 | `document` | Maintains DS tokens, components and documentation. |
 
-Review checklists ship with the skills: accessibility for web and mobile ([validate/references](skills/validate/references)), states and edge data ([prototype/references](skills/prototype/references)), motion and a heuristics rubric ([review/references](skills/review/references)).
+Review checklists ship with the skills: accessibility for web and mobile ([validate/references](skills/validate/references)), states and edge data ([prototype/references](skills/prototype/references)), motion, a heuristics rubric and 15 screen-type checklists such as sign-in, form, table, settings and long AI tasks ([review/references](skills/review/references)).
 
 ### Skill map
 

@@ -1,7 +1,7 @@
 # Accessibility and experience checklist: web screens (responsive included)
 
 Condensed from WCAG 2.2 (levels A and AA) and the `web` skill of platform-design-skills (MIT), rewritten for prototypes built with a DS.
-Read it in `validate` (step 3, when judging "Needs a human" items), in `prototype` (step 6) and in `review` when the user asks to "review this screen".
+Read it in `validate` (step 3, when judging "Needs a human" items), in `prototype` (step 6) and in the critique mode of `review`.
 Apps with `apps[].platform` set to a phone platform (`mobile`, `ios`, `android`): read [a11y-mobile.md](a11y-mobile.md) as well; its M-codes add to these.
 
 **Order of precedence:** the rules in force (`rules.py list`) and the DS > this checklist. Where the DS documents something else (text size, colour, radius, a touch target per density), do not change the app to fit the checklist: write "platform deviation, needs design confirmation" in the report and send it to `document`.
@@ -81,10 +81,24 @@ Column **How**: `A` = measured by `validate` (axe-core, focus, touch targets, co
 | W-62 | The browser Back button returns to the previous screen (hash router), it does not leave the app | — | M |
 | W-63 | The same function has the same name and place on every page (shared header, shared side bar) | 3.2.3, 3.2.4 | M |
 
+## Item status
+
+Going through a checklist item by item (a critique table, the manual items of `validate`), give each item one status:
+
+| Status | Means | Note needed |
+|---|---|---|
+| **Pass** | Present and works on what you saw | No |
+| **Partly** | Present but incomplete: one width, one state, one field of several | What is missing |
+| **Missing** | Should be there and is not | The finding it points to |
+| **N/A** | Does not apply to this screen (no form, no motion, no dialog) | A few words why |
+| **Can't tell** | Could not be judged from what you saw (a still image, a state not opened, a sign-in you lack) | What would show it |
+
+Can't tell is never counted as Pass. N/A needs its reason, so a reader can tell "not needed" from "not checked". No percentage of items passed.
+
 ## Writing findings
 
 Three groups: **Must fix** (critical, blocks people), **Should fix** (high), **Nice to have** (medium); number them in one sequence. Each finding:
 **What it is** · **Problem** (a concrete situation: who does what and meets what) · **Fix** (with DS components and tokens; no home-made style) · **If ignored** · **Rule** (the code above and the WCAG criterion) · `file:line` or the screen.
 No concrete situation, no finding.
 A problem inside a DS component (it shows in every app) is written once and proposed to `document`; never patch it app by app.
-The other checklists ([a11y-mobile.md](a11y-mobile.md), states S-/D-, motion C-, heuristics H-) use this format.
+The other checklists ([a11y-mobile.md](a11y-mobile.md), states S-/D-, motion C-, heuristics H-, the screen checklists of `review` [screens/](../../review/references/screens/index.md)) use this format and the item statuses above.

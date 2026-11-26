@@ -1,6 +1,6 @@
 # Landing page content: Prototype Kit
 
-The copy of the live landing page (`site/index.html`, version 0.12.8), section by section, in English and Vietnamese.
+The copy of the live landing page (`site/index.html`, version 0.12.9), section by section, in English and Vietnamese.
 English is the HTML source; Vietnamese comes from the page's language dictionary and shows when a visitor picks **VI** (or the browser language is Vietnamese).
 
 Rules for the copy: every claim comes from the repository or from a real test run of the kit. No invented statistics, star counts, logos or testimonials.
@@ -353,7 +353,7 @@ Notes in *[brackets and italics]* describe layout, not page text.
 | 12 | `handoff` | Deliver / Bàn giao | Packs one zip for BA, QC and developers, with reading paths in AGENTS.md. pkg.py smoke opens the unpacked package in a browser. | Đóng gói một file zip cho BA, QC và developer, có lối đọc trong AGENTS.md. pkg.py smoke mở thử gói đã giải nén trên trình duyệt. |
 | 13 | `share` | Deliver / Bàn giao | Drafts the handoff email with the Figma link, key changes and the zip attached. It only drafts; you send. | Soạn email bàn giao có link Figma, các thay đổi chính và file zip đính kèm. Skill chỉ soạn nháp, bạn tự gửi. |
 | 14 | `verify` | Quality / Chất lượng | Compares the developers' build with the approved prototype: screens, tokens, components, texts, flows and accessibility. Each difference is a defect or an approved deviation. | So bản developer làm với prototype đã duyệt: màn hình, token, component, chữ, luồng và accessibility. Mỗi khác biệt là lỗi hoặc sai lệch đã duyệt. |
-| 15 | `review` | Design system / Design system | A read-only audit of how well an app follows the DS: version, tokens, hard-coded values, component use and overrides. Each deviation comes with fix options. | Audit chỉ đọc, đo mức app tuân theo DS: phiên bản, token, giá trị gắn cứng, cách dùng component và chỗ ghi đè. Mỗi sai lệch kèm phương án sửa. |
+| 15 | `review` | Design system / Design system | A read-only audit of how well an app follows the DS, with fix options for each deviation. Or a critique of one screen or flow against a screen-type checklist. | Audit chỉ đọc, đo mức app tuân theo DS, mỗi sai lệch kèm phương án sửa. Hoặc nhận xét một màn hình, một luồng theo checklist của loại màn đó. |
 | 16 | `sync` | Design system / Design system | Brings a new DS version into your apps. It asks before touching local components, then tests and records the change. | Đưa phiên bản DS mới vào các app. Skill hỏi trước khi đụng tới component local, rồi test và ghi lại thay đổi. |
 | 17 | `contribute` | Design system / Design system | Keeps the local-component registry in step and proposes the best ones to the DS through two approval gates. | Giữ danh sách component local khớp với app và đề xuất những cái tốt vào DS qua hai bước duyệt. |
 | 18 | `document` | Design system / Design system | Maintains the DS profile and docs: tokens and components at the source, the bundle, version, changelog and contrast. | Duy trì profile DS và tài liệu: token và component tại nguồn, bundle, phiên bản, changelog và tương phản. |
@@ -363,8 +363,8 @@ Notes in *[brackets and italics]* describe layout, not page text.
 *[Centred card with a soft gold glow. Command box with a Copy button, then a gold GitHub button.]*
 
 - **Version pill**
-  - EN: Version 0.12.8 · MIT licence
-  - VI: Phiên bản 0.12.8 · Giấy phép MIT
+  - EN: Version 0.12.9 · MIT licence
+  - VI: Phiên bản 0.12.9 · Giấy phép MIT
 - **Heading**
   - EN: Ready to prototype with your design system?
   - VI: Sẵn sàng dựng prototype với design system của bạn?
@@ -458,4 +458,4 @@ Notes in *[brackets and italics]* describe layout, not page text.
 - **Base line**
   - EN: Contributions welcome.
   - VI: Hoan nghênh đóng góp.
-- **Version:** v0.12.8
+- **Version:** v0.12.9

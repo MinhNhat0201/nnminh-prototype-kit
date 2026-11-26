@@ -175,7 +175,7 @@ Run `validate` for the screens, states and flows of this wave (`V=<kit>/skills/v
 - No hard-coded values left: `python3 <kit>/skills/review/scripts/audit_app.py <app>` (hex, `rgb(`, px colour and spacing, per-stack patterns above) shows nothing new in the changed files.
 - Local blocks added or changed: `python3 <kit>/skills/contribute/scripts/registry.py check` passes, and every new or changed entry has its notes filled.
 - Capture the new screen next to the reference image and compare layout, order and behaviour (not style).
-- Open every main state in the flow: empty, error, loading, and edge data (long names, many items, none, a missing image). The request rarely names them; build them with DS components (empty and error patterns from the catalogue) and list the ones you could not build. Which states and which edge data: `references/states-and-edge-data.md` (S- and D-codes). A screen that adds animation: `<kit>/skills/review/references/motion.md`.
+- Open every main state in the flow: empty, error, loading, and edge data (long names, many items, none, a missing image). The request rarely names them; build them with DS components (empty and error patterns from the catalogue) and list the ones you could not build. Which states and which edge data: `references/states-and-edge-data.md` (S- and D-codes). A screen that adds animation: `<kit>/skills/review/references/motion.md`. A screen of a listed type (sign-in, form, table, settings, dialog…): its checklist from `<kit>/skills/review/references/screens/index.md`; build every Must item or list it as left out.
 
 ## Step 7. Save and report
 

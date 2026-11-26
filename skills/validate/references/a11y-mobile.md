@@ -59,4 +59,4 @@ Column **How**: `A` = measured by `validate` at phone width; `P` = a `validate` 
 | M-60 | Dark mode (when the app offers it) keeps contrast on every screen; illustrations do not turn into white blocks | HIG, M3 | A (`mode=dark`) + M |
 | M-61 | System reduced motion: slides and zooms become fades or no motion (see `review` [motion.md](../../review/references/motion.md)) | HIG, M3 | M |
 
-Write findings as in "Writing findings" of [a11y-web.md](a11y-web.md) (Must fix / Should fix / Nice to have, four parts, rule code).
+Write findings as in "Writing findings" of [a11y-web.md](a11y-web.md) (Must fix / Should fix / Nice to have, four parts, rule code). Item statuses (Pass, Partly, Missing, N/A, Can't tell) as in "Item status" there.

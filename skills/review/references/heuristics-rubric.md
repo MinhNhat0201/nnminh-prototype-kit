@@ -1,7 +1,7 @@
 # Screen review rubric (heuristics and cognitive load)
 
 Drawn from `critique-rubric` of the impeccable skill (Apache-2.0), based on Nielsen's ten usability heuristics, rewritten for prototypes built with a DS.
-Read it when the user asks to "review this screen" or "give feedback on this flow", and in `explore` when comparing directions; use it with `validate` [a11y-web.md](../../validate/references/a11y-web.md) (and [a11y-mobile.md](../../validate/references/a11y-mobile.md), `prototype` [states-and-edge-data.md](../../prototype/references/states-and-edge-data.md)).
+Read it in the critique mode of `review` ([critique.md](critique.md)) and in `explore` when comparing directions; use it with `validate` [a11y-web.md](../../validate/references/a11y-web.md) (and [a11y-mobile.md](../../validate/references/a11y-mobile.md), `prototype` [states-and-edge-data.md](../../prototype/references/states-and-edge-data.md)).
 This rubric scores **experience**, not style: colour, font, radius and spacing follow the DS and Figma; a difference there is written "deviates from the DS" or "deviates from Figma".
 
 ## 1. Ten heuristics, each scored 0–4
@@ -30,8 +30,6 @@ When comparing directions in `explore`, score each direction along the same flow
 - Tie each problem you record to its heuristic (usually H6, H8, H4).
 
 ## 3. Review report
-1. Scope: screens, flow, viewport widths seen, light or dark.
-2. Score table H1–H10 (one line of reason for each score under 4).
-3. Findings as **Must fix / Should fix / Nice to have**, numbered in one sequence, each in four parts (What it is · Problem · Fix with DS components · If ignored) with its code (H#, W-, M-, S-, D-, C-).
-4. What works well (one or two lines, so nobody removes it by mistake).
-5. Not seen: flows, states, widths not tried.
+Follow the report order of [critique.md](critique.md) (scope, what works, findings, checklist tables, H1–H10, not seen) and the voice of [writing.md](writing.md).
+- What works: at least two strengths, each tied to a visible element, so nobody removes them by mistake.
+- Findings cite their codes (H#, W-, M-, S-, D-, C- and the screen-checklist codes).

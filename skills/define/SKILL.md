@@ -56,7 +56,7 @@ Check every unit for:
 | Contradiction | Between two units, unit vs existing prototype, unit vs DS (asks for a style no token gives), two sources |
 | Hidden assumption | Something you would have to guess to build it |
 
-For **Missing**, go through the states (S-codes) of `<kit>/skills/prototype/references/states-and-edge-data.md` for every data region of the unit.
+For **Missing**, go through the states (S-codes) of `<kit>/skills/prototype/references/states-and-edge-data.md` for every data region of the unit. A unit with a screen of a listed type (`<kit>/skills/review/references/screens/index.md`): a Must item the requirement does not cover is a question too.
 
 Question table: `ID | linked unit | question (specific, answerable in one sentence) | to (PM/BA) | level | temporary assumption | fallback if the assumption is wrong`.
 

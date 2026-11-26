@@ -56,7 +56,7 @@ Fill `directions.json` for every direction: `name`, `summary` (one sentence), `b
 - `python3 $E compare <slug>` writes `compare.html`: directions side by side or one at a time, in a phone, tablet or desktop frame, with the description under each.
 - Open `compare.html` with Playwright (installed Chromium; never `playwright install`): no `pageerror`, every frame loads. Look at one screenshot per viewport.
 
-- Comparing directions on experience: score each one along the same flow with `<kit>/skills/review/references/heuristics-rubric.md` and put the result into its `pros`, `cons` and `risks`.
+- Comparing directions on experience: score each one along the same flow with `<kit>/skills/review/references/heuristics-rubric.md` and put the result into its `pros`, `cons` and `risks`. When the screen has a type in `<kit>/skills/review/references/screens/index.md`, note the Must items each direction leaves out.
 
 ## Step 5. Decision gate (mandatory)
 
